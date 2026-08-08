@@ -34,49 +34,97 @@ export const VEREDICTO = {
   INDETERMINADO: 'indeterminado',
 };
 
-export function ejecutarDespliegue({ pasos, etiqueta = 'Despliegue' }) {
-  return new Promise((resolve) => {
-    const conn = new Client();
-    let cerroLimpio = false;
-    let errorConexion = null;
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. **2026-08-08 — tres ECONNRESET seguidos, y la lección de los otros dos aplicada mal.**
+//
+// El diseño anterior ejecutaba la cadena entera en un `exec` y leía su salida. Correcto
+// para clasificar el resultado… y frágil justo donde importa: el paso de compilación pasa
+// minutos sin emitir nada (`| tail -20` retiene toda la salida hasta terminar), y el canal
+// SSH silencioso se cae. Tres despliegues seguidos murieron ahí, y los tres dejaron el
+// **código compilado sin recargar** — el ERP corriendo el binario anterior mientras el
+// repositorio decía otra cosa.
+//
+// `INDETERMINADO` estaba bien diseñado y funcionó: avisó, no invitó a relanzar, y la
+// verificación posterior encontró el estado real. Pero clasificar bien un fallo recurrente
+// no es corregirlo. La causa no era la clasificación: era **atar la vida del trabajo a la
+// vida de la conexión**.
+//
+// Ahora el trabajo se lanza DESLIGADO (`nohup … &`) escribiendo a un log en el servidor, y
+// el cliente solo lo sigue. Una caída de red deja de poder interrumpir un despliegue: se
+// reconecta y se sigue leyendo. `INDETERMINADO` se conserva para lo que sí sigue siendo
+// incierto — que el sondeo agote su plazo sin ver el marcador de fin.
+// ─────────────────────────────────────────────────────────────────────────────
 
-    conn.on('ready', () => {
-      console.log(`✓ SSH conectado — ${etiqueta}\n`);
-      // `set -o pipefail`: sin esto, un paso que termina en `| tail -N` devuelve el código
-      // de `tail` y la cadena de `&&` continúa como si nada.
-      const cmd = `set -o pipefail; ${pasos.join(' && ')}`;
+const LOG_REMOTO   = '/opt/datafast/logs/_deploy.log';
+const MARCA_FIN    = '===DEPLOY-FIN===';
+const SONDEO_MS    = 10_000;
+const PLAZO_MAX_MS = 20 * 60_000;
 
-      conn.exec(cmd, { pty: false }, (err, stream) => {
-        if (err) {
-          errorConexion = err.message;
-          conn.end();
-          return;
-        }
-        stream.on('data', (d) => process.stdout.write(d.toString()));
-        stream.stderr.on('data', (d) => process.stderr.write(d.toString()));
+const conectar = () => new Promise((res, rej) => {
+  const c = new Client();
+  c.on('ready', () => res(c));
+  c.on('error', rej);
+  c.connect({ ...VPS, keepaliveInterval: 5000 });
+});
 
-        stream.on('close', (code) => {
-          // Un código NUMÉRICO es un veredicto del shell remoto: sabemos qué pasó.
-          // `undefined` significa que el canal murió antes de devolverlo — no lo sabemos.
-          if (typeof code === 'number') {
-            cerroLimpio = true;
-            resolve(dictaminar(code === 0 ? VEREDICTO.APLICADO : VEREDICTO.FALLIDO, code));
-          }
-          conn.end();
-        });
-      });
-    });
-
-    conn.on('error', (e) => { errorConexion = e.message; });
-
-    conn.on('close', () => {
-      // Si el stream ya dictaminó, esto no hace nada (la promesa está resuelta).
-      if (cerroLimpio) return;
-      resolve(dictaminar(VEREDICTO.INDETERMINADO, null, errorConexion));
-    });
-
-    conn.connect(VPS);
+const ejec = (c, cmd) => new Promise((res) => {
+  c.exec(cmd, { pty: false }, (err, s) => {
+    if (err) return res({ code: 1, out: '' });
+    let out = '';
+    s.on('data', (d) => { out += d; });
+    s.stderr.on('data', (d) => { out += d; });
+    s.on('close', (code) => res({ code, out }));
   });
+});
+
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export async function ejecutarDespliegue({ pasos, etiqueta = 'Despliegue' }) {
+  // `set -o pipefail`: sin esto, un paso que termina en `| tail -N` devuelve el código de
+  // `tail` y la cadena de `&&` continúa como si nada.
+  // El marcador de fin lleva el código de salida real: es el veredicto del shell remoto,
+  // y viaja por el log en vez de por el canal, que es lo que se caía.
+  const guion = `set -o pipefail; ${pasos.join(' && ')}; echo "${MARCA_FIN}:$?"`;
+  const lanzar =
+    `rm -f ${LOG_REMOTO}; ` +
+    `nohup bash -c '${guion.replace(/'/g, `'\\''`)}' > ${LOG_REMOTO} 2>&1 & ` +
+    `echo lanzado`;
+
+  try {
+    const c0 = await conectar();
+    console.log(`✓ SSH conectado — ${etiqueta} (desligado; log en ${LOG_REMOTO})\n`);
+    await ejec(c0, lanzar);
+    c0.end();
+  } catch (e) {
+    return dictaminar(VEREDICTO.FALLIDO, 1, `no se pudo lanzar: ${e.message}`);
+  }
+
+  let visto = 0;
+  const limite = Date.now() + PLAZO_MAX_MS;
+
+  while (Date.now() < limite) {
+    await dormir(SONDEO_MS);
+    let out = null;
+    try {
+      const c = await conectar();
+      ({ out } = await ejec(c, `cat ${LOG_REMOTO} 2>/dev/null || true`));
+      c.end();
+    } catch (e) {
+      // Una caída entre sondeos ya no importa: el trabajo corre en el servidor.
+      console.log(`  · sin conexión (${e.message}) — el despliegue sigue en el servidor`);
+      continue;
+    }
+
+    if (out.length > visto) { process.stdout.write(out.slice(visto)); visto = out.length; }
+
+    const fin = new RegExp(`${MARCA_FIN}:(\\d+)`).exec(out);
+    if (fin) {
+      const code = Number(fin[1]);
+      return dictaminar(code === 0 ? VEREDICTO.APLICADO : VEREDICTO.FALLIDO, code);
+    }
+  }
+
+  return dictaminar(VEREDICTO.INDETERMINADO, null, `sin marcador de fin tras ${PLAZO_MAX_MS / 60000} min`);
 }
 
 function dictaminar(veredicto, code, motivo) {
@@ -101,10 +149,12 @@ function dictaminar(veredicto, code, motivo) {
   // cosas de verdad.
   console.error(
     `\n⚠ DESPLIEGUE SIN CONFIRMAR${motivo ? ` (${motivo})` : ''}.\n` +
-    `  Se perdió la conexión antes de conocer el resultado. Los cambios PUDIERON haberse\n` +
-    `  aplicado igual — no relances sin verificar primero el estado real:\n` +
-    `    git log --oneline -1   (en /opt/datafast)\n` +
-    `    pm2 status             (uptime de los procesos)`,
+    `  El trabajo corre DESLIGADO en el servidor, así que probablemente siga en marcha o\n` +
+    `  haya terminado sin que este cliente lo viera. Los cambios PUDIERON aplicarse — no\n` +
+    `  relances sin mirar primero el estado real:\n` +
+    `    tail -40 ${LOG_REMOTO}   (el log del propio despliegue)\n` +
+    `    git log --oneline -1     (en /opt/datafast)\n` +
+    `    pm2 list                 (uptime y contador de reinicios)`,
   );
   process.exitCode = 2; // distinto de 1: un automatismo puede diferenciarlo de un fallo
   return { veredicto, code: null, motivo };
