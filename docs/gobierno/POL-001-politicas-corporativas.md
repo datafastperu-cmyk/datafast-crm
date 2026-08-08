@@ -296,35 +296,6 @@ el Core-Dios que ADR-032 existe para evitar.
 - `contratos.deuda_total` — propiedad de `facturacion` por declaración expresa. Resolverlo con un
   método en contratos reintroduciría la puerta que ADR-019 eliminó.
 
-## PA-17 · Degradable es lo que depende de algo que no controlamos — **DEBE**
-
-*(ADR-032, decisión D13)*
-
-Un módulo es **degradable** si depende de hardware de red, de una API de terceros o de un servicio
-externo. Un módulo que solo depende de la base de datos **no tiene a qué degradarse**: si falla, es
-un defecto propio y debe verse al arrancar.
-
-**PROHIBIDO** declarar degradables a `facturacion`, `pagos` o `cobranza`. Un ERP que arranca con la
-facturación degradada es un ERP que responde y no factura — el fallo que costó la desviación B-14.
-
-**La caída de un degradable produce degradación funcional localizada y recuperable, nunca
-indisponibilidad general del ERP.**
-
-## PA-18 · Si debe ocurrir aunque el destino esté caído, no es un evento — **DEBE**
-
-*(ADR-032 §2.2)*
-
-El bus es in-process (PA-16): un evento no cruza procesos y **no sobrevive a la muerte del
-proceso**. WhatsApp corre en su propio proceso PM2; un evento emitido en `api-core` no le llega.
-
-| Mecanismo | Cuándo |
-|---|---|
-| **Evento** (`EventEmitter2`) | Reacción inmediata, mismo proceso, se puede perder sin consecuencia |
-| **Outbox / cola persistente** | El trabajo **debe** ejecutarse aunque el destino esté caído |
-
-«El evento queda pendiente y se procesa cuando el módulo vuelva» **describe un outbox**, no un
-evento: un `EventEmitter` en memoria tiene cero durabilidad.
-
 ## PA-13 · Toda tabla nace con entidad — **DEBE**
 
 Toda tabla nueva se declara como entidad TypeORM. Columnas `string | null` llevan `type:`
@@ -348,6 +319,36 @@ no ejecuta. Si ejecutara, su comportamiento dependería de dónde se emitió el 
 ## PA-17 · Toda operación rutinaria se modela explícitamente — **DEBE**
 
 Componer una operación de negocio con operaciones destructivas **no es modelarla**.
+
+
+## PA-18 · Degradable es lo que depende de algo que no controlamos — **DEBE**
+
+*(ADR-032, decisión D13)*
+
+Un módulo es **degradable** si depende de hardware de red, de una API de terceros o de un servicio
+externo. Un módulo que solo depende de la base de datos **no tiene a qué degradarse**: si falla, es
+un defecto propio y debe verse al arrancar.
+
+**PROHIBIDO** declarar degradables a `facturacion`, `pagos` o `cobranza`. Un ERP que arranca con la
+facturación degradada es un ERP que responde y no factura — el fallo que costó la desviación B-14.
+
+**La caída de un degradable produce degradación funcional localizada y recuperable, nunca
+indisponibilidad general del ERP.**
+
+## PA-19 · Si debe ocurrir aunque el destino esté caído, no es un evento — **DEBE**
+
+*(ADR-032 §2.2)*
+
+El bus es in-process (PA-16): un evento no cruza procesos y **no sobrevive a la muerte del
+proceso**. WhatsApp corre en su propio proceso PM2; un evento emitido en `api-core` no le llega.
+
+| Mecanismo | Cuándo |
+|---|---|
+| **Evento** (`EventEmitter2`) | Reacción inmediata, mismo proceso, se puede perder sin consecuencia |
+| **Outbox / cola persistente** | El trabajo **debe** ejecutarse aunque el destino esté caído |
+
+«El evento queda pendiente y se procesa cuando el módulo vuelva» **describe un outbox**, no un
+evento: un `EventEmitter` en memoria tiene cero durabilidad.
 
 ---
 
@@ -791,8 +792,8 @@ banderas que usa el CI.
 | PP-09 Usar el flujo de negocio, nunca SQL directo | M | ❌ | Revisión y disciplina | `verificarInvariantes()` ampliado |
 | PP-10 Pre-flight antes de migrar ONUs | S | ❌ | Consulta manual | **Pre-flight que falle en seco** (**R1**) |
 | **PA-12 Una tabla, un dueno** | A | ✅ | Manifiesto `propiedad-tablas.ts` + barrera que congela el techo en 15 | Reducir los 15 al tocar cada modulo |
-| **PA-17 Que es degradable** | A | ⚠️ | Lista explicita en POL-001; el patron degradado se verifica al arrancar | Test que compruebe la lista contra los modulos reales |
-| **PA-18 Evento vs outbox** | M | ❌ | Directriz | Sin mecanismo: exige juicio sobre la naturaleza del trabajo |
+| **PA-18 Que es degradable** | A | ⚠️ | Lista explicita en POL-001; el patron degradado se verifica al arrancar | Test que compruebe la lista contra los modulos reales |
+| **PA-19 Evento vs outbox** | M | ❌ | Directriz | Sin mecanismo: exige juicio sobre la naturaleza del trabajo |
 | PP-11 Todo proceso de fondo late y es vigilado | O | ✅ | **Late:** `CronLatidoService` envuelve todo job del `SchedulerRegistry` (47/47) — no depende de que el autor lo llame. **Vigila:** `LatidoVigilanteService` en el proceso sin crons escribe `PLANO_AUTOMATICO_MUDO` en `eventos_sistema`. **Barrera:** test que falla si un `@Cron` no declara `name:` | — (**ADR-020**, 2026-08-07) |
 | PP-12 No modificar OASIS sin leer antes | M | ❌ | Directriz | Sin mecanismo posible |
 | PP-13 Scripts de red fuera del repo | M | ❌ | Revisión | Regla de CI sobre rutas |
@@ -934,7 +935,7 @@ quedar) · qué la cierra.
 | ~~**B-12**~~ | ~~**PP-01** — recargar por ecosystem, nunca por nombre suelto~~ | **CERRADA 2026-08-07.** Los cinco scripts pasan por `scripts/lib/pm2-recargar.sh`: nombres leídos del ecosystem, `--only`, `--update-env` sobre el fichero y no sobre el shell | **ADR-020** §4.6 — implementado | — |
 | ~~**B-13**~~ | ~~**PP-07** — todo despliegue se verifica~~ | **CERRADA 2026-08-07** para el reinicio del backend. La misma función verifica estado `online`, uptime bajo y **delta del contador de reinicios ≤ 1**, y falla si no cuadra. Los puntos de humo funcional del checklist de PRO-001 §8.1.3 siguen siendo manuales, y eso no es una desviación: es lo que un script no puede decidir | **ADR-020** §4.6 — implementado | — |
 | **B-15** | **PS-01 / OWASP** — mínimo privilegio | **La aplicación se conecta a PostgreSQL como SUPERUSUARIO** (`datafast_db_user`: `rolsuper`, `rolbypassrls`, dueña de las 111 tablas). Cualquier inyección SQL que alcance el motor lo hace con permisos totales. **Prerrequisito RESUELTO 2026-08-08:** conjunto mínimo validado contra la base real (11/11 operaciones del ERP funcionan, 4/4 peligrosas bloqueadas) y eliminado el último DDL en tiempo de ejecución, que habría roto el alta de clientes. Ver **ADR-017 §8** | Aplicar el cambio de rol: uno de migración (DDL) y otro de ejecución (DML), ninguno superusuario | **Decisión del propietario.** Falta probarlo sobre instalación limpia |
-| **B-14** | **PP-01 / ADR-011** — el ecosystem es la fuente de verdad única | **`installer/scripts/08-pm2.sh` genera y sobrescribe `ecosystem.config.js` con un contenido que contradice al del repositorio**: declara un único `datafast-backend` en modo `cluster`, sin `RUN_CRONS` ni `RUN_MIGRATIONS`, en vez de `api-core` + `worker-auxiliary` en `fork`. Una instalación nueva **nace sin worker**, con el plano automático muerto desde el primer día, y `update.sh` no encontraría procesos de backend. Verificado leyendo el generador, **no probado sobre una instalación limpia** | El instalador **copia** el ecosystem del repositorio en vez de generar uno propio; lo que varía por servidor va al `.env` | Descubierta al cerrar A-3 (ADR-020 §7) |
+| ~~**B-14**~~ | ~~**PP-01 / ADR-011** — el ecosystem es la fuente de verdad unica~~ | **CERRADA 2026-08-08.** `setup_pm2` deja de generar su propio ecosystem y pasa a VERIFICAR el del repositorio (que declare api-core, worker y frontend, y que el worker tenga `RUN_CRONS=true`). Causa corregida: las 18 rutas absolutas se derivan ahora de `__dirname`, que era lo que obligaba al instalador a generar el suyo. Corregidas ademas cinco llamadas al proceso muerto `datafast-backend` — incluida la que debia parar el ERP antes de restaurar una copia de seguridad | **ADR-011** — barrera `ecosystem-fuente-unica.spec.ts` (5 tests) | Producción no estaba afectada; el riesgo era para instalaciones nuevas |
 
 ### B.4 Nivel C — Mejoras futuras
 
@@ -953,7 +954,7 @@ quedar) · qué la cierra.
 | Nivel | Abiertas | Cerradas / retiradas | Autoriza | Estado |
 |---|---|---|---|---|
 | **A — crítico** | **0** | **4** — A-2 (06/08) · A-3 (07/08) · A-4 (08/08) · **A-1 retirada (08/08)** | **Propietario del producto** | **Cerrado. La atención pasa a B-15** |
-| **B — riesgo técnico** | **10** | **3** — B-9 **retirada: nunca existió** · B-12 y B-13 cerradas 07/08. Dos nuevas: **B-14** (instalador sin worker) y **B-15** (la app corre como superusuario de BD) | Arquitecto · **B-15 escala al propietario** | Con condición de cierre declarada |
+| **B — riesgo técnico** | **10** | **4** — B-9 **retirada: nunca existió** · B-12 y B-13 (07/08) · **B-14 (08/08)**. Una nueva: **B-15**, con su prerrequisito resuelto | Arquitecto · **B-15 escala al propietario** | Con condición de cierre declarada |
 | **C — mejora futura** | 7 | 0 | Arquitecto | Cierre por avance natural |
 
 **Las desviaciones de nivel A son exactamente las iniciativas críticas del roadmap
@@ -967,6 +968,7 @@ potencial es lo que define el nivel A.
 | **A-2** — pre-flight antes de migrar ONUs | 2026-08-06 | Columna `origen` + guard en el **filtro** de los dos barridos + guard en la ruta manual + pre-flight que devuelve `seguro: false` + 4 tests que nombran el riesgo. `tsc` limpio, suite completa 65/65 · 593 tests. Ver ADR-014 §6 |
 | **A-3** — el worker puede morir en silencio | 2026-08-07 | **Se midió antes de escribir**: de 47 jobs programados latían **10**, y 26 de 29 `@Cron` no tenían `name:`. (La primera medición dijo «1 de 47» y era falsa — el `grep` buscaba `heartbeat.ejecutar` y once servicios usan `this.hb.ejecutar`. Corregido el mismo día al ver los datos en producción.) Cierre en tres piezas: latido **derivado** del `SchedulerRegistry` (47/47), vigilante en el proceso sin crons que escribe `PLANO_AUTOMATICO_MUDO`, y barrera de CI contra `@Cron` sin nombre o duplicado. 17 tests nuevos; `tsc` limpio; suite 68/68 · 610 tests. Ver **ADR-020** |
 | **B-12** — recargar por nombre suelto | 2026-08-07 | Los cinco scripts usan `scripts/lib/pm2-recargar.sh`. `update.sh` dejó de tener su propia copia: hay **una** definición, no seis. Ver ADR-020 §4.6 |
+| **B-14** — el instalador generaba su propio ecosystem | 2026-08-08 | Toda instalación nueva nacía **sin worker**: ningún cron corría. Causa: 18 rutas absolutas en el ecosystem del repo obligaban al instalador a generar el suyo. Ahora se derivan de `__dirname` y `setup_pm2` verifica en vez de generar. Barrera de 5 tests. **Producción no estaba afectada** — se comprobó que su ecosystem era el del repo, sin modificar |
 | **B-13** — despliegue sin verificar | 2026-08-07 | La misma función compara el contador de reinicios antes/después y falla si el proceso no reinició, no está `online` o subió más de uno |
 | **A-1** — aislamiento multi-tenant | **Retirada 2026-08-08** | **No se corrigio: se comprobo que su premisa era falsa.** A-1 asumia que el ERP alojaria varias empresas; nadie lo habia verificado. Produccion tenia 1 empresa y **ninguna ruta para crear otra**. El propietario confirmo que es mono-empresa por diseño. Convertido en barrera: indice unico `unica_empresa_por_instalacion`. Ver **ADR-031** |
 | **A-4** — la deuda se calcula en 4 sitios | 2026-08-08 | **D11 resuelto con medición, no con criterio**: `facturas.saldo` es una columna GENERATED, así que el único escritor ajeno a la aplicación ya está en la base y es inviolable; la agregación no tiene ninguno → va en servicio de dominio. Defecto real hallado: `pago.repository.calcularDeudaContrato` sumaba solo `contrato_id = $1`, ciega al comprobante consolidado, y reactivaba morosos. Ver **ADR-019** |
