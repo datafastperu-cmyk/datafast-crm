@@ -17,6 +17,7 @@
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
 | 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
+| **1.7** | **2026-08-08** | **PD-11 reformulada por ADR-034**: se clasifica por el ORIGEN DEL MODELO (🔴 conformidad / 🟠 referencia / 🟢 estratégico), con una sola pregunta que los separa — ¿hay una autoridad externa que pueda decir que lo hicimos mal? Sustituye la tabla de cinco naturalezas | La clasificación anterior mezclaba dos ejes: quién escribe el código (siempre nosotros) y de dónde sale el modelo (lo único que hay que decidir) |
 | **1.6** | **2026-08-08** | **PA-12 reforzada y verificable** (manifiesto de propiedad + barrera): la cifra de 15 tablas con varios escritores queda congelada. **Dos politicas nuevas: PA-17** (que es degradable) y **PA-18** (evento vs outbox) | ADR-032, propuesta del propietario. PA-12 llevaba escrita desde la emision y no impidio que **diez modulos escribieran `contratos`** |
 | **1.5** | **2026-08-08** | **A-1 RETIRADA como nivel A** por ADR-031: el propietario confirma que el ERP es mono-empresa, y la base lo impone. **Cero desviaciones criticas abiertas.** El barrido de aislamiento sale del CI el mismo dia que entro | La desviacion no se corrigio: **se verifico que su premisa era falsa**. Nadie habia comprobado que fuera a haber mas de una empresa |
 | **1.4** | **2026-08-08** | **A-1 pasa a PARCIAL** (ADR-017): entra el barrido de aislamiento con cifra triada (20 abiertas / 171 transitivas / 13 globales). **RLS se descarta por ahora: seria inerte.** Nueva desviacion **B-15** — la aplicacion se conecta a PostgreSQL como SUPERUSUARIO con BYPASSRLS y dueña de las 111 tablas | Fase 3.3. La medicion impidio escribir ``aislamiento garantizado por RLS`` sobre un mecanismo que no filtra nada |
@@ -125,33 +126,44 @@ importa** (la consecuencia real, no la tarea) y **cómo se comprueba**.
 
 > Una entrada sin consecuencia acaba siendo ignorada.
 
-## PD-11 · Construir o adoptar: se decide antes de diseñar — **DEBE**
+## PD-11 · Construir o adoptar: el ORIGEN DEL MODELO se decide antes de diseñar — **DEBE**
 
-*(Decisión D5, 2026-08-06)*
+*(Decisión D5, 2026-08-06 · reformulada por **ADR-034**, decisión D15, 2026-08-08)*
 
 **PROHIBIDO** empezar un módulo sin clasificarlo antes. Medido: unos **24.100 LOC** del backend
-reimplementan problemas que la industria resolvió.
+reimplementan problemas que la industria resolvió — y el caso más caro no fue código de más, sino
+**un concepto reinventado**: `contratos.deuda_total` no debería existir, porque un modelo contable
+deriva la deuda de los apuntes abiertos en vez de almacenarla.
 
-| Naturaleza | Qué se hace | Módulos actuales |
-|---|---|---|
-| **Estratégico** — ventaja competitiva | **Construir.** Diseño propio. Aquí va la innovación | olt-nativo · mikrotik · openvpn · outbox-red · monitoreo · planta-externa · reconciliador · tr069 |
-| **Maduro** — resuelto por la industria | **Adoptar el modelo**, con benchmark previo | facturacion · pagos · finanzas-opex · proyectos-inversion · tickets · *(futuros: SUNAT, inventario)* |
-| **Integración** | Puerto + adaptador. **Nunca lógica de negocio dentro** | smartolt · google-integration · xui · webhooks · crm-nativo · mensajeria |
-| **Soporte** | Construir según necesidad | clientes · contratos · planes · portal · notificaciones · zonas · sites · plantillas · reportes · dashboard |
-| **Transversal** | Estabilidad sobre funcionalidad | auth · usuarios · licencia · auditoria · config · sistema · backup · health · workers · sagas · schema-guard · mantenimiento · install |
+**La clasificación es por el ORIGEN DEL MODELO, no por la naturaleza del módulo.** Quién escribe el
+código no es la pregunta —siempre nosotros, es un monolito—; la pregunta es de dónde sale el modelo.
+
+Una sola pregunta separa los tres regímenes:
+
+> **¿Existe una autoridad externa que pueda decir que lo hicimos mal?**
+
+| | Régimen | Cuándo | Consecuencia |
+|---|---|---|---|
+| 🔴 | **Conformidad** | Hay autoridad: organismo, norma o estándar de facto cuyo incumplimiento **es un defecto** | Desviarse **exige ADR**. Nadie declara conformidad sin *gap analysis* |
+| 🟠 | **Referencia** | Hay modelo maduro, **ninguna autoridad** | **Consultarlo es obligatorio** y queda en el ADR de diseño. Adaptarlo es libre |
+| 🟢 | **Estratégico** | No hay modelo aplicable, o el nuestro es la ventaja | Diseño propio. Aquí va la innovación |
+
+**La clasificación de los 45 módulos actuales está en ADR-034 §3**, y los dominios que aún no
+existen en §4 — separados a propósito de los que sí.
 
 ### Los dos guards, sin los cuales esta política hace daño
 
 | # | Guard |
 |---|---|
-| 1 | **Adoptar conocimiento externo NO es adoptar código externo.** Lo que se adopta es el modelo de datos, la máquina de estados, la terminología y las reglas. El código sigue siendo nuestro |
-| 2 | **Ningún invariante propio se elimina por adoptar un modelo externo sin un ADR que lo justifique.** Los dominios "maduros" de este ERP contienen invariantes ganados en incidentes propios que ningún producto de industria trae — p. ej. *la gracia es la distancia vencimiento→corte* |
+| 1 | **Adoptar conocimiento externo NO es adoptar código externo.** Lo que se adopta es el modelo de datos, la máquina de estados, la terminología y las reglas. El código sigue siendo nuestro. Verificar licencia y versión antes de estudiar cualquier producto |
+| 2 | **Ningún invariante propio se elimina por adoptar un modelo externo sin un ADR que lo justifique.** Los dominios maduros de este ERP contienen invariantes ganados en incidentes propios que ningún producto de industria trae — p. ej. *la gracia es la distancia vencimiento→corte* |
 
-**Todo módulo clasificado como Maduro requiere un ADR de benchmark antes de su diseño**, que
-documente: qué se estudió, qué modelo y qué reglas se adoptan, qué se descarta y por qué, y qué
-invariantes propios deben preservarse pese a la adopción.
+**Todo módulo 🔴 o 🟠 requiere un ADR de benchmark antes de su diseño**, que documente: qué se
+estudió **con fuentes citables**, qué modelo y qué reglas se adoptan, qué se descarta y por qué, y
+qué invariantes propios se preservan pese a la adopción.
 
-**La referencia por tipo de módulo está en ADR-030.**
+**La referencia externa por dominio está en ADR-030.**
+
 
 ## PD-12 · Materia regulada: el marco legal se define ANTES de diseñar — **DEBE**
 

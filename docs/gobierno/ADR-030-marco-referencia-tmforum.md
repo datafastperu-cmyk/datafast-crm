@@ -1,6 +1,15 @@
 # ADR-030 — Referencia externa por tipo de módulo
 
 **Estado:** **Aceptada** — 2026-08-06, Datafast (decisión D4, PLAN-001 §5)
+
+> **Nota de vigencia (2026-08-08).** La clasificación por *naturaleza* que este ADR usa en §1 y
+> §4.1 —Estratégico / Maduro / Integración / Soporte / Transversal— **fue sustituida por ADR-034**,
+> que clasifica por el **origen del modelo** (🔴 conformidad / 🟠 referencia / 🟢 estratégico).
+> Donde aquí dice «módulo Maduro», léase **🔴 o 🟠**.
+>
+> **Lo que de este ADR sigue plenamente vigente es su aportación propia: la tabla de referencias
+> externas por dominio (§4) y las tres reglas que la hacen operativa (§4.1).** ADR-034 dice *qué
+> régimen* aplica; ADR-030 dice *cuál es la referencia concreta*. Son complementarios.
 **Decide:** Datafast · **Relacionado:** ADR-029 · POL-001 PD-11 · DOM-001 · AEM-001 · RDM-001
 
 > **Cambio de encuadre respecto al borrador.** La primera versión preguntaba *"¿adoptamos TM
@@ -120,7 +129,7 @@ financiero-contable ni al transversal**, que son 24.100 de los LOC en cuestión.
 
 | # | Regla |
 |---|---|
-| 1 | **Consultar la referencia es obligatorio al diseñar un módulo Maduro** (POL-001 PD-11), y queda registrado en su ADR de benchmark |
+| 1 | **Consultar la referencia es obligatorio al diseñar un módulo 🔴 o 🟠** (PD-11 reformulada por ADR-034), y queda registrado en su ADR de benchmark |
 | 2 | **Adoptar el modelo no es adoptar el código**, y **ningún invariante propio se elimina sin ADR** (PD-11, guards 1 y 2) |
 | 3 | **Ningún documento declara conformidad con una norma hasta haber hecho su gap analysis.** Escribir *"conforme a ISO 25010"* sin comprobarlo es la misma afirmación sin verificar que este registro existe para impedir |
 

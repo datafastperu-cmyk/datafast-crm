@@ -1,4 +1,7 @@
 > # ⛔ DOCUMENTO OBSOLETO — 2026-08-06
+
+> **Obsoleto.** Su clasificación Estratégico/Maduro/… quedó sustituida por **ADR-034**
+> (origen del modelo). Se conserva como evidencia fechada, no como norma.
 >
 > **Su contenido se incorporó a la norma y este documento dejó de ser fuente.**
 >
