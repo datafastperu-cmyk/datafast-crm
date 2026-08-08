@@ -81,7 +81,7 @@ export class PromesasPagoService {
     if (contrato.empresa_id !== user.empresaId)
       throw new NotFoundException('Contrato no encontrado');
 
-    const estadosPermitidos = ['activo', 'moroso', 'cortado', 'suspendido'];
+    const estadosPermitidos = ['activo', 'cortado', 'suspendido'];
     if (!estadosPermitidos.includes(contrato.estado))
       throw new BadRequestException(`No se puede crear promesa en contrato con estado "${contrato.estado}"`);
 
@@ -143,7 +143,7 @@ export class PromesasPagoService {
             AND  NOT EXISTS (
               SELECT 1 FROM contratos
               WHERE  cliente_id = $1
-                AND  estado IN ('suspendido', 'moroso', 'cortado')
+                AND  estado IN ('suspendido', 'cortado')
                 AND  deleted_at IS NULL
                 AND  id != $2
             )
@@ -283,7 +283,7 @@ export class PromesasPagoService {
 
     // Re-bloquear en MikroTik si el contrato está actualmente en un estado bloqueante.
     // Usar estadoRealActual, no el snapshot: si el admin reactivó manualmente, no re-bloqueamos.
-    const estadosBloqueo = ['suspendido', 'moroso', 'cortado'];
+    const estadosBloqueo = ['suspendido', 'cortado'];
     const debeRebloquear = estadosBloqueo.includes(estadoRealActual);
 
     // estadoActualEnBd: si la promesa cambió el contrato de suspendido→activo, el BD dice 'activo';
@@ -693,12 +693,15 @@ export class PromesasPagoService {
       resueltaEn:        new Date(),
     });
 
-    // Leer estado real antes del UPDATE para el historial (no hardcodear 'moroso')
+    // Leer el estado real antes del UPDATE, para el historial. El último recurso es
+    // `'activo'` y no un estado bloqueado: si no se puede leer el contrato, lo honesto es
+    // registrar el estado del que se corta a alguien que hasta ahora tenía servicio.
+    // (Antes caía en `'moroso'`, un estado que nunca existió en los datos.)
     const [contratoActual] = await this.ds.query<{ estado: string }[]>(
       `SELECT estado FROM contratos WHERE id = $1`,
       [promesa.contratoId],
     );
-    const estadoAnterior = contratoActual?.estado ?? promesa.contratoEstadoPrevio ?? 'moroso';
+    const estadoAnterior = contratoActual?.estado ?? promesa.contratoEstadoPrevio ?? 'activo';
 
     await this.ds.query(`
       UPDATE contratos

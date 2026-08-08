@@ -51,8 +51,6 @@ const LISTAS_DEL_ERP = [ADDRESS_LIST_MOROSOS, ADDRESS_LIST_PRORROGA, 'prorroga']
  * `activo` y con servicio hasta que el corte por acumulación lo suspende — que es la única
  * transición que debe sacar una IP a la lista.
  *
- * Referencia de la lectura correcta: `olt-sync.service` y `reconciliador.service`, que
- * tratan `['activo','moroso']` como «debe tener servicio».
  */
 const ESTADOS_CORTADOS = ['suspendido', 'cortado'];
 

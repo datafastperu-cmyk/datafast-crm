@@ -420,7 +420,7 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
     staleTime: 60_000,
   });
   const contratoParaPromesa = contratosData?.data.find(c =>
-    ['activo', 'moroso', 'cortado', 'suspendido'].includes(c.estado),
+    ['activo', 'cortado', 'suspendido'].includes(c.estado),
   );
 
   const { mutate, isPending } = useMutation({

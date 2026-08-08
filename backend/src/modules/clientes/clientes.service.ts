@@ -494,7 +494,6 @@ export class ClientesService {
 
     const estadosReactivables = new Set<EstadoContrato>([
       EstadoContrato.SUSPENDIDO,
-      EstadoContrato.MOROSO,
       EstadoContrato.CORTADO,
     ]);
     const motivoReactivacion = `Reactivación de cliente${motivo ? `: ${motivo}` : ''}`;

@@ -89,7 +89,7 @@ export class ReconciliadorService {
         LEFT JOIN onus    on_ ON on_.id = co.onu_id
         LEFT JOIN olts    ol  ON ol.id  = on_.olt_id
         WHERE co.deleted_at IS NULL
-          AND co.estado IN ('activo','suspendido','moroso','cortado')
+          AND co.estado IN ('activo','suspendido','cortado')
           AND (
                 co.hardware_verificado_en IS NULL
              OR co.hardware_verificado_en < NOW() - INTERVAL '30 minutes'
@@ -142,7 +142,7 @@ export class ReconciliadorService {
         try {
           const secrets = await this.pppoeSvc.listarSecrets(creds, c.usuario_pppoe);
           const existe = secrets.length > 0;
-          const debeExistir = ['activo', 'moroso'].includes(c.estado);
+          const debeExistir = c.estado === 'activo';
           if (!existe && debeExistir) {
             problemas.push(`PPPoE secret "${c.usuario_pppoe}" ausente en router (estado: ${c.estado})`);
           } else if (existe && c.estado === 'cortado') {

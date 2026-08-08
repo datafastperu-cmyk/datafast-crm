@@ -23,7 +23,9 @@ import { BuscadorCliente } from './BuscadorCliente';
  * corte. Tiene sentido justamente cuando el abonado DEBE — sin deuda no hay nada que
  * prorrogar.
  */
-const ESTADOS_PRORROGABLES = ['activo', 'moroso', 'cortado', 'suspendido'];
+// Debe coincidir con `estadosPermitidos` de `promesas-pago.service`. `'moroso'` salió el
+// 2026-08-08: la mora es una etiqueta derivada, no un estado del contrato.
+const ESTADOS_PRORROGABLES = ['activo', 'cortado', 'suspendido'];
 
 export function ModalNuevaProrroga({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();

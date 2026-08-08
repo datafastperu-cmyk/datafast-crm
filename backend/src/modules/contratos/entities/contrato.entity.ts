@@ -8,16 +8,29 @@ export enum TipoPago {
   POSTPAGO = 'postpago',
 }
 
+/**
+ * Aquí había un `MOROSO = 'moroso'`. **Se borró el 2026-08-08 y no debe volver.**
+ *
+ * La mora **no es un estado del contrato, es una etiqueta derivada** de las facturas
+ * (`facturacion/domain/mora.ts`): un abonado en mora sigue `activo` —con servicio— hasta
+ * que el corte por acumulación lo suspende.
+ *
+ * Se comprobó contra producción antes de borrarlo: **cero contratos y cero registros en las
+ * 44 filas de `contratos_historial`**. El estado no ocurrió nunca, ni una vez. Lo que sí
+ * había eran veintiséis lecturas repartidas por el código, y una de ellas estaba al revés:
+ * `address-list-reconciliador` lo contaba entre los estados SIN servicio, de modo que un
+ * operador que lo asignara a mano le habría cortado el tráfico a un abonado que, por la
+ * propia definición del estado, debía conservarlo.
+ *
+ * El valor sigue existiendo en el tipo `estado_contrato` de PostgreSQL: quitarlo obliga a
+ * recrear el tipo con las tres columnas y la vista que dependen de él, y se hará en la
+ * instalación limpia, donde el tipo nace sin él. Mientras tanto **ningún literal `'moroso'`
+ * debe aparecer en el código** — lo sostiene `mora-es-etiqueta.spec.ts`.
+ */
 export enum EstadoContrato {
   PENDIENTE_ACTIVACION = 'pendiente_activacion',
   ACTIVO                = 'activo',
   SUSPENDIDO            = 'suspendido',
-  // RETIRADO 2026-08-08. Nadie debe asignarlo: la mora es una ETIQUETA DERIVADA de las
-  // facturas (`facturacion/domain/mora.ts`), no un estado del contrato. Un abonado en mora
-  // sigue `activo` —con servicio— hasta que el corte por acumulación lo suspende.
-  // El valor permanece en el enum de PostgreSQL para que una instalación antigua pueda
-  // sacar de ahí sus contratos; no se puede entrar. Barrera: `mora-es-etiqueta.spec.ts`.
-  MOROSO                = 'moroso',
   CORTADO               = 'cortado',   // sin servicio, deuda vencida (post-prorroga)
   BAJA_DEFINITIVA       = 'baja_definitiva',
 }

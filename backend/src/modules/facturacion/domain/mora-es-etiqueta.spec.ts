@@ -62,9 +62,19 @@ describe('La mora se deriva de las facturas, no se almacena', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// La barrera. El estado quedó retirado; esto impide que vuelva por la puerta de atrás.
+// La barrera. El estado se BORRÓ; esto impide que vuelva por la puerta de atrás.
+//
+// Se comprobó contra producción antes de borrarlo: **cero contratos en `moroso` y cero
+// registros entre las 44 filas de `contratos_historial`**. No es que estuviera en desuso —
+// no ocurrió nunca, ni una vez, en toda la vida del sistema.
+//
+// El valor sigue en el tipo `estado_contrato` de PostgreSQL: quitarlo obliga a recrear el
+// tipo con las tres columnas (`contratos.estado`, `contratos_historial.estado_anterior`,
+// `estado_nuevo`) y la vista `v_contratos_completos` que dependen de él. Se hará en la
+// instalación limpia, donde el tipo nace ya sin el valor. Hasta entonces, lo que importa es
+// que **ningún literal `'moroso'` viva en el código** — que es de donde salieron los bugs.
 // ═══════════════════════════════════════════════════════════════════════════
-describe('`EstadoContrato.MOROSO` está retirado: se sale, no se entra', () => {
+describe('El estado `moroso` no existe en el código', () => {
   const SRC = join(__dirname, '..', '..', '..');
 
   const ficherosTs = (dir: string): string[] => {
@@ -81,62 +91,52 @@ describe('`EstadoContrato.MOROSO` está retirado: se sale, no se entra', () => {
   const sinComentarios = (fuente: string): string =>
     fuente.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-  /**
-   * `estado: EstadoContrato.MOROSO` aparece tanto en una ESCRITURA como en el `where` de
-   * una consulta, y la diferencia importa: `pagos.service` **debe** poder buscar contratos
-   * en `moroso` para reactivar los que una instalación antigua dejó ahí. Distinguirlas por
-   * la forma del literal marcó ese `where` como infractor en la primera versión de este
-   * test — el mismo falso positivo que ya dieron la barrera del dinero (un comentario) y
-   * el barrido de autorización (un comentario entre decoradores).
-   *
-   * Se mira el contexto anterior: si hay un `where`/`find`/`In(` cerca, es una lectura.
-   * **Límite conocido:** una escritura escrita a más de 300 caracteres de su contexto se
-   * escaparía. La garantía fuerte no está aquí, sino en la tabla de transiciones —
-   * `cambiarEstado` es la puerta guardada— y este test es la red que cubre los atajos.
-   */
-  const esLectura = (texto: string, posicion: number): boolean =>
-    /\b(where|find|findOne|In\()\b/i.test(texto.slice(Math.max(0, posicion - 300), posicion));
+  it('`EstadoContrato` ya no declara el valor', () => {
+    const entidad = sinComentarios(readFileSync(
+      join(SRC, 'modules', 'contratos', 'entities', 'contrato.entity.ts'), 'utf8',
+    ));
+    const enumerado = entidad.slice(
+      entidad.indexOf('export enum EstadoContrato'),
+      entidad.indexOf('}', entidad.indexOf('export enum EstadoContrato')),
+    );
 
-  it('nadie asigna el estado `moroso` (buscarlo sí está permitido)', () => {
+    expect(enumerado).not.toContain('MOROSO');
+    // Los que sí existen, para que borrar de más también falle.
+    for (const v of ['PENDIENTE_ACTIVACION', 'ACTIVO', 'SUSPENDIDO', 'CORTADO', 'BAJA_DEFINITIVA']) {
+      expect(enumerado).toContain(v);
+    }
+  });
+
+  /**
+   * Ningún literal `'moroso'` en una lista de estados de contrato. Se excluye lo que se
+   * llama igual sin serlo —el address-list `morosos_datafast` de MikroTik, el job
+   * `detectar-morosos`, la clase CSS `badge-moroso`—, porque castigar el nombre en vez del
+   * uso es el falso positivo que ya dieron la barrera del dinero (un comentario) y el
+   * barrido de autorización (un comentario entre decoradores).
+   */
+  it("ninguna consulta ni lista compara un estado con 'moroso'", () => {
     const infractores: string[] = [];
 
     for (const ruta of ficherosTs(SRC)) {
       const rel = ruta.slice(SRC.length + 1).replace(/\\/g, '/');
-      const texto = sinComentarios(readFileSync(ruta, 'utf8'));
+      if (rel.includes('database/migrations/')) continue; // SQL ya aplicado: no cambia
 
-      for (const m of texto.matchAll(/estado\s*:\s*EstadoContrato\.MOROSO/g)) {
-        if (!esLectura(texto, m.index ?? 0)) infractores.push(`${rel} (objeto)`);
-      }
-      if (/SET\s+estado\s*=\s*'moroso'/i.test(texto)) infractores.push(`${rel} (UPDATE)`);
+      const texto = sinComentarios(readFileSync(ruta, 'utf8'));
+      texto.split(/\r?\n/).forEach((linea, i) => {
+        // El literal exacto, en singular y entrecomillado. `ADDRESS_LIST_MOROSOS` y
+        // `'morosos_datafast'` no coinciden; `'moroso'` sí.
+        if (/'moroso'/.test(linea)) infractores.push(`${rel}:${i + 1}`);
+        if (/EstadoContrato\.MOROSO/.test(linea)) infractores.push(`${rel}:${i + 1}`);
+      });
     }
 
     // Si esto falla: la mora volvió a ser un estado. No lo es — es una etiqueta derivada
-    // (`mora.ts`). Escribirla sacaría al abonado de las 57 consultas que filtran por
-    // `'activo'`, incluida la que decide el corte.
+    // (`mora.ts`). De aquí salieron los dos bugs: el reconciliador que lo leía como «sin
+    // servicio» y el corte que habría dejado de ver a quien lo tuviera.
     expect(infractores).toEqual([]);
   });
 
-  it('la tabla de transiciones no ofrece ninguna ENTRADA a `moroso`', () => {
-    const servicio = readFileSync(
-      join(SRC, 'modules', 'contratos', 'contratos.service.ts'), 'utf8',
-    );
-    const tabla = servicio.slice(
-      servicio.indexOf('const TRANSICIONES'),
-      servicio.indexOf('};', servicio.indexOf('const TRANSICIONES')),
-    );
-
-    for (const origen of ['PENDIENTE_ACTIVACION', 'ACTIVO', 'SUSPENDIDO', 'CORTADO']) {
-      const fila = tabla.split('\n').find((l) => l.includes(`[EstadoContrato.${origen}]:`)) ?? '';
-      expect(fila).not.toContain('EstadoContrato.MOROSO');
-    }
-
-    // Las SALIDAS se conservan: el valor sigue en el enum de PostgreSQL y una instalación
-    // antigua puede tener contratos ahí. Hay que poder sacarlos.
-    const salidas = tabla.split('\n').find((l) => l.includes('[EstadoContrato.MOROSO]:')) ?? '';
-    expect(salidas).toContain('EstadoContrato.ACTIVO');
-  });
-
-  it('un abonado en mora conserva el servicio: `moroso` no está en ESTADOS_CORTADOS', () => {
+  it('un abonado en mora conserva el servicio: ESTADOS_CORTADOS son dos', () => {
     const reconciliador = readFileSync(
       join(SRC, 'modules', 'mikrotik', 'services', 'address-list-reconciliador.service.ts'),
       'utf8',
@@ -146,7 +146,7 @@ describe('`EstadoContrato.MOROSO` está retirado: se sale, no se entra', () => {
 
     expect(linea).toContain("'suspendido'");
     expect(linea).toContain("'cortado'");
-    // El error que estuvo latente: leerlo como "sin servicio", al revés del enum.
+    // El error que estuvo latente durante meses: contarlo entre los que NO tienen servicio.
     expect(linea).not.toContain("'moroso'");
   });
 });

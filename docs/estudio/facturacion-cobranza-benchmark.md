@@ -491,10 +491,24 @@ mora que el corte no ve, o al revés.
 política de retención que mantener (C-7) y una fuente más que puede divergir. `facturas` ya guarda
 `fecha_vencimiento` y `fecha_pago` desde el principio: la historia completa ya estaba escrita.
 
-**El estado quedó retirado, no borrado.** Se puede **salir** de `moroso` —una instalación antigua
-puede tener contratos ahí— pero no **entrar**: la tabla de transiciones no ofrece ninguna entrada.
-El valor sigue en el enum de PostgreSQL porque 26 consultas lo nombran y borrarlo sería una
-migración irreversible a cambio de nada.
+**El estado se BORRÓ.** La primera versión lo dejó «retirado pero presente», y el propietario
+zanjó el matiz: *«el estado moroso nadie lo usa»*. Lo medí antes de tocarlo y tenía razón en un
+sentido más fuerte del que yo daba por bueno: **cero contratos y cero registros entre las 44 filas
+de `contratos_historial`**. No estaba en desuso — **no ocurrió nunca, ni una vez** en toda la vida
+del sistema. Las transiciones registradas son solo `activo↔suspendido`, `activo→cortado`,
+`pendiente_activacion→activo` y las bajas.
+
+Fuera, entonces: las 26 referencias del backend, 2 filtros del frontend
+(`ModalNuevaProrroga`, `finanzas/registro`) y el valor del `enum EstadoContrato`. Se conservan los
+nombres que solo se llaman igual —el address-list `morosos_datafast` de MikroTik, el job
+`detectar-morosos`, la clase CSS `badge-moroso`—: son otra cosa, y castigar el nombre en vez del
+uso es como se fabrican los falsos positivos.
+
+**Un residuo, y va a la instalación limpia:** el valor sigue en el tipo `estado_contrato` de
+PostgreSQL. Quitarlo obliga a recrear el tipo con las tres columnas que dependen de él
+(`contratos.estado`, `contratos_historial.estado_anterior` y `estado_nuevo`) más la vista
+`v_contratos_completos` — irreversible, y sin ganancia funcional ahora que ningún código lo nombra.
+En la instalación limpia el tipo nace ya sin él.
 
 **Y se corrigió la contradicción latente.** `address-list-reconciliador` tenía `moroso` dentro de
 `ESTADOS_CORTADOS`, es decir lo leía como «sin servicio», al revés del enum y de la definición del

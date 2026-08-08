@@ -356,12 +356,19 @@ Aplicado en `facturacion/domain/mora.ts`: `SQL_COMPROBANTE_VENCIDO()` (qué cuen
 `SQL_HISTORIAL_MORA` (`tasaMora` y `recurrente`, derivados de `fecha_pago` vs `fecha_vencimiento`).
 **Sin tabla nueva:** las facturas ya guardan la historia completa desde el principio.
 
-El corte usa **la misma definición** —`detectarMorosos` importa el fragmento en vez de reescribirlo—
-así que no pueden divergir. El estado quedó **retirado**: se sale de `moroso`, no se entra. Y se
-corrigió la contradicción latente: `address-list-reconciliador` lo tenía en `ESTADOS_CORTADOS`, o sea
-lo leía como «sin servicio» al revés del enum; producción tenía **0 contratos en `moroso`**
-(comprobado antes de tocarlo), así que el cambio no movió nada hoy. Primer consumidor:
-`dashboard.contratos.enMora`. Barrera: `mora-es-etiqueta.spec.ts`.
+El corte usa **la misma definición** —`detectarMorosos` importa el fragmento en vez de
+reescribirlo— así que no pueden divergir.
+
+**Y el estado se BORRÓ, no solo se retiró** (2026-08-08, a indicación del propietario: «el estado
+moroso nadie lo usa»). Medido antes de tocarlo: **0 contratos y 0 de las 44 filas de
+contratos_historial**. No estaba en desuso — no ocurrió nunca, ni una vez. Se quitaron las 26
+referencias del backend, 2 filtros del frontend y el valor del enum de TypeScript.
+
+**Queda una cosa para la instalación limpia:** el valor sigue en el tipo `estado_contrato` de
+PostgreSQL. Quitarlo obliga a recrear el tipo con las tres columnas que dependen de él
+(`contratos.estado`, `contratos_historial.estado_anterior` y `estado_nuevo`) más la vista
+`v_contratos_completos` — irreversible y sin ganancia funcional, porque ya no hay código que lo
+nombre. En la instalación limpia el tipo nace sin él. Ver entrada 21.
 
 **Anular emite una nota de crédito sin decirlo — APLAZADO por el propietario, no bloquea.**
 El frontend manda solo `{ motivo }` y el backend crea la NC salvo `crearNotaCredito: false`. El

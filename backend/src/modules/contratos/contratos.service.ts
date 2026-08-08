@@ -41,21 +41,14 @@ const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
   Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms}ms en ${label}`)), ms))]);
 
 /**
- * `MOROSO` ya no tiene entradas: **se puede salir de él, no se puede entrar** (2026-08-08).
- *
- * El propietario decidió que la mora *«no sea un estado, sea una etiqueta para el análisis
- * estadístico»*. Vive ahora derivada de las facturas en `facturacion/domain/mora.ts`, donde
- * no puede desincronizarse y además da historia.
- *
- * Las salidas se conservan porque el valor sigue existiendo en el enum de PostgreSQL y una
- * instalación antigua puede tener contratos ahí: hay que poder sacarlos. Una barrera
- * (`mora-es-etiqueta.spec.ts`) impide que alguien vuelva a ofrecer la entrada.
+ * `MOROSO` desapareció de aquí el 2026-08-08 junto con el valor del enum: la mora es una
+ * **etiqueta derivada** de las facturas (`facturacion/domain/mora.ts`), no un estado.
+ * Comprobado antes de borrarlo: cero contratos y cero filas de historial lo usaron nunca.
  */
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_ACTIVACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.CORTADO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.MOROSO]:               [EstadoContrato.ACTIVO, EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.CORTADO]:              [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.BAJA_DEFINITIVA]:      [],
 };
@@ -66,8 +59,6 @@ type GuardaFn = (c: Contrato) => string | null; // null = pasa, string = mensaje
 
 const GUARDAS: Partial<Record<string, GuardaFn>> = {
   [`${EstadoContrato.SUSPENDIDO}->${EstadoContrato.ACTIVO}`]:
-    (c) => c.deudaTotal > 0 ? `Deuda pendiente S/ ${Number(c.deudaTotal).toFixed(2)} — use adminOverride para forzar` : null,
-  [`${EstadoContrato.MOROSO}->${EstadoContrato.ACTIVO}`]:
     (c) => c.deudaTotal > 0 ? `Deuda pendiente S/ ${Number(c.deudaTotal).toFixed(2)} — use adminOverride para forzar` : null,
   [`${EstadoContrato.CORTADO}->${EstadoContrato.ACTIVO}`]:
     (c) => c.deudaTotal > 0 ? `Deuda pendiente S/ ${Number(c.deudaTotal).toFixed(2)} — use adminOverride para forzar` : null,
@@ -627,7 +618,7 @@ export class ContratosService {
       }
     }
     const upd: Partial<Contrato> = { estado:dto.estado, fechaEstado:new Date(), motivoEstado:dto.motivo, updatedBy:user.sub };
-    if (dto.estado === EstadoContrato.ACTIVO && [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)) {
+    if (dto.estado === EstadoContrato.ACTIVO && [EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)) {
       // ── Revertir suspensión en MikroTik (quitar de address-list + habilitar PPPoE) ──
       // Requiere solo routerId: el firewall necesita ipAsignada pero el secret PPPoE no.
       if (contrato.routerId && (contrato.ipAsignada || contrato.usuarioPppoe)) {
@@ -825,7 +816,7 @@ export class ContratosService {
     // NO le queda ningún contrato dando servicio. Con dos servicios y uno cortado, el
     // cliente sigue activo — que es la verdad.
     if (
-      [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO]
+      [EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO]
         .includes(dto.estado as EstadoContrato)
     ) {
       const [clienteBloqueado] = filasUpdateReturning<{ id: string }>(await this.dataSource.query(`
@@ -860,7 +851,7 @@ export class ContratosService {
     // Solo pone 'activo' si el cliente no tiene otros contratos suspendidos.
     if (
       dto.estado === EstadoContrato.ACTIVO &&
-      [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)
+      [EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)
     ) {
       const [clienteActualizado] = filasUpdateReturning<{ id: string }>(await this.dataSource.query(`
         UPDATE clientes
@@ -870,7 +861,7 @@ export class ContratosService {
           AND NOT EXISTS (
             SELECT 1 FROM contratos
             WHERE cliente_id = $1
-              AND estado IN ('suspendido', 'moroso', 'cortado')
+              AND estado IN ('suspendido', 'cortado')
               AND deleted_at IS NULL
               AND id != $2
           )

@@ -399,7 +399,7 @@ export class OltSyncService implements OnModuleInit {
            JOIN contratos c ON c.id = r.contrato_id
            LEFT JOIN clientes cl ON cl.id = c.cliente_id
           WHERE r.deleted_at IS NULL AND r.olt_id = $1 AND r.empresa_id = $2
-            AND ((r.estado = 'suspendido' AND c.estado IN ('activo','moroso'))
+            AND ((r.estado = 'suspendido' AND c.estado = 'activo')
               OR (r.estado = 'activo'     AND c.estado IN ('suspendido','cortado')))`,
         [oltId, empresaId],
       );
