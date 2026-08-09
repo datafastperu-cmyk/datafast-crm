@@ -244,6 +244,54 @@ contrato vivo para siempre.
 **3 · La baja cierra el servicio, no la deuda.** Quien se va por mora sigue debiendo, y si vuelve es
 un alta nueva con deuda vieja. Conviene decirlo, porque «baja definitiva» suena a caso cerrado.
 
+### Quién decide qué — *(cerrado 2026-08-09)*
+
+> *«La baja definitiva no se hace en automático, siempre la hace un operador del ERP con
+> autorización. El recojo de equipos no es una acción que necesite tanta supervisión.»*
+
+| Acción | Quién | Autorización |
+|---|---|---|
+| **Baja definitiva** | Operador del ERP | **Permiso fino.** Es irreversible |
+| **Cerrar orden de retiro** | Rol Técnico | Ninguna. Poner una firma encima solo lograría que las órdenes se queden abiertas |
+| **Cerrar como «no recuperado»** | Rol Técnico | Ninguna, pero **con motivo y contador** |
+
+**La asimetría no está entre la baja y el retiro: está entre los dos desenlaces del retiro.**
+Cerrar como recuperado es rutina. Cerrar como **no recuperado es merma de inventario** — una ONU
+perdida es dinero. Merece dejar rastro del motivo y aparecer en un contador, porque un patrón
+—«este mes ocho no recuperados»— solo se ve si se cuenta.
+
+Y es **visibilidad después, no autorización antes**: no cuesta tiempo al técnico ni bloquea el
+cierre.
+
+### El umbral sugiere; la baja genera la tarea — *(cerrado 2026-08-09)*
+
+Los dos hechos son **independientes y ninguno bloquea al otro**:
+
+| | Qué libera | Cuándo |
+|---|---|---|
+| **Baja definitiva** | Los recursos **lógicos**: IP, ONU ID, puerto de servicio, PPPoE, línea XUI | Cuando el operador la decide |
+| **Cierre de la tarea** | El equipo **físico**: entra en stock, o se marca perdido | Cuando el técnico lo confirma |
+
+**El umbral configurable solo SUGIERE**: «estos contratos superan los X días suspendidos». No
+ejecuta nada. Y **la tarea de retiro la genera la baja**, ocurra cuando ocurra — si el operador da
+de baja a los dos días de la suspensión, la tarea se genera igual.
+
+Eso permite además el caso inverso, que existe: **el abonado que devuelve la ONU en la oficina.**
+El retiro ocurre antes que la baja y no hay que forzar ningún orden.
+
+**El precio de que la baja sea manual:** puede no ocurrir nunca. El contrato se queda suspendido,
+sin facturar, con la ONU fuera y la IP reservada. **La lista de sugerencias es lo único que impide
+que eso se vuelva permanente**, así que tiene que envejecer a la vista y estar cuantificada:
+
+> *4 contratos suspendidos más de 90 días — 4 ONUs sin recuperar, 4 IPs y 4 puertos reservados.*
+
+Una lista se ignora; un inventario inmovilizado, menos. Y no puede ser una notificación: el gateway
+hoy no envía nada.
+
+**Enganche con B-3:** «con autorización» significa que ese endpoint necesita permiso fino, y hoy
+hay **102 endpoints mutantes sin ninguna autorización**. Dar de baja definitiva no puede quedar en
+«cualquier usuario autenticado» — ese permiso entra en el mismo trabajo.
+
 ### Dos huecos que esto destapa
 
 | Hueco | Estado |
