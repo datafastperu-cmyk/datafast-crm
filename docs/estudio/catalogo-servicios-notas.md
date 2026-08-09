@@ -507,7 +507,7 @@ literalmente «se le adiciona el costo a la siguiente facturación».
 
 ---
 
-## 7-quater. Suspensión, corte y baja — **las tres palabras no significan lo mismo, y hoy chocan**
+## 7-quater. Los estados del contrato y del servicio
 
 Lo detectó el propietario: la conversación usaba los tres términos como sinónimos. Al mirarlo,
 **resulta que en el código ya tienen significado — pero no el que estábamos usando.**
@@ -547,37 +547,74 @@ partes, y olvidarse de uno es un fallo silencioso — es literalmente lo que pas
 Y aplica el mismo principio que cerró aquel caso: **el porqué no es un estado.** Que el abonado
 rompiera una prórroga cabe en `motivo_estado`, que ya existe, o en el historial.
 
-### Decidido el 2026-08-09 — manda el coste de revertir
+### Decidido el 2026-08-09 — **tres estados para todo, y la evidencia vive en la tarea**
 
-| Estado | Cuándo | Cómo se revierte |
-|---|---|---|
-| **`suspendido`** | El servicio se interrumpe pero **todo sigue instalado y reservado** | Un clic |
-| **`cortado`** | **Se retiró la señal físicamente** | Una visita |
-| **`baja_definitiva`** | Terminó el contrato; se recogen equipos y se liberan recursos | Alta nueva |
-
-Y el «post-prórroga» pasa a `motivo_estado`, donde no obliga a nadie a acordarse de él.
-
-**Lo que esto reordena, y encaja con todo lo demás:**
+> *«Para todos los contratos habrá solo 3 estados: activo, suspendido y baja definitiva. El cable
+> puede estar suspendido, no utilizaremos estado corte. Suspendido en cable coaxial y streaming
+> genera la tarea de visita. Baja definitiva es cuando se liberan equipos, se liberan IPs y ONUs, se
+> desaprovisiona, y se elimina del XUI.»*
 
 ```
-mora detectada        →  suspendido    (el cron; internet se corta solo)
-orden de trabajo cerrada con corte confirmado  →  cortado
-tres meses / retiro de equipos                 →  baja_definitiva
+activo  →  suspendido  →  baja_definitiva
 ```
 
-`cortado` deja de escribirlo un cron y pasa a escribirlo **el cierre de la orden de trabajo**, con
-la confirmación del técnico. Es VIO: el estado sigue a la evidencia.
+**Una sola máquina, sin variantes por tipo de servicio.** `cortado` se retira.
 
-**Lo que hay que cambiar en el código:**
+#### Por qué esto es mejor que la propuesta anterior
+
+Se había decidido, tres mensajes antes, distinguir `suspendido` de `cortado` por el **coste de
+revertir** —un clic frente a una visita—, para que el ERP no afirmara que el coaxial estaba cortado
+sin haberlo verificado.
+
+**El error de aquella propuesta: un estado no puede llevar evidencia.** «Cortado» es una palabra —
+no dice quién fue, ni cuándo, ni si el cliente conformó.
+
+**La tarea sí.** `ordenes_trabajo` guarda `fecha_fin_real`, `conformidad_cliente`, firma y
+coordenadas de ejecución. Ahí es donde VIO tiene sentido; en un enum, no.
+
+| | Qué afirma |
+|---|---|
+| Estado `suspendido` | La decisión administrativa: este servicio está suspendido |
+| **Tarea abierta** | Todavía **no** se ha materializado |
+| **Tarea cerrada** | Materializado, con quién, cuándo y dónde |
+
+El ERP no miente: dice «suspendido» y al lado «corte físico pendiente desde hace 12 días».
+**Juntos son verdad, y con más detalle del que un estado daría nunca.**
+
+#### Y resuelve el dúo sin excepciones
+
+El contrato pasa a `suspendido` y **cada servicio hace lo que puede** — internet y IPTV en un clic,
+coaxial y streaming generando la tarea. No hay que elegir un estado ni inventar «parcialmente
+suspendido».
+
+Y aparece una simetría limpia: **entrar o salir de `suspendido` en un servicio sin control remoto
+genera una tarea**, y si el estado vuelve antes de que el técnico vaya, **la tarea se cancela** —
+sin visita, sin coste, sin nada que deshacer.
+
+Con esto se cierra también lo que quedaba colgando: **un contrato de solo coaxial sí pasa por
+`suspendido`**, con su tarea, y llega a `baja_definitiva` como todos. Sin casos especiales.
+
+#### Las tres condiciones para que se sostenga
+
+**1 · La tarea es obligatoria, no opcional.** Si un coaxial puede pasar a `suspendido` sin generar
+tarea, el estado **sí** es mentira. La tarea es lo que lo convierte en verdad, así que no puede
+depender de que alguien se acuerde — como el latido, se deriva del hecho, no se recuerda.
+
+**2 · Retirar `cortado`, igual que se hizo con `moroso`.**
 
 | Dónde | Qué |
 |---|---|
-| `promesas-pago.service` | Hoy escribe `cortado` al vencer una promesa. Pasa a escribir **`suspendido`**, con `motivo_estado = 'prórroga incumplida'` |
+| `promesas-pago.service` | Escribe `cortado` al vencer una prórroga → pasa a `suspendido` con `motivo_estado` |
 | `outbox-red.service` | Igual, en la rama asíncrona del mismo flujo |
-| Producción | **Un contrato** está hoy en `cortado`. Hay que decidir si su señal está físicamente retirada o solo suspendido |
+| ~7 lectores | Dejan de necesitar `IN ('suspendido','cortado')` |
+| Producción | **Un contrato** está en `cortado` y hay que reubicarlo |
 
-**Lo que NO hay que cambiar:** la tabla de transiciones ya admite la escalera —`suspendido → cortado`
-y `cortado → activo`— y los lectores que listan ambos estados siguen siendo correctos.
+Y mata el patrón que ya costó un fallo silencioso: dos estados equivalentes que había que acordarse
+de listar juntos siempre.
+
+**3 · La baja crece.** Hoy el saga libera IP, desaprovisiona la OLT, encola la ONU por outbox y
+limpia MikroTik. Con esta definición hay que añadir **eliminar la línea de XUI** y **el retiro de
+equipos** — que es la parte que necesita el almacén que todavía no existe (§5-bis).
 
 ---
 
@@ -602,7 +639,7 @@ y `cortado → activo`— y los lectores que listan ambos estados siguen siendo 
 | ~~Cambio de plan~~ | **Sí prorratea** (§7-ter) |
 | ~~Desde qué fecha cuenta el alta~~ | **La activación en `contratos_historial`**, no la firma ni la orden de trabajo (§7-ter) |
 | ~~Las credenciales de streaming~~ | **Solo el identificador, en claro.** No están cableadas: la cuenta sirve para recordar cuál le tocó a quién (§3) |
-| ~~Suspensión, corte y baja~~ | **Manda el coste de revertir**: un clic / una visita / alta nueva. El «post-prórroga» va a  (§7-quater) |
+| ~~Suspensión, corte y baja~~ | **Tres estados para todo** —`activo`, `suspendido`, `baja_definitiva`—; `cortado` se retira. La evidencia del corte físico vive en **la tarea**, no en un estado (§7-quater) |
 | ~~Las dos columnas de precio~~ | **No eran dos verdades:** `precio_final` es GENERADA. Lo que hacía falta era otra cosa — un booleano `sigue_precio_del_plan` (§7-bis) |
 
 **El renombrado, desglosado — es menos de lo que se dijo primero.** Se había estimado como
