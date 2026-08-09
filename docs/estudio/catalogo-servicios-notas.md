@@ -547,27 +547,50 @@ partes, y olvidarse de uno es un fallo silencioso — es literalmente lo que pas
 Y aplica el mismo principio que cerró aquel caso: **el porqué no es un estado.** Que el abonado
 rompiera una prórroga cabe en `motivo_estado`, que ya existe, o en el historial.
 
-**Propuesta: quedarse con el criterio del negocio** —suspensión reversible sin visita, corte con
-visita, baja con retiro— y mover el «post-prórroga» a `motivo_estado`.
+### Decidido el 2026-08-09 — manda el coste de revertir
 
-> ⚠️ **Sin decidir.** Cambia el significado de `cortado` en producción: dos escritores y unos siete
-> lectores, y uno de ellos es el flujo de promesas de pago, que toca dinero.
+| Estado | Cuándo | Cómo se revierte |
+|---|---|---|
+| **`suspendido`** | El servicio se interrumpe pero **todo sigue instalado y reservado** | Un clic |
+| **`cortado`** | **Se retiró la señal físicamente** | Una visita |
+| **`baja_definitiva`** | Terminó el contrato; se recogen equipos y se liberan recursos | Alta nueva |
+
+Y el «post-prórroga» pasa a `motivo_estado`, donde no obliga a nadie a acordarse de él.
+
+**Lo que esto reordena, y encaja con todo lo demás:**
+
+```
+mora detectada        →  suspendido    (el cron; internet se corta solo)
+orden de trabajo cerrada con corte confirmado  →  cortado
+tres meses / retiro de equipos                 →  baja_definitiva
+```
+
+`cortado` deja de escribirlo un cron y pasa a escribirlo **el cierre de la orden de trabajo**, con
+la confirmación del técnico. Es VIO: el estado sigue a la evidencia.
+
+**Lo que hay que cambiar en el código:**
+
+| Dónde | Qué |
+|---|---|
+| `promesas-pago.service` | Hoy escribe `cortado` al vencer una promesa. Pasa a escribir **`suspendido`**, con `motivo_estado = 'prórroga incumplida'` |
+| `outbox-red.service` | Igual, en la rama asíncrona del mismo flujo |
+| Producción | **Un contrato** está hoy en `cortado`. Hay que decidir si su señal está físicamente retirada o solo suspendido |
+
+**Lo que NO hay que cambiar:** la tabla de transiciones ya admite la escalera —`suspendido → cortado`
+y `cortado → activo`— y los lectores que listan ambos estados siguen siendo correctos.
 
 ---
 
 ## 8. Lo que queda abierto
 
-1. **Suspensión, corte y baja** — hay que elegir un significado. Hoy el código distingue por el
-   *origen* (mora vs prórroga rota) y el diseño venía distinguiendo por el *coste de revertir*
-   (§7-quater). Cambiarlo toca el flujo de promesas de pago.
-2. **¿Prorratea la suspensión voluntaria?** Lo demás del prorrateo está cerrado (§7-ter).
+1. **¿Prorratea la suspensión voluntaria?** Lo demás del prorrateo está cerrado (§7-ter).
    **La suspensión por mora nunca prorratea** — eso no está en duda, y hoy el riesgo existe porque
    comparte estado con la voluntaria. Para la voluntaria, la regla de los tres meses (§5-bis) acota
    la objeción del inventario, pero no la otra: quien suspenda el día 5 de cada ciclo y reactive
    pagaría cinco días al mes. Si prorratea, con un límite de veces al año.
-3. **Programador de tareas** y **notificaciones al vencer una tarea** (§5-bis). La segunda depende
+2. **Programador de tareas** y **notificaciones al vencer una tarea** (§5-bis). La segunda depende
    del gateway de mensajería, que hoy no envía nada.
-4. **Inventario de almacén** — no existe; sin él, «queda el inventario libre» no ocurre dentro del
+3. **Inventario de almacén** — no existe; sin él, «queda el inventario libre» no ocurre dentro del
    ERP (§5-bis).
 
 ### Cerrados el 2026-08-09
@@ -579,6 +602,7 @@ visita, baja con retiro— y mover el «post-prórroga» a `motivo_estado`.
 | ~~Cambio de plan~~ | **Sí prorratea** (§7-ter) |
 | ~~Desde qué fecha cuenta el alta~~ | **La activación en `contratos_historial`**, no la firma ni la orden de trabajo (§7-ter) |
 | ~~Las credenciales de streaming~~ | **Solo el identificador, en claro.** No están cableadas: la cuenta sirve para recordar cuál le tocó a quién (§3) |
+| ~~Suspensión, corte y baja~~ | **Manda el coste de revertir**: un clic / una visita / alta nueva. El «post-prórroga» va a  (§7-quater) |
 | ~~Las dos columnas de precio~~ | **No eran dos verdades:** `precio_final` es GENERADA. Lo que hacía falta era otra cosa — un booleano `sigue_precio_del_plan` (§7-bis) |
 
 **El renombrado, desglosado — es menos de lo que se dijo primero.** Se había estimado como
