@@ -199,6 +199,60 @@ servicio. `tickets.categoria` tiene `sin_internet`, `lentitud`, `instalacion`, `
 
 ---
 
+## 5-bis. Retiro de equipos y baja por suspensión prolongada
+
+Lo que se hace de verdad, en palabras del propietario:
+
+> *«Cuando un cliente suspende voluntariamente o por mora, luego de 3 meses sin reactivar o recibir
+> el pago, se recoge el material y se da de baja definitiva a ese cliente, quedando el inventario
+> libre. Podríamos poner tareas que cuando un cliente lleve suspendido por más de 3 meses se
+> programe la tarea de retirar equipos y darle de baja definitiva.»*
+
+**El número de meses lo elige el operador** — no se fija en el código. Hay precedente:
+`empresas.cron_horarios` ya guarda horarios de barridos por empresa.
+
+### Lo que ya está construido, y es sólido
+
+La baja definitiva **ya libera todo el lado lógico**, con saga y pasos registrados: libera la IP,
+desaprovisiona la OLT, encola la ONU nativa por outbox con reintentos, limpia MikroTik —con
+reencolado si falla— y quita la entrada de la access-list de la antena. Y pone a null `onuId`,
+`routerId`, `segmentoId` e `ipAsignada`.
+
+### El hueco: el equipo físico no tiene dónde volver
+
+**`olt_onu_inventario` no es un almacén: es una foto de la OLT.** Sus columnas son
+`estado_operativo`, `run_state`, `rx_power_dbm`, `snapshot_at` — lo que el equipo reporta, no lo que
+hay en un estante. **No existe inventario de almacén en el ERP**, y está en la lista de módulos
+pendientes («Inventario / Almacén, descuento automático de stock»).
+
+Hoy, cuando el técnico recoge la ONU, esta simplemente desaparece de la foto porque deja de estar
+conectada. La tarea se puede crear y cerrar; lo que no ocurre todavía es «queda el inventario libre»
+**dentro del ERP**.
+
+### Tres reglas para cuando se construya
+
+**1 · El equipo vuelve al stock cuando el técnico lo confirma, no cuando corre la baja.** Si la baja
+lo marcara como recuperado, habría stock en el papel que está en el salón de un abonado. Es VIO: el
+estado sigue a la evidencia, y la orden ya tiene `fecha_fin_real`, `conformidad_cliente` y
+coordenadas para sostenerlo.
+
+**2 · La recuperación falla a menudo, y hay que modelarlo.** El abonado no está, se niega, o el
+equipo se perdió. La orden debe poder cerrarse como **«no recuperado»**: la ONU se marca perdida —no
+vuelve a stock— y **la baja se ejecuta igual**. Si no, un abonado que no abre la puerta conserva el
+contrato vivo para siempre.
+
+**3 · La baja cierra el servicio, no la deuda.** Quien se va por mora sigue debiendo, y si vuelve es
+un alta nueva con deuda vieja. Conviene decirlo, porque «baja definitiva» suena a caso cerrado.
+
+### Dos huecos que esto destapa
+
+| Hueco | Estado |
+|---|---|
+| **Programador de tareas** | `ordenes_trabajo.fecha_programada` **ya existe**; falta la maquinaria: quién asigna, qué pasa al llegar la fecha, cómo se ve la agenda del técnico |
+| **Notificaciones al vencer una tarea** | Se apoyan en el gateway de mensajería, que hoy tiene **480 de 480 mensajes en `NO_ENVIADO`**. Es el bloqueo bajo el bloqueo: sin gateway, la notificación de tarea muere igual que las demás |
+
+---
+
 ## 6. Lo que hoy bloquea vender cable o streaming — medido
 
 No es el modelo. Son tres cosas concretas, verificadas contra producción el 2026-08-09:
@@ -436,8 +490,15 @@ literalmente «se le adiciona el costo a la siguiente facturación».
    propietario lo aplazó: requiere consultas externas. Ahora está mejor acotado — un plan
    **combinado no tiene campos técnicos**, así que las 21 columnas de conexión en null dejan de ser
    una anomalía y pasan a ser lo correcto para esa fila.
-2. **¿Prorratea la suspensión voluntaria?** Lo demás del prorrateo está cerrado (§7-ter). Ojo con
-   este: si la suspensión viene de una mora, prorratear premia al que no paga.
+2. **¿Prorratea la suspensión voluntaria?** Lo demás del prorrateo está cerrado (§7-ter).
+   **La suspensión por mora nunca prorratea** — eso no está en duda, y hoy el riesgo existe porque
+   comparte estado con la voluntaria. Para la voluntaria, la regla de los tres meses (§5-bis) acota
+   la objeción del inventario, pero no la otra: quien suspenda el día 5 de cada ciclo y reactive
+   pagaría cinco días al mes. Si prorratea, con un límite de veces al año.
+3. **Programador de tareas** y **notificaciones al vencer una tarea** (§5-bis). La segunda depende
+   del gateway de mensajería, que hoy no envía nada.
+4. **Inventario de almacén** — no existe; sin él, «queda el inventario libre» no ocurre dentro del
+   ERP (§5-bis).
 
 ### Cerrados el 2026-08-09
 
