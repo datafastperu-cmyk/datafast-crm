@@ -101,9 +101,27 @@ fila por proveedor en el catálogo no es explosión, es su uso normal, y compra 
 **Queda así:** tipo = `streaming` · producto del catálogo = por proveedor, con precio ·
 descripción = la variante («4 pantallas», «plan familiar»).
 
-> ⚠️ **La cuenta entregada al abonado —correo y clave— no puede vivir en la descripción.** Acaba en
-> logs, exportaciones y fichas impresas. Si se van a guardar credenciales de cuentas revendidas,
-> necesitan su sitio y su cifrado, como ya se hace con las de los routers.
+### La cuenta del proveedor: una etiqueta, no un secreto — *(cerrado 2026-08-09)*
+
+> *«Las cuentas streaming no están cableadas, así que consignar la cuenta de Netflix o HBO solo nos
+> sirve para recordarla y saber a qué cuenta pertenece el cliente.»*
+
+Con eso basta **el identificador** —el correo de la cuenta— **en texto plano y sin cifrar**. Un
+correo de una cuenta propia no es un secreto: es una etiqueta que dice cuál le tocó a quién. Cero
+trabajo: un campo en el servicio.
+
+Lo que se pierde: reenviarle la clave desde el ERP si el abonado la pierde. Hay que entrar al panel
+del proveedor, que para un puñado de cuentas es razonable.
+
+> ⚠️ **La frontera, para que nadie la cruce sin darse cuenta.** Si algún día se guarda también la
+> **clave**, deja de ser una etiqueta y pasa a ser un secreto: entonces va cifrada con
+> `common/utils/encryption.util.ts` —la misma que usan las credenciales de los routers— y se revela
+> con una acción auditada, no como un campo que se ve al abrir la ficha.
+>
+> **Por eso el campo debe llamarse `cuenta_proveedor` y no `credenciales`:** el nombre es lo que
+> impide que alguien meta ahí una contraseña «de paso». Y en ningún caso va en la `descripcion`,
+> que es texto libre y acaba en logs, exportaciones y fichas impresas — imposible de anonimizar en
+> un volcado, que es lo que PS-10 exige.
 
 ---
 
@@ -125,10 +143,14 @@ nada**. Hoy «cortar» es meter la IP en el address-list de MikroTik y tirar la 
 
 | Servicio | Acción de corte posible |
 |---|---|
-| Internet | Automática (MikroTik) |
-| Cable IPTV | Deshabilitar el usuario en XUI One — automatizable cuando exista el módulo |
+| Internet | **Automática (MikroTik)** — la única construida hoy |
+| Cable IPTV | Deshabilitar el usuario en XUI One — automatizable, **sin construir** |
 | Cable coaxial | **Ninguna.** Alguien tiene que ir al poste |
-| Streaming | Revocar la cuenta — manual |
+| Streaming | **Manual.** *«No están cableadas»* — revocar en el panel del proveedor |
+
+> **Consecuencia que conviene ver:** hoy **solo internet corta solo**. Para los tres productos
+> nuevos, la orden de trabajo **no es el caso raro, es el mayoritario** — así que ese camino tiene
+> que funcionar de verdad, no quedarse en un esbozo.
 
 Sin esto, el barrido de morosos marcaría «suspendido» en la base y **no pasaría nada en el mundo
 real**: el abonado seguiría recibiendo el servicio con el ERP afirmando lo contrario. Es
@@ -301,7 +323,12 @@ nombre y no un efecto colateral.
 **Cómo encaja con lo que ya existe:**
 
 - `planes.precio` — precio vigente del catálogo.
-- `contratos.precio_final` — **`NULL` = «sigue al plan»**; con valor = negociado, no se toca.
+- `contratos.precio_mensual` — el precio del contrato. **`precio_final` NO sirve para esto: es una
+  columna GENERADA** — `precio_mensual × (1 − descuento_pct/100)`, como `facturas.saldo`—, así que
+  no puede ser `NULL` para significar nada. *(Se propuso usarla así el 2026-08-09 y era imposible;
+  corregido el mismo día al medirlo.)*
+- **`sigue_precio_del_plan`** (booleano) — lo que decide si la operación de cambio de precio alcanza
+  a este contrato. Explícito, y deja ver de un vistazo cuáles son negociados sin comparar importes.
 - La factura toma `COALESCE(contrato.precio_final, plan.precio)` al emitir y **congela el importe en
   el ítem**. Los comprobantes ya emitidos no cambian nunca.
 
@@ -411,8 +438,6 @@ literalmente «se le adiciona el costo a la siguiente facturación».
    una anomalía y pasan a ser lo correcto para esa fila.
 2. **¿Prorratea la suspensión voluntaria?** Lo demás del prorrateo está cerrado (§7-ter). Ojo con
    este: si la suspensión viene de una mora, prorratear premia al que no paga.
-3. **Dónde viven las credenciales** de las cuentas de streaming revendidas.
-4. **Las dos columnas de precio** de `contratos` (§7-bis).
 
 ### Cerrados el 2026-08-09
 
@@ -422,6 +447,8 @@ literalmente «se le adiciona el costo a la siguiente facturación».
 | ~~El nombre de las tablas~~ | **El nivel de contrato se llama `contratos`.** La tabla actual se renombra a `servicios`. Coste desglosado abajo |
 | ~~Cambio de plan~~ | **Sí prorratea** (§7-ter) |
 | ~~Desde qué fecha cuenta el alta~~ | **La activación en `contratos_historial`**, no la firma ni la orden de trabajo (§7-ter) |
+| ~~Las credenciales de streaming~~ | **Solo el identificador, en claro.** No están cableadas: la cuenta sirve para recordar cuál le tocó a quién (§3) |
+| ~~Las dos columnas de precio~~ | **No eran dos verdades:** `precio_final` es GENERADA. Lo que hacía falta era otra cosa — un booleano `sigue_precio_del_plan` (§7-bis) |
 
 **El renombrado, desglosado — es menos de lo que se dijo primero.** Se había estimado como
 «migración grande»; al desglosarlo:
