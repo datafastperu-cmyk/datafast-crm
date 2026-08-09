@@ -94,10 +94,18 @@ concepto propio** como exige PD-13.
 
 ### 4.2 Lo que se recorta de la propuesta
 
-`Subscription → Service → Service Instance` **son tres nombres para una cosa** cuando no hay
-composición de producto. El SID separa el servicio en *customer-facing* y *resource-facing*, que es
-donde encaja «Service Instance»; no hace falta un tercer nivel inventado. **PD-13 prohíbe
-explícitamente añadir niveles que el estándar no separa.**
+> ⚠️ **RETIRADO el 2026-08-09.** Este recorte decia que `Subscription -> Service -> Service
+> Instance` eran «tres nombres para una cosa **cuando no hay composicion de producto**». El
+> propietario definio despues los servicios que va a vender —**internet y cable, sueltos o
+> juntos, mas streaming como adicional**—, y eso **es** composicion. TMF637 la modela con
+> `isBundle` y con dos relaciones distintas, `[bundled]` y `[reliesOn]`.
+>
+> Fue criterio propio aplicado **en el documento que implementa la politica que lo prohibe**
+> (PD-13: no anadir niveles que el estandar no separa — pero tampoco quitar los que si separa).
+>
+> Lo que sustituye a este apartado esta en
+> [`docs/estudio/catalogo-servicios-notas.md`](../estudio/catalogo-servicios-notas.md), todavia
+> como notas de discusion. Se incorporara aqui cuando cierre.
 
 ---
 
