@@ -317,6 +317,29 @@ Ni la consolidación total ni la fragmentación por servicio. Es el punto medio,
 soporta: el ciclo (`BillingCycleSpecification`) cuelga del `billStructure` de la cuenta, no del
 cliente.
 
+### Qué se mueve al contrato y qué se queda en el cliente — *(confirmado 2026-08-09)*
+
+> *«La facturación, cobranza, notificaciones y tipo de comprobante están por cliente, no por
+> contrato. Esta configuración debe moverse a cada contrato.»* — y confirmado que el reparto de
+> abajo es «exactamente lo que se quiere».
+
+| Se mueve al **contrato** | Se queda en el **cliente** |
+|---|---|
+| Día de pago, días antes de emitir, días de gracia, comprobantes para el corte | — |
+| Tipo de comprobante, esquema de impuestos, mora y reconexión | — |
+| **Cuándo** avisar: aviso de factura nueva, los tres recordatorios, sus offsets y plantillas | **Por dónde** avisar: WhatsApp, teléfono, correo |
+
+**El reparto natural: el contrato dice cuándo y de qué se avisa; el cliente dice por dónde.** Un
+abonado con dos contratos no tiene dos teléfonos.
+
+**El cliente deja de tener configuración**, no la conserva «por defecto» — eso serían dos fuentes
+otra vez. Los valores por defecto salen de `plantillas_abonados`, que existe justo para eso.
+
+**Y el alta del segundo contrato necesita un atajo.** Con la configuración en el contrato, dar de
+alta un segundo servicio obliga a elegir día de pago, gracia y comprobante otra vez. Además de la
+plantilla, el alta debería ofrecer **«copiar la configuración de otro contrato de este abonado»**,
+que es lo que el operador querrá casi siempre.
+
 ### El coste medido de moverlo
 
 Hoy la configuración de facturación vive en `clientes.facturacion_config`. Moverla al contrato:
@@ -484,12 +507,59 @@ literalmente «se le adiciona el costo a la siguiente facturación».
 
 ---
 
+## 7-quater. Suspensión, corte y baja — **las tres palabras no significan lo mismo, y hoy chocan**
+
+Lo detectó el propietario: la conversación usaba los tres términos como sinónimos. Al mirarlo,
+**resulta que en el código ya tienen significado — pero no el que estábamos usando.**
+
+### Lo que significan hoy
+
+`cortado` **sí se escribe**, en dos sitios y del mismo flujo: `promesas-pago.service` cuando vence
+una **promesa de pago** incumplida, y `outbox-red.service` cuando ese corte se ejecuta de forma
+asíncrona. El comentario del enum lo dice: *«sin servicio, deuda vencida (post-prórroga)»*.
+
+| | Significado actual |
+|---|---|
+| `suspendido` | Cortado por mora ordinaria |
+| `cortado` | Cortado **tras romper una prórroga** |
+
+**No es «lógico vs físico»: es por qué se llegó ahí.** Y operativamente son idénticos — sin
+servicio, hay que pagar para volver.
+
+### Lo que la conversación venía usando
+
+El criterio implícito en todo el diseño es otro, y es **cuánto cuesta revertirlo**:
+
+| | Cómo se revierte |
+|---|---|
+| **Suspensión** | Un clic. Todo sigue instalado y reservado — internet |
+| **Corte** | Una visita — el coaxial en el poste |
+| **Baja** | Visita + alta nueva; se liberan los recursos |
+
+Ese criterio es el que ordenó todo: por eso el coaxial no se suspende, por eso hay tarea, por eso a
+los tres meses es baja.
+
+### El problema y la propuesta
+
+Dos estados que **se comportan igual** obligan a escribir `IN ('suspendido','cortado')` en todas
+partes, y olvidarse de uno es un fallo silencioso — es literalmente lo que pasó con `moroso`.
+
+Y aplica el mismo principio que cerró aquel caso: **el porqué no es un estado.** Que el abonado
+rompiera una prórroga cabe en `motivo_estado`, que ya existe, o en el historial.
+
+**Propuesta: quedarse con el criterio del negocio** —suspensión reversible sin visita, corte con
+visita, baja con retiro— y mover el «post-prórroga» a `motivo_estado`.
+
+> ⚠️ **Sin decidir.** Cambia el significado de `cortado` en producción: dos escritores y unos siete
+> lectores, y uno de ellos es el flujo de promesas de pago, que toca dinero.
+
+---
+
 ## 8. Lo que queda abierto
 
-1. **¿Cómo se abre el catálogo?** Generalizar `planes` o poner un catálogo por encima. El
-   propietario lo aplazó: requiere consultas externas. Ahora está mejor acotado — un plan
-   **combinado no tiene campos técnicos**, así que las 21 columnas de conexión en null dejan de ser
-   una anomalía y pasan a ser lo correcto para esa fila.
+1. **Suspensión, corte y baja** — hay que elegir un significado. Hoy el código distingue por el
+   *origen* (mora vs prórroga rota) y el diseño venía distinguiendo por el *coste de revertir*
+   (§7-quater). Cambiarlo toca el flujo de promesas de pago.
 2. **¿Prorratea la suspensión voluntaria?** Lo demás del prorrateo está cerrado (§7-ter).
    **La suspensión por mora nunca prorratea** — eso no está en duda, y hoy el riesgo existe porque
    comparte estado con la voluntaria. Para la voluntaria, la regla de los tres meses (§5-bis) acota
