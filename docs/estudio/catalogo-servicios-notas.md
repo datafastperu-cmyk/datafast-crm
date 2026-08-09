@@ -303,6 +303,79 @@ nombre y no un efecto colateral.
 
 ---
 
+## 7-ter. El prorrateo
+
+### La regla del ciclo completo: nunca se prorratea
+
+**Un ciclo completo se cobra a tarifa plana, dure 28 o 31 días.** El abonado de febrero paga lo
+mismo que el de marzo. El `/30` **solo aparece cuando hay que partir un ciclo**, y ese es el sentido
+del «mes comercial de 30 días»: hace que el día de servicio valga igual todo el año.
+
+Sin esta regla, un ciclo de 31 días calculado como `31 × (precio/30)` daría el **103 %** de la
+mensualidad.
+
+### La fórmula
+
+```
+importe = mínimo( precio_mensual ,  precio_mensual / 30 × días )
+```
+
+**El tope no es decorativo:** con la convención de contar el primer día, un tramo de 31 días
+existe y daría más que la mensualidad completa.
+
+### La convención: `[inicio, fin)` — el primer día CUENTA
+
+Decidido el 2026-08-09, siguiendo el estándar. El propietario lo planteó y aceptó la recomendación:
+*«sigamos estándares ya validados»*.
+
+**Lo primero que hay que decir es que el modelo validado no cuenta días:**
+
+> **Stripe:** *«By default, Stripe calculates prorations **down to the second**. To change the time
+> granularity —for example, to prorate by day, hour, week, or month— use proration customizations.»*
+
+Instalado el 22 a las 15:00, se cobra desde las 15:00. La pregunta «¿cuenta el 22?» no existe ahí.
+**Contar por días es una simplificación propia**, y conviene saberlo.
+
+Sobre el conteo por días, la fuente es explícita en que **no hay regla universal** —«no hay
+terminología estándar», varía según el mercado—. La convención más usada, Actual/Actual ISDA:
+
+> *«In this convention **the first day of the period is included and the last day is excluded**.»*
+
+Y coincide con lo que el propio propietario había recomendado antes: *«el ERP debe definir
+formalmente si los períodos utilizan `[start, end)` o `[start, end]`. Yo recomiendo intervalos
+semiabiertos»*.
+
+**Ejemplo trabajado.** Anclaje 30, alta el 22 de agosto. El ciclo es `[31/07 → 30/08]`, que en
+notación semiabierta es `[31/07, 31/08)` — el mismo intervalo. El abonado tuvo servicio del **22 al
+30 = 9 días**, y se le cobra `precio / 30 × 9`.
+
+**Por qué no empezar el 23**, que era la intuición inicial: el abonado **tuvo servicio ese día** —
+con activación matutina, catorce horas—, y con instalación el mismo día, que es lo normal en FTTH,
+no cobrarlo sería un regalo **sistemático**, no ocasional. Sería una cortesía comercial legítima,
+pero no una convención, y habría que declararla como tal.
+
+**Una sola regla para todo.** Si el alta cuenta el primer día, la baja cuenta el último de la misma
+forma. Si no, el abonado paga dos veces el día del cambio — o ninguna de las dos.
+
+### Los eventos
+
+| Evento | Qué se prorratea | Estado |
+|---|---|---|
+| **Alta a mitad de ciclo** | Los días desde la instalación hasta el cierre. Se **añade a la siguiente facturación** | Confirmado |
+| **Baja anticipada** | Se cobra hasta el día efectivo, no el ciclo completo | Confirmado |
+| Cambio de plan a mitad de ciclo | — | **Sin decidir** |
+| Suspensión voluntaria | — | **Sin decidir.** Ojo: si el corte es por mora, prorratear premia al que no paga |
+
+### El mecanismo ya existe
+
+`cargos_pendientes` guarda el cargo con `contrato_id`, `tipo` y `monto`, y `consumirCargosPendientes`
+lo incluye como línea en la siguiente factura marcándolo con `incluido_en_factura_id`. Es
+literalmente «se le adiciona el costo a la siguiente facturación».
+
+**No hay que construir el mecanismo, solo el cálculo y el disparador.**
+
+---
+
 ## 8. Lo que queda abierto
 
 1. **¿Cómo se abre el catálogo?** Generalizar `planes` o poner un catálogo por encima. El
@@ -314,9 +387,10 @@ nombre y no un efecto colateral.
 3. **El nombre de las tablas.** Hoy `contratos` es lo que el modelo llama **servicio**. O se
    renombra —26 columnas, 14 FKs, 48 referencias y toda la UI— o el padre nuevo lleva otro nombre y
    se declara la correspondencia (PD-13 §4). Lo segundo cuesta cinco tablas repuntadas.
-4. **Inclusividad de los días en el prorrateo.** Con alta el 22 y cierre el 30, ¿el primer día
-   facturable es el 22 o el 23, y el último el 30 o el 29? Lo planteó el propio propietario al
-   señalar que «del 20 al 30 son 11 días si contamos ambos extremos», y decide cuánto se cobra.
+4. **Prorrateo — quedan dos.** En qué fecha empieza a contar el alta: ¿`contratos.fecha_inicio`,
+   que es papel, o `ordenes_trabajo.fecha_fin_real`, que es servicio efectivo? Lo justo es la
+   segunda: se cobra desde que hay servicio, no desde que hay firma. Y si el **cambio de plan** y la
+   **suspensión voluntaria** también prorratean. La convención de días ya está cerrada (§7-ter).
 5. **Dónde viven las credenciales** de las cuentas de streaming revendidas.
 6. **Las dos columnas de precio** de `contratos` (§7-bis).
 
