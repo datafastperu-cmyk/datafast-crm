@@ -412,6 +412,30 @@ Odoo y ERPNext. Hoy no puede —`facturas_total_check (total >= 0)`— y por eso
 por tipo de documento (A-5). Con importe negativo restaría solo. **No se hizo ahora a propósito:**
 cambia el modelo de dinero y toca toda la agregación.
 
+### 29-ter. `DIA_PAGO_MAXIMO = 28` incumple PD-13 — el anclaje debe llegar a 31
+
+**Por qué importa:** el tope en 28 se eligió para **evitar** el problema de febrero —«el único día
+que existe en los doce meses»—, que es razonar desde el estado de la instalación. El sector lo
+resuelve al revés: Stripe tiene literalmente `billing_cycle_anchor_config.day_of_month = 31` y
+*«if a month has less than 31 days, the subscription renews on the last day of that month»*. El
+coste real es que hoy **no se puede cerrar el ciclo los días 29, 30 ni 31**, y el 30 es el más
+usado en tarifa plana.
+
+**Está analizado y medido, no implementado.** Se llegó a escribir y se revirtió a petición del
+propietario para no mezclar análisis con código. Lo que hay que hacer:
+
+- `DIA_ANCLAJE_MAXIMO = 31` y **recortar al materializar**, nunca al guardar: el anclaje no cambia
+  — si tras cobrar el 28 de febrero se guardara 28, el abonado derivaría a 28 para siempre.
+- **La trampa medida:** `Date.UTC(2026, 0+1, 31)` —31 de enero más un mes— devuelve el **3 de
+  marzo**. La aritmética de meses de `periodoServicio` desborda en silencio; con el tope en 28
+  nunca se dispara y funciona **por accidente**. Al abrirlo a 31 empieza a producir vencimientos en
+  el mes equivocado, sin error y sin que ningún test lo note.
+- Tres selectores del frontend con `length: 28` (wizard, tab del cliente, plantillas-config).
+- Tests: recorte por mes, **vuelta al 31 tras febrero** (el que importa: que no derive), y que
+  ninguna fecha del ciclo se desborde con 29/30/31.
+
+**Cómo se comprueba:** anclaje 31 → vence 31/01, 28/02, **31/03** (no 28/03), 30/04.
+
 ---
 
 ## 📋 Índice de desviaciones abiertas — sincronizado con POL-001

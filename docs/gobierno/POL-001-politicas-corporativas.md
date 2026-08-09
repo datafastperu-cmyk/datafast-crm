@@ -6,7 +6,7 @@
 
 | Campo | Valor |
 |---|---|
-| **Código** | POL-001 · **Versión** 1.1 · **Estado** Vigente |
+| **Código** | POL-001 · **Versión** 2.0 · **Estado** Vigente |
 | **Autor** | Arquitectura · **Propietario del producto** Datafast (D1) |
 | **Fecha** | 2026-08-06 · **Documento superior** CON-001 |
 | **Carácter** | **Obligatorio.** Su incumplimiento requiere excepción registrada |
@@ -17,6 +17,7 @@
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
 | 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
+| **2.0** | **2026-08-09** | **PD-13 — el modelo cubre la forma del sector; la funcionalidad, la instalación.** El ERP es un producto para varios operadores, y el modelo de datos se diseñaba contra el estado de la instalación que lo estrena. Incluye la clasificación obligatoria **adoptado / adaptado / extendido**, la línea **regla vs estructura**, y cinco condiciones sin las cuales sería una licencia para abstraer sin límite | Lo planteó el propietario al corregir una evaluación que medía `BillingAccount` contra las necesidades de Datafast en vez de contra la forma del sector. La política **cambia una decisión ya tomada** (`DIA_PAGO_MAXIMO = 28`) y mejora el argumento de otra (`moroso`), que es como se comprueba que no es decorativa |
 | **1.9** | **2026-08-08** | **B-3 medida y acotada**: 102 endpoints mutantes sin autorización alguna (no «con rol grueso», como decía la ficha), techo congelado. Corregidos los cinco de `auditoria` y un rol fantasma que dejaba `papelera/eliminar` inalcanzable | El guard deja pasar a cualquier autenticado cuando no hay ni rol ni permiso. La ficha describía un problema distinto y menos grave del real |
 | **1.8** | **2026-08-08** | **Criterio de PD-11 corregido el mismo dia**: «hay autoridad» no bastaba — dejaba cinco modulos en 🔴 sin que existiera nadie que pudiera reclamar nada. Ahora 🔴 exige **al menos una de tres razones** (interoperabilidad, examen de un tercero, riesgo asimetrico) **y la fila dice cual** | Lo detecto el propietario al preguntar quien es esa autoridad. De cinco modulos en 🔴 quedo **uno**: si todo es 🔴, nada lo es |
 | **1.7** | **2026-08-08** | **PD-11 reformulada por ADR-034**: se clasifica por el ORIGEN DEL MODELO (🔴 conformidad / 🟠 referencia / 🟢 estratégico), con una sola pregunta que los separa — ¿hay una autoridad externa que pueda decir que lo hicimos mal? Sustituye la tabla de cinco naturalezas | La clasificación anterior mezclaba dos ejes: quién escribe el código (siempre nosotros) y de dónde sale el modelo (lo único que hay que decidir) |
@@ -194,6 +195,91 @@ qué invariantes propios se preservan pese a la adopción.
 
 Esta política **sustituye** al programa de cumplimiento legal continuo, que queda suspendido por
 decisión D3 (ADR-029 §6).
+
+
+## PD-13 · El modelo cubre la forma del sector; la funcionalidad, la instalación — **DEBE**
+
+*(2026-08-09. Propietario: «el modelo tiene que cubrir la forma del sector, no el estado de una
+instalación» + «muchas veces habrá que adaptarse a nuestras necesidades, pero siempre siguiendo
+estándares del sector»)*
+
+> **El ERP es un producto que se instala en varios operadores. El modelo de datos se diseña contra
+> la forma del sector, no contra el estado de la instalación que lo estrena.** Un concepto que el
+> sector trata como entidad propia se modela como entidad propia, aunque hoy solo haya una
+> instancia por fila.
+>
+> **La funcionalidad es lo contrario: se construye para lo que la instalación necesita hoy.** Una
+> entidad puede existir en el esquema y no tener pantalla.
+
+**Los dos ejes son distintos, y confundirlos rompe la política en las dos direcciones:** diseñar el
+modelo contra la instalación produce migraciones caras; construir funcionalidad contra el sector
+produce pantallas para clientes que no existen.
+
+### Toda divergencia se clasifica y se escribe
+
+| Estado | Cuándo | Qué exige |
+|---|---|---|
+| **Adoptado** | El sector lo resuelve y nos sirve | Se toma con su estructura |
+| **Adaptado** | El sector lo resuelve, la regla no encaja | Se conserva la **estructura**, se cambia la **regla**, y se escribe **qué** se cambió y **por qué** |
+| **Extendido** | El sector no lo contempla | Se construye y se declara extensión propia — no se disfraza de estándar |
+
+**Una adaptación sin motivo escrito es indistinguible de un error**, y en dos años nadie sabrá cuál
+era. Ya ocurrió: la nota de crédito estaba bien resuelta y se afirmó lo contrario, porque nada
+declaraba que lo estuviera.
+
+### Se adapta la REGLA, no la ESTRUCTURA
+
+Es la línea que separa la adaptación sana de la deuda, y sale de dos casos propios:
+
+- **Regla — barata e interoperable.** `BillingCycleSpecification` (TMF666) tiene
+  `paymentDueDateOffset`; Datafast lo usa con valor 0. Misma estructura, regla propia. Un
+  corporativo a 15 días es cambiar un número.
+- **Estructura — cara.** El abono. El sector lo emite **negativo**; aquí es positivo porque un
+  CHECK prohíbe importes negativos. Misma entidad, signo distinto → hubo que distinguirla por tipo
+  de documento en 18 consultas, y dejó latente un defecto de dinero (A-5).
+
+**Y la lección del segundo:** el signo negativo no era un capricho del estándar, **era el
+mecanismo** — existe para que el abono reste solo, sin que nadie tenga que acordarse.
+
+> **Regla práctica.** Si la necesidad se expresa como un **valor distinto en un campo que el
+> estándar ya tiene**, es adaptación sana. Si obliga a **cambiar la forma de la entidad**, hay que
+> parar: probablemente el estándar ya tiene el campo, y lo que se va a construir es una traducción
+> que alguien tendrá que mantener.
+
+### Las cinco condiciones
+
+Sin ellas esto es una licencia para abstraer sin límite, y **choca con la regla de no crear
+abstracciones prematuras**. Con ellas, no.
+
+1. **La forma sale de un modelo citable** —TM Forum SID, Odoo, ERPNext, la norma aplicable—, no de
+   suponer qué querrá otro operador. Sin fuente no es «el sector»: es una conjetura (PD-11, R-001).
+2. **La ausencia se demuestra con un caso INEXPRESABLE**, no con uno improbable. `BillingAccount`
+   entra porque «boleta en casa y factura en el negocio, mismo titular» no se puede escribir en el
+   modelo actual; no porque algún día alguien pudiera quererlo.
+3. **Se adapta la regla, no la estructura** (arriba).
+4. **Cada concepto propio declara su correspondencia** con la entidad del estándar. Se documenta en
+   español —eso no cambia—, pero mapeado. Hoy `contratos.dia_facturacion`,
+   `facturacion_config.diaPago` y `billingDateShift` son el mismo concepto con tres nombres, y por
+   eso el código tiene que colapsarlos con un `MIN`.
+5. **Se adopta en la ventana barata.** Si el coste de migración ya domina, la respuesta correcta es
+   un **adaptador en el borde**, no una reescritura.
+
+### Qué NO autoriza
+
+Construir funcionalidad para un operador que no existe, ni añadir niveles de modelo que el estándar
+**no** separa. Al evaluar R-036 se recortaron dos de los tres niveles propuestos por esto:
+`Subscription → Service → Service Instance` son tres nombres para una cosa cuando no hay composición
+de producto.
+
+### Contraste: qué habría cambiado
+
+Una política que no cambia ninguna decisión pasada es decorativa. Esta cambia una y mejora otra:
+
+| Decisión | Veredicto bajo PD-13 |
+|---|---|
+| `DIA_PAGO_MAXIMO = 28` | **La incumple.** Se eligió para *evitar* el problema de febrero — razonar desde el estado. El sector lo resuelve al revés: Stripe tiene `day_of_month = 31` con recorte a fin de mes |
+| ADR-031 (mono-empresa) | **La resiste, y marca el límite.** Parece «estado de una instalación», pero cada operador tiene su propio VPS: mono-empresa **es** la forma del producto |
+| Borrar el estado `moroso` | **La resiste, con mejor argumento del que se dio.** Se justificó con «nadie lo usa» —argumento de instalación—; el correcto es que el sector no modela la mora como estado del contrato sino como condición derivada |
 
 ---
 
@@ -738,6 +824,7 @@ banderas que usa el CI.
 | PD-10 Registro de deuda técnica | M | ❌ | Revisión de `PENDIENTES.md` | Sin mecanismo posible |
 | **PD-11 Construir o adoptar** | M | ❌ | Revisión + ADR de benchmark obligatorio para módulos Maduros | Checklist verificado en PR (R-034) |
 | **PD-12 Materia regulada antes del diseño** | M | ❌ | ADR previo | Sin mecanismo posible — es criterio |
+| **PD-13 El modelo cubre el sector; la funcionalidad, la instalación** | M + **parcial T** | ⚠️ | Revisión + ADR. **Sí es verificable en parte**: el mapa de correspondencias concepto↔estándar puede tener barrera, como la tuvo el manifiesto de propiedad de tablas (PA-12) | Barrera sobre el mapa de correspondencias — pendiente hasta que exista el mapa |
 
 ## 8.7.4 Matriz — Políticas de Arquitectura
 

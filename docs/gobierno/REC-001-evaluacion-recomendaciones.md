@@ -8,6 +8,7 @@
 > | Recomendación | Dónde vive ahora |
 > |---|---|
 > | R-001 / R-004 construir-vs-adoptar | **POL-001 PD-11** |
+> | **Contra qué se diseña al construir** *(la otra mitad de R-001)* | **POL-001 PD-13** |
 > | Regla de materia regulada (D3) | **POL-001 PD-12** |
 > | R-036 datos personales | **POL-001 PS-10** |
 > | R-037 entorno de pruebas | **POL-001 PP-14** |
@@ -148,6 +149,36 @@ con VIO, saga y outbox) es genuinamente superior a productos comerciales del sec
 capacidad C-09, no implementada). Es un problema **regulado, estandarizado y resuelto**: firma
 XML, envío a OSE, gestión de CDR, catálogos SUNAT. Construirlo desde cero sería el error exacto
 que R-001 previene.
+
+##### La otra mitad: **POL-001 PD-13** — *(añadido 2026-08-09)*
+
+R-001 dice **cuándo** adoptar conocimiento externo. No dice **contra qué se diseña** cuando se
+construye, y ese hueco se puede cumplir de forma perversa: estudiar el modelo validado, escribir
+el ADR de benchmark… y a continuación implementar contra el caso de hoy.
+
+**Ocurrió.** Al evaluar la propuesta de `BillingAccount` se midió si *Datafast* la necesitaba,
+cuando el ERP es un producto que se instala en varios operadores. El veredicto —«hoy el cliente
+ES la cuenta de facturación, la capa sobra»— era correcto para una instalación y equivocado para
+un producto. Lo corrigió el propietario:
+
+> *«Lo que está ahora no es lo que va a ser en el futuro. No tenemos planes triple play nosotros,
+> pero sí otro operador que utilice el ERP.»*
+
+**PD-13** cierra ese hueco: el modelo de datos se diseña contra la forma del sector; la
+funcionalidad, contra la instalación. Y añade lo que R-001 tampoco tiene — la obligación de
+**clasificar cada divergencia** como adoptada, adaptada o extendida, y de **mapear cada concepto
+propio a su entidad del estándar**.
+
+Por qué hace falta el mapeo, con un caso de esta misma semana: se afirmó dos veces que «la
+configuración por abonado va contra Odoo, ERPNext y Stripe». **Es falso** — el ciclo y el plazo de
+pago son por parte en los tres; solo la escala de cobranza está centralizada en Odoo. La primera
+vez se retiró del documento; la segunda se repitió igual, en una frase de pasada. **Retirar una
+afirmación de un documento no la retira de la cabeza de quien la escribió**: hace falta la
+clasificación escrita por concepto, no solo la corrección en prosa.
+
+Este caso es el **ejemplo trabajado** de R-001 que faltaba: no se inventó el modelo, se consultó
+TM Forum SID / TMF666, se citaron las definiciones, se recortaron dos de los tres niveles
+propuestos por no estar en el estándar, y se adaptó lo que el negocio ISP exige.
 
 ---
 
