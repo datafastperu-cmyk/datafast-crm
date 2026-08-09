@@ -644,42 +644,48 @@ Con esto se cierra también lo que quedaba colgando: **un contrato de solo coaxi
 
 #### El porqué del cambio de estado va TIPADO, no en prosa — *(cerrado 2026-08-09)*
 
-El sitio ya existe y está bien alimentado:  registra historial en cada cambio vía
-, y  y  hacen lo propio.
+El sitio ya existe y está bien alimentado: `cambiarEstado` registra historial en cada cambio vía
+`guardarHistorial`, y `promesas-pago` y `cobranza.worker` hacen lo propio.
 
+```
+contratos_historial
+  contrato_id · estado_anterior · estado_nuevo
+  motivo · usuario_id · automatico · created_at
+```
 
+`automatico` ya separa «lo hizo un cron» de «lo hizo una persona», pero **no basta**: un operador
+puede suspender a mano por mora, y eso saldría como no automático igual que una pausa voluntaria.
 
- ya separa «lo hizo un cron» de «lo hizo una persona», pero **no basta**: un operador
-puede suspender a mano por mora, y saldría como no automático igual que una pausa voluntaria.
+**Se añade un campo tipado a `contratos_historial`:**
 
-**Se añade un campo tipado a :**
-
-
+```
+origen:  mora | voluntaria | prorroga_incumplida | administrativa
+```
 
 > **«El porqué no es un estado» no significa «el porqué es texto libre».**
 
-Se quitó  como estado y se va a quitar . Pero el motivo sigue necesitando dónde
-vivir, y si va en prosa **no se puede contar**:  es arqueología, no consulta. Es
-el mismo problema que el proveedor de streaming en un campo de descripción (§3).
+Se quitó `moroso` como estado y se va a quitar `cortado`. Pero el motivo sigue necesitando dónde
+vivir, y si va en prosa **no se puede contar**: `LIKE '%voluntaria%'` es arqueología, no consulta.
+Es el mismo problema que el proveedor de streaming en un campo de descripción (§3).
 
 | Campo | Qué guarda |
 |---|---|
-|  | **Tipado.** Para contar y aplicar reglas |
-|  | Texto libre, el detalle humano — *«viaje a Lima, vuelve en octubre»* |
-|  ·  | Quién lo hizo. Ya existen |
+| `origen` | **Tipado.** Para contar y aplicar reglas |
+| `motivo` | Texto libre, el detalle humano — *«viaje a Lima, vuelve en octubre»* |
+| `automatico` · `usuario_id` | Quién lo hizo. Ya existen |
 
-**No se duplica en .** El origen de la suspensión vigente es el de la última transición
-a  — se deriva. Guardarlo también en el contrato sería una proyección que puede
-divergir: A-4 otra vez.
+**No se duplica en `contratos`.** El origen de la suspensión vigente es el de la última transición
+a `suspendido` — se deriva. Guardarlo también en el contrato sería una proyección que puede
+divergir: **A-4 otra vez**.
 
 **Cierra dos cosas de golpe:** el límite de suspensiones voluntarias pasa a ser contable
-( en los últimos doce meses), y el «prórroga incumplida» que hacía falta al
-retirar  ya tiene sitio.
+(`origen = 'voluntaria'` en los últimos doce meses), y el «prórroga incumplida» que hacía falta al
+retirar `cortado` ya tiene sitio.
 
 > ⚠️ **Al implementarlo:** si es un enum de PostgreSQL, **añadir un valor después es una
-> migración** — y ya costó una vez, con el literal  huérfano tumbando la consulta entera
-> de facturación por *«invalid input value for enum»*. La lista se define pensando en lo que hará
-> falta, no en lo mínimo de hoy.
+> migración** — y ya costó una vez, con el literal `'prorroga'` huérfano tumbando la consulta
+> entera de facturación por *«invalid input value for enum»*. La lista se define pensando en lo que
+> hará falta, no en lo mínimo de hoy.
 
 #### Las tres condiciones para que se sostenga
 
