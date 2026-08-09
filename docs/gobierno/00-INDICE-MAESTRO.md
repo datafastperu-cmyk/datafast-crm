@@ -29,6 +29,7 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 | **POL-001** | Políticas Corporativas | Vigente | [POL-001-politicas-corporativas.md](POL-001-politicas-corporativas.md) |
 | **ADR-001…029** | Registros de Decisiones Arquitectónicas | Vigente | [ADR-000-registro-decisiones.md](ADR-000-registro-decisiones.md) |
 | **ADR-030** | Referencia externa por tipo de módulo | Vigente | [ADR-030-marco-referencia-tmforum.md](ADR-030-marco-referencia-tmforum.md) |
+| **ADR-035** | Modelo de facturación: se adopta el del sector y se clasifica cada divergencia | **Propuesta** | [ADR-035-modelo-facturacion-tmforum.md](ADR-035-modelo-facturacion-tmforum.md) |
 | **PLAN-001** | Plan de Trabajo | Vigente — **temporal** | [PLAN-001-plan-de-trabajo.md](PLAN-001-plan-de-trabajo.md) |
 | **EST-001** | Estándares Técnicos | Vigente | [EST-001-estandares-tecnicos.md](EST-001-estandares-tecnicos.md) |
 | **GUI-001** | Guías de Desarrollo | Vigente | [GUI-001-guias-desarrollo.md](GUI-001-guias-desarrollo.md) |

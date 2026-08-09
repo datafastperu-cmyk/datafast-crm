@@ -107,6 +107,7 @@ Situación actual y desviaciones conocidas.
 | **032** | **El Core es dueño de sus capacidades: contratos, no acceso directo** ([fichero propio](ADR-032-core-modulos-y-contratos.md)) | **Aceptada** (D13, 2026-08-08) | PA-12 escrita y no cumplida: 10 módulos escribían `contratos` |
 | **033** | **Límite comercial: 5 000 abonados por instalación** ([fichero propio](ADR-033-limite-comercial-de-abonados.md)) | **Aceptada** (D14, 2026-08-08) | Techo estratégico, no medición. Capacidad sin validar |
 | **034** | **Se clasifica por el origen del modelo, no por la naturaleza del módulo** ([fichero propio](ADR-034-clasificacion-por-origen-del-modelo.md)) | **Aceptada** (D15, 2026-08-08) | 🔴 y 🟠 no se distinguían; sustituye la tabla de PD-11 |
+| **035** | **Modelo de facturación: se adopta el del sector y se clasifica cada divergencia** ([fichero propio](ADR-035-modelo-facturacion-tmforum.md)) | **Propuesta** (2026-08-09) | Primera aplicación de **PD-13**. Corrige la premisa de la recomendación original —el ERP **no** asume «1 cliente = 1 servicio»: falta un solo nivel, la cuenta de facturación— y clasifica los 20 conceptos de facturación como adoptado / adaptado / extendido / alineado, con su correspondencia en TMF666 |
 
 ---
 

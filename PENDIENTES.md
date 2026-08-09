@@ -412,6 +412,20 @@ Odoo y ERPNext. Hoy no puede —`facturas_total_check (total >= 0)`— y por eso
 por tipo de documento (A-5). Con importe negativo restaría solo. **No se hizo ahora a propósito:**
 cambia el modelo de dinero y toca toda la agregación.
 
+### 29-bis-2. ADR-035 espera tu aprobación — y la fase 1 tiene ventana
+
+**Por qué importa:** `docs/gobierno/ADR-035-modelo-facturacion-tmforum.md` clasifica los 20
+conceptos de facturación contra TMF666 / Stripe / Odoo / ERPNext y propone las tres piezas que
+faltan: **cuenta de facturación**, **ciclo como objeto reutilizable** y **libro de cargos**.
+
+**La ventana:** la fase 1 (`BillingAccount`, una por cliente, invisible en la UI) tiene que ir
+**antes de la instalación limpia**. Después deja de ser un cambio de esquema y pasa a ser una
+migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos y 4 facturas.
+
+**Cuatro decisiones tuyas en §8 del ADR:** aprobar fases 1-2, eventos del prorrateo y su tope,
+vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
+configuración que no hacen nada.
+
 ### 29-ter. `DIA_PAGO_MAXIMO = 28` incumple PD-13 — el anclaje debe llegar a 31
 
 **Por qué importa:** el tope en 28 se eligió para **evitar** el problema de febrero —«el único día
