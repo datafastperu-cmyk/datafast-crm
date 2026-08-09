@@ -186,44 +186,139 @@ inaplicable según la fila; la segunda es más limpia y cuesta más.
 
 ---
 
-## 7. El paquete: qué se gana y qué cuesta
+## 7. El modelo, tal como quedó — **plan → contrato**
 
-**Un cliente ya puede tener N contratos, y la factura ya los consolida en líneas**
-(`facturas.items` lleva `contratoId` por ítem). «Internet + streaming» funcionaría hoy como **dos
-contratos, un comprobante**, sin ningún paquete.
+Lo definió el propietario, y **es literalmente la relación más establecida del modelo del sector**:
 
-El paquete se gana su sitio solo si hace falta:
+> *«El contrato debe manejar planes. Dentro de los planes vamos a tener plan cable IPTV, cable
+> coaxial, internet, cuenta streaming — **o pueden ser mezclados y combinados**. Cuando creamos un
+> cliente asignamos un plan, y **ese plan se convierte en contrato**.»*
 
-- **precio de paquete** — «internet + cable por S/ 90» en vez de 65 + 30; el descuento no tiene
-  dónde vivir con dos contratos sueltos; o
-- **ciclo de vida de paquete** — dar de baja «el paquete» como unidad.
+Eso es **ProductOffering → Product**: catálogo → instancia. Y el `isBundle` existe **en los dos
+niveles**:
 
-### Y el nombre no obliga a la migración
+> **`ProductOffering.isBundle`** *(catálogo)*: *«determines whether a productOffering represents a
+> single productOffering (false), or **a bundle of productOfferings** (true).»*
+>
+> **`Product.isBundle`** *(instancia)*: *«If true, the product is a **ProductBundle**, which is **an
+> instantiation of a BundledProductOffering**.»*
 
-Cuál tabla se llama «contrato» es decisión de nombres, no de estructura, y ahí está casi todo el
-coste:
+```
+Cliente
+  └── Contrato  1..N              ← el plan instanciado. LLEVA la cuenta de facturación
+        ├── ciclo · comprobante · deuda · corte
+        └── Servicio  1..N        ← los planes componentes instanciados
+              └── recursos (ONU, IP, PPPoE / línea XUI / ninguno)
+```
 
-| | Qué implica |
+**Por qué esto cierra la discusión de nombres:** no hay que inventar «paquete» ni «componente». El
+nivel de arriba es el plan combinado instanciado —el contrato— y el de abajo son sus planes
+componentes instanciados —los servicios—. Una sola idea con dos niveles.
+
+### La cuenta de facturación va sobre el CONTRATO
+
+Decisión del propietario, tras descartar tanto «una por cliente» como «una por servicio»:
+
+- **Los servicios de un mismo contrato comparten factura** → el descuento de paquete tiene dónde
+  vivir, y el abonado recibe un comprobante por contrato.
+- **Contratos distintos son independientes** → ciclos, deudas y cortes separados, y uno puede ir a
+  boleta y otro a factura. Resuelve el caso «casa e negocio, mismo titular».
+
+Ni la consolidación total ni la fragmentación por servicio. Es el punto medio, y el estándar lo
+soporta: el ciclo (`BillingCycleSpecification`) cuelga del `billStructure` de la cuenta, no del
+cliente.
+
+### El coste medido de moverlo
+
+Hoy la configuración de facturación vive en `clientes.facturacion_config`. Moverla al contrato:
+
+| | |
 |---|---|
-| **`contratos` pasa a ser el paquete** | Bajar IP, PPPoE, ONU, MAC, NAP y dirección a una tabla hija. Toca el mapa de red, el corte, el outbox, el registro FTTH y los cuatro índices de recursos. **Migración grande** |
-| **`contratos` se queda como el componente y se añade un padre** | No se mueve ni una columna. El padre nace nulable. **Migración mínima** |
+| Ficheros que la leen | **4** — y 11 de las 21 referencias están dentro de `politica-facturacion.service.ts`, que es la fuente única |
+| Puntos de llamada a la política | **8** |
+| Tablas de dinero que suben al contrato | **5** — `facturas`, `pagos`, `cargos_pendientes`, `promesas_pago`, `portal_solicitud_plan` |
+| Tablas de red que **no** se tocan | **~17** — todo el plano FTTH, MikroTik, pools e inventario |
 
-Las dos dan `ProductBundle → ProductComponent`. La segunda deja «contrato» significando el
-componente en la base y el paquete en la UI — que es justo lo que **PD-13 §4** resuelve con un mapa
-de correspondencias declarado, en vez de con una migración de datos.
+**Es barato precisamente por el trabajo de A-4.** Con la configuración dispersa en quince consultas
+—como estaba el 2026-08-06— esta decisión habría sido inviable.
+
+---
+
+## 7-bis. El precio
+
+### Por plan, y el combinado no es la suma
+
+> *«El precio debe ser por plan. Si hay planes de solo internet y planes de solo cable, un plan que
+> combine los dos **no necesariamente debe ser la suma** de estos.»*
+
+Correcto, y el estándar lo contempla explícitamente: `ProductOfferingPrice.isBundle` — *«A flag
+indicating if this ProductOfferingPrice is composite (bundle) or not»*.
+
+**Consecuencia para la factura:** con precio propio del plan combinado, el comprobante lleva **una
+línea por contrato** («Dúo Hogar S/ 90»), no una por servicio. Si algún día hace falta el desglose
+—para reportar cuánto se vende de cada servicio— habrá que derivarlo de los componentes del plan,
+no de las líneas del comprobante.
+
+### Subir el precio: operación explícita, no propagación silenciosa
+
+El propietario pidió que al subir el precio del plan suba también a los abonados que lo tienen,
+desde su siguiente facturación. **La intención es normal en telecom**, pero el mecanismo automático
+no es el de los modelos validados. Stripe:
+
+> *«you must change the subscription item to reflect the new selection… prompting you to **replace
+> the underlying price** of that subscription item»* · *«Changing a subscription often results in a
+> **proration**.»*
+
+Reemplazo explícito, suscripción por suscripción. Editar el catálogo no toca a nadie. Tres razones:
+
+1. **Sin registro de quién estaba en qué precio.** Un `UPDATE` cambiaría lo que pagan N abonados sin
+   rastro del importe anterior ni de la fecha.
+2. **Sin dónde enganchar la notificación.** Subir el precio de un servicio contratado exige avisar
+   con antelación; con propagación implícita no se sabe ni a quién. *(Sin citar normativa: no se ha
+   consultado la de OSIPTEL. El hueco debe existir en el diseño.)*
+3. **Va contra una decisión ya tomada.** Con `plantillas_abonados` se eligió **copiar y no
+   referenciar**, para que editar una plantilla no alterara a los abonados existentes.
+
+**Lo acordado** — una operación del operador con alcance visible: «aplicar el nuevo precio a los N
+contratos con este plan», que **dice cuántos son antes de ejecutarse**, deja registro por contrato
+(de → a, fecha, quién), respeta los precios negociados y surte efecto **desde la siguiente
+facturación**. El resultado comercial es el que pedía; la diferencia es que el cambio es un acto con
+nombre y no un efecto colateral.
+
+**Cómo encaja con lo que ya existe:**
+
+- `planes.precio` — precio vigente del catálogo.
+- `contratos.precio_final` — **`NULL` = «sigue al plan»**; con valor = negociado, no se toca.
+- La factura toma `COALESCE(contrato.precio_final, plan.precio)` al emitir y **congela el importe en
+  el ítem**. Los comprobantes ya emitidos no cambian nunca.
+
+**Dos cosas que hay que resolver al implementarlo:**
+
+- **Hay dos columnas de precio** — `precio_mensual` (obligatoria) y `precio_final` (nulable), ambas
+  a 64,00 en los dos contratos vivos con `descuento_pct = 0`. Parecen «precio del plan» y «precio
+  tras descuento». Hay que decidir qué significa cada una o acabamos con dos verdades, como en A-4.
+- **La migración del `NULL`:** hoy los contratos existentes tienen valor en `precio_final`, así que
+  todos quedarían marcados como negociados y ninguno seguiría al plan. Hay que poner a `NULL` los
+  que coincidan con el precio de su plan.
 
 ---
 
 ## 8. Lo que queda abierto
 
-1. **¿Cable IPTV y coaxial son dos productos del catálogo, o uno con dos formas de entrega?** Para
-   el abonado y la factura es lo mismo — «Cable, S/ 30». Para el ERP no: uno crea un usuario en un
-   sistema externo y el otro no hace nada.
-2. **¿Hace falta el paquete** (precio o baja como unidad), o basta con la consolidación en factura?
-3. **¿Cómo se abre el catálogo?** Generalizar `planes` o poner un catálogo por encima.
-4. **Dónde viven las credenciales** de las cuentas revendidas.
-
----
+1. **¿Cómo se abre el catálogo?** Generalizar `planes` o poner un catálogo por encima. El
+   propietario lo aplazó: requiere consultas externas. Ahora está mejor acotado — un plan
+   **combinado no tiene campos técnicos**, así que las 21 columnas de conexión en null dejan de ser
+   una anomalía y pasan a ser lo correcto para esa fila.
+2. **¿Cable IPTV y coaxial son dos productos, o uno con dos formas de entrega?** Para el abonado y
+   la factura es lo mismo; para el ERP no: uno crea un usuario en XUI One y el otro no hace nada.
+3. **El nombre de las tablas.** Hoy `contratos` es lo que el modelo llama **servicio**. O se
+   renombra —26 columnas, 14 FKs, 48 referencias y toda la UI— o el padre nuevo lleva otro nombre y
+   se declara la correspondencia (PD-13 §4). Lo segundo cuesta cinco tablas repuntadas.
+4. **Inclusividad de los días en el prorrateo.** Con alta el 22 y cierre el 30, ¿el primer día
+   facturable es el 22 o el 23, y el último el 30 o el 29? Lo planteó el propio propietario al
+   señalar que «del 20 al 30 son 11 días si contamos ambos extremos», y decide cuánto se cobra.
+5. **Dónde viven las credenciales** de las cuentas de streaming revendidas.
+6. **Las dos columnas de precio** de `contratos` (§7-bis).
 
 ## 9. Fuentes
 
