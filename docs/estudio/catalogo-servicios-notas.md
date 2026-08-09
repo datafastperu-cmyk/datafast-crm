@@ -460,6 +460,38 @@ literalmente «se le adiciona el costo a la siguiente facturación».
 | Las **5 tablas de dinero** → apuntar al contrato nuevo | **Migración real.** Es la parte con riesgo |
 | El barrido de código y la UI | Grande pero mecánico |
 
+## 8-bis. APARCADO — cable IPTV por XUI One
+
+> **No desarrollar todavía.** El propietario lo dejó explícitamente para más adelante: *«es una
+> idea que tengo pero la tomaremos en su momento, no quiero que enteveremos los temas»*. Se recoge
+> para que no se pierda, no para diseñarlo.
+
+La idea, en sus palabras:
+
+- Cuando el plan contenga IPTV, el plan debe permitir elegir **cuántas sesiones** tiene la cuenta.
+- Y también el **bouquet** — así llama XUI a los paquetes de contenido que se pueden añadir.
+- **Sesiones y bouquets se extraen de XUI**, no se inventan en el ERP.
+- La cuenta IPTV se crea con **usuario = el código del contrato**, para que quede trazable a qué
+  contrato pertenece cada cuenta.
+- En la ficha del cliente, donde hoy dice «Servicios» dirá **«Contratos»**, y dentro figurarán los
+  contratos de ese abonado.
+
+**El terreno no está vacío**, y conviene saberlo antes de empezar:
+
+| Ya existe | Qué es |
+|---|---|
+| `planes.cuenta_iptv` (booleano) y `planes.sesiones_iptv` | Alguien ya anticipó las sesiones en el plan — aunque como atributo de un plan de internet, que es el modelo «IPTV como característica de la conexión» que este documento descarta |
+| Tabla `xui_lines` con `contrato_id` | La integración tiene tabla. Vacía en producción |
+| XUI One en la lista de **módulos que nacen degradados** | La regla ya está escrita: probe al arrancar, y el backend arranca aunque XUI no responda |
+
+**Una advertencia que conviene dejar antes de construirlo:** *usuario* = código del contrato es
+buena idea y da la trazabilidad que se busca. ***Contraseña* = código del contrato, no.** El número
+de contrato aparece en el comprobante, en la ficha y en cualquier exportación — no es un secreto.
+Si la clave de la cuenta IPTV es ese mismo código, cualquiera que vea una factura puede entrar. La
+clave hay que generarla.
+
+---
+
 ## 9. Fuentes
 
 - [TMF637 Product Inventory Management v4.0.0](https://github.com/tmforum-apis/TMF637_ProductInventory) — definiciones de `Product`, `isBundle`, `ProductRelationship`
