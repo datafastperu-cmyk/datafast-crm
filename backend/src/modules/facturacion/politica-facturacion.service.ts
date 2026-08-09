@@ -294,31 +294,62 @@ export class PoliticaFacturacionService {
   }
 
   /**
-   * Mes de servicio que ampara un comprobante que vence en `vencimiento`.
+   * Periodo de servicio que ampara un comprobante que vence en `vencimiento`.
    *
-   * `postpago` (mes vencido) cobra el mes que ya se consumió: el del vencimiento.
-   * `prepago` (adelantado) cobra el que empieza: el mes siguiente. Es la diferencia real
-   * entre las dos opciones y hasta ahora no la aplicaba nadie — todo se facturaba como
-   * postpago aunque el abonado estuviera marcado como prepago.
+   * **Va del día siguiente a una fecha de pago hasta la fecha de pago siguiente**, que es
+   * el ciclo real del abonado:
+   *
+   *     postpago (ya consumió)     vence 10/03  →  ampara 11/02 – 10/03
+   *     prepago  (por adelantado)  vence 10/03  →  ampara 11/03 – 10/04
+   *
+   * El mismo intervalo en los dos; lo que cambia es si va por detrás o por delante del
+   * vencimiento. Esa es la diferencia real entre las dos modalidades.
+   *
+   * **Antes esto devolvía MESES DE CALENDARIO** (`YYYY-MM-01` al último día del mes), con
+   * un desplazamiento de un mes en prepago. Lo señaló el propietario el 2026-08-08: un
+   * abonado con día de pago 10 recibía un comprobante que decía «01/03 – 31/03» mientras
+   * el ciclo que estaba pagando iba del 11/03 al 10/04. El dato era sencillamente falso, y
+   * contradecía el resto del módulo — todo lo demás (emisión, vencimiento, corte) ya salía
+   * de SU día de pago, y solo el periodo seguía anclado al calendario.
+   *
+   * `diaPago` está acotado a 28 (`DIA_PAGO_MAXIMO`), así que el ciclo existe todos los
+   * meses y no hay que decidir qué hacer con un día 31 en febrero.
    */
   periodoServicio(
     politica: PoliticaFacturacion,
     vencimiento: Date,
   ): { inicio: string; fin: string; mes: number; anio: number } {
-    const desplazamiento = politica.tipo === 'prepago' ? 1 : 0;
-    const base = new Date(Date.UTC(
-      vencimiento.getUTCFullYear(), vencimiento.getUTCMonth() + desplazamiento, 1,
-    ));
-    const anio = base.getUTCFullYear();
-    const mes  = base.getUTCMonth() + 1;
-    // Día 0 del mes siguiente = último día de este, sin tablas de 30/31 ni bisiestos.
-    const ultimo = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+    // Prepago: el ciclo EMPIEZA en el vencimiento y termina en el siguiente.
+    // Postpago: el ciclo TERMINA en el vencimiento y empezó en el anterior.
+    const finCiclo = politica.tipo === 'prepago'
+      ? this.mismoDiaMesSiguiente(vencimiento)
+      : new Date(vencimiento.getTime());
+
+    const inicioCiclo = politica.tipo === 'prepago'
+      ? new Date(vencimiento.getTime())
+      : this.mismoDiaMesAnterior(vencimiento);
+
+    // El día del pago pertenece al ciclo que se cierra, no al que abre: el periodo empieza
+    // al día siguiente. Sin esto, dos comprobantes consecutivos se solaparían un día.
+    const inicio = new Date(inicioCiclo.getTime());
+    inicio.setUTCDate(inicio.getUTCDate() + 1);
 
     return {
-      inicio: `${anio}-${String(mes).padStart(2, '0')}-01`,
-      fin:    `${anio}-${String(mes).padStart(2, '0')}-${String(ultimo).padStart(2, '0')}`,
-      mes, anio,
+      inicio: this.aIso(inicio),
+      fin:    this.aIso(finCiclo),
+      // `mes`/`anio` describen el ciclo por su cierre — es como se nombra un periodo de
+      // facturación («el recibo de marzo» es el que vence en marzo).
+      mes:  finCiclo.getUTCMonth() + 1,
+      anio: finCiclo.getUTCFullYear(),
     };
+  }
+
+  private mismoDiaMesSiguiente(d: Date): Date {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()));
+  }
+
+  private mismoDiaMesAnterior(d: Date): Date {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, d.getUTCDate()));
   }
 
   /** `YYYY-MM-DD` — el formato en que viajan las fechas a Postgres y al frontend. */

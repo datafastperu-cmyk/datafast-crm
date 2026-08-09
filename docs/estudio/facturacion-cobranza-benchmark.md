@@ -405,6 +405,53 @@ facturación; solo el portal, para decidir si permite bajar de plan con deuda. P
 configuración del cliente sin que nada lo impida — no es «dos fuentes compitiendo por facturar»,
 como escribí, sino **un campo que decide otra cosa a partir de una verdad que puede estar caducada**.
 
+#### H-4 · El periodo del comprobante era el mes de calendario, no el ciclo del abonado — **CORREGIDO**
+
+Lo señaló el propietario el 2026-08-08: *«comienzo de periodo es un día después de su fecha de
+pago y fin de periodo es la siguiente fecha de pago»*. Tenía razón.
+
+`periodoServicio()` devolvía `YYYY-MM-01` al último día del mes, con un desplazamiento de un mes
+en prepago. Con día de pago 10, el comprobante decía **«01/03 – 31/03»** mientras el ciclo que el
+abonado estaba pagando iba del **11/03 al 10/04**. El dato impreso era sencillamente falso.
+
+Y era **incoherente con el resto del módulo**: la emisión, el vencimiento y el corte ya salían de
+SU día de pago; solo el periodo seguía anclado al calendario. La regla ahora:
+
+```
+postpago (ya consumió)     vence 10/03  →  ampara 11/02 – 10/03
+prepago  (por adelantado)  vence 10/03  →  ampara 11/03 – 10/04
+```
+
+El mismo intervalo en ambos; lo que cambia es si va por delante o por detrás del vencimiento. El
+inicio es el **día siguiente** porque el día del pago pertenece al ciclo que se cierra: sin eso,
+dos comprobantes consecutivos se solaparían un día y el abonado lo tendría facturado dos veces.
+
+**Efecto lateral que había que resolver:** la generación masiva deduplicaba comparando
+`periodo_inicio`/`periodo_fin` exactos, lo cual solo funcionaba mientras el periodo era el mismo
+mes para todo el parque. Con ciclos por abonado eso deja de identificar nada, así que **la clave
+pasa a ser el vencimiento**: un comprobante vivo por abonado y fecha de pago. Es la regla de
+negocio real y no depende de cómo se decida nombrar el periodo mañana.
+
+#### H-5 · El vencimiento se podía fijar por encima del día de pago — **CORREGIDO**
+
+*«Dijimos que las fechas eran las mismas.»* Había **tres** puertas abiertas, y solo la emisión
+automática hacía lo correcto:
+
+| Puerta | Qué hacía |
+|---|---|
+| `create()` sin `fechaVencimiento` | Caía en **`hoy + empresas.dias_gracia`**. Ni el día de pago del cliente, y encima usando la gracia como distancia al VENCIMIENTO — el defecto exacto del incidente 2026-08-05, reintroducido por donde entra el primer comprobante de todo prepago |
+| `create()` con `fechaVencimiento` | Aceptaba cualquier fecha, sin validar |
+| `update()` | El vencimiento era **editable en una factura ya emitida** |
+
+La tercera es la grave. `cobranza.worker` decide el corte contra el `fecha_vencimiento` **grabado**
+en cada factura, precisamente para que un cambio de configuración no mueva una deuda ya notificada.
+Dejarlo editable abría por detrás la puerta que ese invariante cierra por delante: mover el
+vencimiento de una factura viva adelanta o retrasa un corte de servicio sin que nadie lo vea venir.
+
+Ahora `create()` lo deriva de la política y **rechaza** —no ignora en silencio— un vencimiento que
+no sea el del ciclo; `update()` no lo deja mover; y el campo está deshabilitado en los dos modales,
+mostrando la fecha en vez de dejar escribirla.
+
 ### 5.3 Reconocido por el propietario como pendiente de diseño
 
 No son defectos: son trabajo que él mismo señala.
@@ -449,6 +496,8 @@ resuelta; lo que cambiará es la forma de la serie y las reglas de anulación.
 | **H-1** | El corte no contaba «N vencidos + N días desde el último» | ✅ **CORREGIDO 2026-08-08.** `MAX` en vez de `MIN`; barrera de 8 tests |
 | **H-3** | El primer comprobante del prepago lo emite el **navegador**, con `catch` vacío, sin el vencimiento de la política y sin `contratoId` | **Siguiente.** Mover la emisión al backend resuelve los cinco defectos de golpe y no cambia ninguna fecha de corte |
 | **H-2** | `moroso` no lo escribe nadie | ✅ **RESUELTO 2026-08-08, y no como se planteó**: la mora pasa a ser una **etiqueta derivada**, no un estado. Ver §6.2 |
+| **H-4** | El periodo del comprobante era el mes de calendario, no el ciclo del abonado | ✅ **CORREGIDO 2026-08-08.** Del día siguiente a una fecha de pago hasta la siguiente. La deduplicación pasa a ir por vencimiento |
+| **H-5** | El vencimiento se podía fijar por encima del día de pago — y **editar en una factura emitida** | ✅ **CORREGIDO 2026-08-08.** Derivado de la política, validado al crear, inmutable al editar |
 | — | Nota de crédito vs. anular/editar (respuesta 5) | **Aplazado por el propietario**, sin bloquear nada. Ver §6.3 |
 | — | Cambios masivos de configuración (respuesta 9) | Funcionalidad nueva, ya especificada |
 | — | Comprobante por contrato vs. consolidado (respuesta 3) | A estudiar |

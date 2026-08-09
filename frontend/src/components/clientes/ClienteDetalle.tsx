@@ -2894,8 +2894,16 @@ function ModalEditarFactura({
               <input type="date" value={periodoFin} onChange={e => setPeriodoFin(e.target.value)} className={inputCls} />
             </div>
             <div>
+              {/* El vencimiento NO se elige: es el día de pago del abonado, y es la fecha
+                  contra la que se decide su corte. Se cambia en Facturación →
+                  Configuración del cliente, donde afecta a los comprobantes futuros —
+                  nunca comprobante a comprobante. El backend rechaza cualquier otra. */}
               <label className="block text-xs font-medium text-muted-foreground mb-1">Vencimiento</label>
-              <input type="date" value={fechaVenc} onChange={e => setFechaVenc(e.target.value)} className={inputCls} />
+              <input
+                type="date" value={fechaVenc} readOnly disabled
+                className={`${inputCls} opacity-60 cursor-not-allowed`}
+                title="Lo fija el día de pago del abonado (Facturación → Configuración)."
+              />
             </div>
           </div>
 
@@ -3228,6 +3236,40 @@ function endOfMonthStr() {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * El ciclo de facturación del abonado, derivado de su configuración.
+ *
+ * Mismas reglas que `PoliticaFacturacionService` en el backend, que es quien manda:
+ *   · vence el `diaPago` (próxima ocurrencia desde hoy),
+ *   · el periodo va del día siguiente a una fecha de pago hasta la siguiente,
+ *   · prepago va por delante del vencimiento; postpago, por detrás.
+ *
+ * Se calcula aquí solo para **mostrarlo**: el backend lo recalcula al crear la factura y
+ * rechaza un vencimiento que no sea el suyo. Duplicar la fórmula para pintar una fecha es
+ * aceptable; duplicarla para decidirla no lo sería.
+ */
+function cicloDelAbonado(diaPago: number, tipo: string): {
+  vencimiento: string; periodoInicio: string; periodoFin: string;
+} {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const hoy = new Date();
+  const dia = Math.min(Math.max(diaPago || 1, 1), 28);
+
+  const venc = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), dia));
+  if (venc < new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()))) {
+    venc.setUTCMonth(venc.getUTCMonth() + 1);
+  }
+
+  const desplaza = (d: Date, meses: number) =>
+    new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + meses, d.getUTCDate()));
+
+  const fin    = tipo === 'prepago' ? desplaza(venc, 1) : new Date(venc.getTime());
+  const inicio = tipo === 'prepago' ? new Date(venc.getTime()) : desplaza(venc, -1);
+  inicio.setUTCDate(inicio.getUTCDate() + 1);
+
+  return { vencimiento: iso(venc), periodoInicio: iso(inicio), periodoFin: iso(fin) };
+}
+
 function ModalFacturaServicio({
   clienteId, contratos, onClose, onSuccess,
 }: {
@@ -3252,6 +3294,10 @@ function ModalFacturaServicio({
   // 'incluido' = precio ya trae IGV (se extrae). 'mas_impuestos' = IGV se suma encima.
   const esquemaIgv = (configCliente?.facturacion?.esquemaImpuesto as string | undefined) ?? 'incluido';
 
+  // Arrancan en el mes de calendario y se corrigen en cuanto llega la configuración del
+  // abonado: el periodo real es SU ciclo, no el mes. Antes se quedaban así para siempre, y
+  // un abonado con día de pago 10 recibía un comprobante que decía «01/03 – 31/03» cuando
+  // lo que pagaba era del 11/03 al 10/04.
   const [periodoInicio,   setPeriodoInicio]   = useState(() => {
     const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
   });
@@ -3260,6 +3306,17 @@ function ModalFacturaServicio({
   const [descripcion,     setDescripcion]     = useState('');
   const [items,           setItems]           = useState<LineaItem[]>([]);
   const [submitted, setSubmitted] = useState(false);
+
+  // ── Ciclo del abonado: corrige periodo y vencimiento al llegar su configuración ──
+  const diaPagoCfg = configCliente?.facturacion?.diaPago as string | undefined;
+  const tipoCfg    = (configCliente?.facturacion?.tipo as string | undefined) ?? 'postpago';
+  useEffect(() => {
+    if (!diaPagoCfg) return; // sin día de pago no hay ciclo: se queda el mes de calendario
+    const ciclo = cicloDelAbonado(parseInt(diaPagoCfg, 10), tipoCfg);
+    setPeriodoInicio(ciclo.periodoInicio);
+    setPeriodoFin(ciclo.periodoFin);
+    setFechaVenc(ciclo.vencimiento);
+  }, [diaPagoCfg, tipoCfg]);
 
   // ── Auto-fill desde todos los servicios activos del abonado ──
   useEffect(() => {
@@ -3381,8 +3438,16 @@ function ModalFacturaServicio({
               <input type="date" value={periodoFin} onChange={e => setPeriodoFin(e.target.value)} className={inputCls} />
             </div>
             <div>
+              {/* El vencimiento NO se elige: es el día de pago del abonado, y es la fecha
+                  contra la que se decide su corte. Se cambia en Facturación →
+                  Configuración del cliente, donde afecta a los comprobantes futuros —
+                  nunca comprobante a comprobante. El backend rechaza cualquier otra. */}
               <label className="block text-xs font-medium text-muted-foreground mb-1">Vencimiento</label>
-              <input type="date" value={fechaVenc} onChange={e => setFechaVenc(e.target.value)} className={inputCls} />
+              <input
+                type="date" value={fechaVenc} readOnly disabled
+                className={`${inputCls} opacity-60 cursor-not-allowed`}
+                title="Lo fija el día de pago del abonado (Facturación → Configuración)."
+              />
             </div>
           </div>
 

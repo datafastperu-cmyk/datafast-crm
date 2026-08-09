@@ -78,12 +78,29 @@ export class FacturacionService {
       await this.comprobantesSvc.siguienteCorrelativo(comprobanteConfig.id);
     const serie = comprobanteConfig.serie;
 
-    const [emRow] = await this.ds.query<{ dias_gracia: string }[]>(
-      'SELECT dias_gracia FROM empresas WHERE id = $1 AND deleted_at IS NULL',
-      [user.empresaId],
+    // El vencimiento es EL DÍA DE PAGO DEL ABONADO. No es negociable por comprobante:
+    // «dijimos que las fechas eran las mismas» (propietario, 2026-08-08).
+    //
+    // Antes esta ruta caía en `hoy + empresas.dias_gracia`, que está mal por dos motivos a
+    // la vez: no es el día de pago del cliente, y usa los días de gracia como distancia al
+    // VENCIMIENTO cuando son la distancia al CORTE. Es exactamente el defecto del incidente
+    // 2026-08-05 —a un abonado se le anunciaba el corte antes de que venciera su factura—
+    // reintroducido por la puerta de la emisión manual, que es por donde entra el primer
+    // comprobante de todo abonado prepago.
+    //
+    // Un `fechaVencimiento` explícito solo se acepta si coincide con el ciclo. Se valida en
+    // vez de ignorarse en silencio: si el operador pidió otra fecha, tiene que enterarse.
+    const politica = await this.politicaSvc.resolver(dto.clienteId, user.empresaId);
+    const fechaVencimiento = this.politicaSvc.aIso(
+      this.politicaSvc.proximoVencimiento(politica, new Date()),
     );
-    const fechaVencimiento =
-      dto.fechaVencimiento || this.calcularFechaVencimiento(parseInt(emRow?.dias_gracia || '5', 10));
+
+    if (dto.fechaVencimiento && dto.fechaVencimiento !== fechaVencimiento) {
+      throw new BadRequestException(
+        `El vencimiento lo fija el día de pago del abonado (${fechaVencimiento}), ` +
+        `no se puede establecer otro. Cámbialo en Facturación → Configuración del cliente.`,
+      );
+    }
 
     const factura = this.facturaRepo.create({
       empresaId:            user.empresaId,
@@ -197,8 +214,16 @@ export class FacturacionService {
       total: porCliente.size, exitosas: 0, omitidas: 0, errores: 0, detalles: [],
     };
 
-    const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
-    const periodoFin    = this.ultimoDiaMes(anio, mes);
+    // El periodo YA NO es el mes de calendario ni es común a todo el parque: cada abonado
+    // tiene su ciclo, del día siguiente a su fecha de pago hasta la siguiente. Se calcula
+    // dentro del bucle, junto a su vencimiento.
+    //
+    // La deduplicación, en consecuencia, se hace por **vencimiento**: un comprobante vivo
+    // por abonado y fecha de pago. La ventana cubre el mes solicitado con un día de margen
+    // a cada lado, porque el vencimiento de un abonado del mes `mes` cae siempre dentro de
+    // él (`diaPago` va de 1 a 28).
+    const ventanaDesde = `${anio}-${String(mes).padStart(2, '0')}-01`;
+    const ventanaHasta = this.ultimoDiaMes(anio, mes);
 
     // Los ya facturados se resuelven en UNA consulta, no una por abonado. Preguntarlo dentro
     // del bucle costaba un roundtrip por cliente: con los 5000+ abonados que se está
@@ -206,7 +231,7 @@ export class FacturacionService {
     // Es seguro leerlo una vez porque la generación está serializada por (empresa, periodo):
     // nadie más puede estar emitiendo facturas de este periodo mientras corremos.
     const yaFacturados = await this.facturaRepo.clientesYaFacturados(
-      user.empresaId, periodoInicio, periodoFin,
+      user.empresaId, ventanaDesde, ventanaHasta,
     );
 
     // La política de cada abonado en UNA consulta, por la misma razón que `yaFacturados`:
@@ -218,7 +243,25 @@ export class FacturacionService {
     for (const [clienteId, grupo] of porCliente) {
       const primer = grupo[0];
       try {
-        if (yaFacturados.has(clienteId)) {
+        // El ciclo del abonado se resuelve ANTES de deduplicar, porque la clave es su
+        // vencimiento. El vencimiento es su DÍA DE PAGO, no "día de facturación + gracia":
+        // los días de gracia son la distancia hasta el CORTE. Sumarlos aquí producía una
+        // factura que vencía después de la fecha de corte que se le anunciaba al cliente
+        // (incidente 2026-08-05). Ver `PoliticaFacturacionService`.
+        const politica = politicas.get(clienteId)
+          ?? await this.politicaSvc.resolver(clienteId, user.empresaId);
+        const vencimiento = this.politicaSvc.proximoVencimiento(
+          politica, new Date(Date.UTC(anio, mes - 1, 1)),
+        );
+        const fechaVencimiento = this.politicaSvc.aIso(vencimiento);
+        // Periodo del CICLO del abonado, no del calendario: del día siguiente a una fecha
+        // de pago hasta la siguiente. Prepago va por delante del vencimiento; postpago,
+        // por detrás.
+        const periodo       = this.politicaSvc.periodoServicio(politica, vencimiento);
+        const periodoInicio = periodo.inicio;
+        const periodoFin    = periodo.fin;
+
+        if (yaFacturados.has(`${clienteId}|${fechaVencimiento}`)) {
           resultado.omitidas++;
           grupo.forEach(c => resultado.detalles.push({
             contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
@@ -284,15 +327,6 @@ export class FacturacionService {
         const { correlativo } = await this.comprobantesSvc.siguienteCorrelativo(comprobante.id);
         const serie = comprobante.serie;
 
-        // El vencimiento es el DÍA DE PAGO del abonado, no "día de facturación + gracia":
-        // los días de gracia son la distancia hasta el CORTE, no hasta el vencimiento.
-        // Sumarlos aquí producía una factura que vencía después de la fecha de corte que
-        // se le anunciaba al cliente (incidente 2026-08-05). Ver PoliticaFacturacionService.
-        const politica = politicas.get(clienteId)
-          ?? await this.politicaSvc.resolver(clienteId, user.empresaId);
-        const fechaVencimiento = this.politicaSvc.aIso(
-          this.politicaSvc.proximoVencimiento(politica, new Date(Date.UTC(anio, mes - 1, 1))),
-        );
         const descripcion = this.descripcionConsolidada(comprobante.nombre, grupo, mes, anio);
 
         const factura = this.facturaRepo.create({
@@ -838,7 +872,24 @@ export class FacturacionService {
     if (dto.periodoInicio    !== undefined) patch.periodoInicio    = dto.periodoInicio;
     if (dto.periodoFin       !== undefined) patch.periodoFin       = dto.periodoFin;
     if (dto.descripcion      !== undefined) patch.descripcion      = dto.descripcion;
-    if (dto.fechaVencimiento !== undefined) patch.fechaVencimiento = dto.fechaVencimiento;
+
+    // El vencimiento NO se edita: se congela al emitir. Dos razones, y la segunda es la
+    // grave.
+    //
+    // 1. Es el día de pago del abonado, y ese se cambia en su configuración —donde afecta
+    //    a los comprobantes futuros—, no comprobante a comprobante.
+    // 2. `cobranza.worker` decide el corte contra el `fecha_vencimiento` GRABADO en cada
+    //    factura, precisamente para que un cambio de configuración no mueva una deuda ya
+    //    notificada al abonado. Dejarlo editable aquí abría por detrás la puerta que ese
+    //    invariante cierra por delante: mover el vencimiento de una factura viva
+    //    adelanta o retrasa un corte de servicio sin que nadie lo vea venir.
+    if (dto.fechaVencimiento !== undefined && dto.fechaVencimiento !== factura.fechaVencimiento) {
+      throw new BadRequestException(
+        'El vencimiento de un comprobante emitido no se modifica: es la fecha con la que ' +
+        'se le notificó la deuda al abonado y contra la que se decide su corte. ' +
+        'Para cambiar el ciclo, edita el día de pago en Facturación → Configuración.',
+      );
+    }
 
     if (dto.comprobanteConfigId !== undefined) {
       const cfg = await this.ds.getRepository(ComprobanteConfig).findOne({

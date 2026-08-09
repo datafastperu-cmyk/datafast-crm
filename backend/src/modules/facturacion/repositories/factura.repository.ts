@@ -230,31 +230,36 @@ export class FacturaRepository {
   }
 
   /**
-   * Clientes que YA tienen factura viva en el periodo, en UNA sola consulta.
+   * Pares `clienteId|fechaVencimiento` ya facturados en una ventana, en UNA sola consulta.
    *
    * La generación masiva preguntaba cliente por cliente con `existeFacturaClientePeriodo`
    * dentro del bucle: un roundtrip por abonado. Con los 5000+ que se está dimensionando,
    * son 5000 consultas secuenciales antes de emitir la primera factura. Aquí se resuelve
    * con una, y el bucle solo consulta un Set en memoria.
    *
-   * Mismo criterio que la versión unitaria (que se conserva para las llamadas sueltas):
-   * cuenta las facturas no anuladas y no borradas del periodo exacto.
+   * **La clave es el VENCIMIENTO, no el periodo** (cambiado el 2026-08-08). Antes se
+   * comparaba `periodo_inicio`/`periodo_fin` exactos, lo cual funcionaba solo mientras el
+   * periodo era el mismo mes de calendario para todo el parque. Ahora cada abonado tiene su
+   * propio ciclo —del día siguiente a su fecha de pago hasta la siguiente—, así que dos
+   * clientes distintos tienen periodos distintos y comparar por periodo dejó de identificar
+   * nada. El vencimiento sí: **un comprobante vivo por abonado y fecha de pago**, que es la
+   * regla de negocio real y no depende de cómo se decida nombrar el periodo mañana.
    */
   async clientesYaFacturados(
     empresaId: string,
-    periodoInicio: string,
-    periodoFin: string,
+    vencimientoDesde: string,
+    vencimientoHasta: string,
   ): Promise<Set<string>> {
-    const filas = await this.repo.manager.query<Array<{ cliente_id: string }>>(
-      `SELECT DISTINCT cliente_id
+    const filas = await this.repo.manager.query<Array<{ clave: string }>>(
+      `SELECT DISTINCT cliente_id || '|' || fecha_vencimiento::text AS clave
          FROM facturas
         WHERE empresa_id = $1
-          AND periodo_inicio = $2 AND periodo_fin = $3
+          AND fecha_vencimiento BETWEEN $2::date AND $3::date
           AND estado <> 'anulada'
           AND deleted_at IS NULL`,
-      [empresaId, periodoInicio, periodoFin],
+      [empresaId, vencimientoDesde, vencimientoHasta],
     );
-    return new Set(filas.map((f) => f.cliente_id));
+    return new Set(filas.map((f) => f.clave));
   }
 
   // ── Contratos que requieren factura este mes ───────────────

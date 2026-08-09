@@ -139,31 +139,63 @@ describe('PoliticaFacturacionService', () => {
     });
   });
 
-  describe('prepago vs postpago', () => {
-    // Hasta 2026-08-05 el campo se guardaba y no lo leía nadie: todo se facturaba como
-    // postpago aunque el abonado estuviera marcado como prepago.
+  // ═══════════════════════════════════════════════════════════════════════════
+  // El periodo es el CICLO DEL ABONADO, no el mes de calendario.
+  //
+  // Lo señaló el propietario el 2026-08-08: *«comienzo de periodo es un día después de su
+  // fecha de pago y fin de periodo es la siguiente fecha de pago»*. Hasta entonces esto
+  // devolvía `YYYY-MM-01` al último día del mes, así que un abonado con día de pago 10
+  // recibía un comprobante que decía «01/03 – 31/03» mientras el ciclo que estaba pagando
+  // iba del 11/03 al 10/04. **El dato impreso era sencillamente falso**, y contradecía al
+  // resto del módulo: la emisión, el vencimiento y el corte ya salían de SU día de pago, y
+  // solo el periodo seguía anclado al calendario.
+  //
+  // Hasta 2026-08-05 el campo `tipo` ni siquiera se leía: todo se facturaba como postpago
+  // aunque el abonado estuviera marcado como prepago.
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe('prepago vs postpago — el periodo es el ciclo del abonado', () => {
     const vencimiento = new Date(Date.UTC(2026, 7, 28)); // 28/08/2026
 
-    it('postpago ampara el mes ya consumido: el del vencimiento', () => {
+    it('postpago cierra el ciclo en el vencimiento: 29/07 – 28/08', () => {
       const p = svc.periodoServicio(politica({ tipo: 'postpago' }), vencimiento);
-      expect(p).toMatchObject({ inicio: '2026-08-01', fin: '2026-08-31', mes: 8, anio: 2026 });
+      expect(p).toMatchObject({ inicio: '2026-07-29', fin: '2026-08-28', mes: 8, anio: 2026 });
     });
 
-    it('prepago ampara el mes que empieza: el siguiente', () => {
+    it('prepago abre el ciclo en el vencimiento: 29/08 – 28/09', () => {
       const p = svc.periodoServicio(politica({ tipo: 'prepago' }), vencimiento);
-      expect(p).toMatchObject({ inicio: '2026-09-01', fin: '2026-09-30', mes: 9, anio: 2026 });
+      expect(p).toMatchObject({ inicio: '2026-08-29', fin: '2026-09-28', mes: 9, anio: 2026 });
     });
 
-    it('el fin de mes sale del calendario real, incluido febrero bisiesto', () => {
-      expect(svc.periodoServicio(politica(), new Date(Date.UTC(2026, 1, 10))).fin)
-        .toBe('2026-02-28');
-      expect(svc.periodoServicio(politica(), new Date(Date.UTC(2028, 1, 10))).fin)
-        .toBe('2028-02-29');
+    /**
+     * La razón de que el inicio sea el día SIGUIENTE, y no el mismo día de pago: sin eso,
+     * dos comprobantes consecutivos se solaparían justo en la fecha de pago, y el abonado
+     * tendría un día facturado dos veces.
+     */
+    it('dos ciclos consecutivos no se solapan ni dejan hueco', () => {
+      const pol   = politica({ tipo: 'postpago' });
+      const marzo = svc.periodoServicio(pol, new Date(Date.UTC(2026, 2, 28)));
+      const abril = svc.periodoServicio(pol, new Date(Date.UTC(2026, 3, 28)));
+
+      expect(marzo.fin).toBe('2026-03-28');
+      expect(abril.inicio).toBe('2026-03-29'); // el día siguiente exacto, sin hueco
+    });
+
+    it('febrero no se acorta: el ciclo lo marca el día de pago, no el calendario', () => {
+      // Antes esto devolvía '2026-02-28' porque era el último día del mes. Ahora el 28 sale
+      // del día de pago, y con día 10 el ciclo termina el 10 aunque sea febrero.
+      const p = svc.periodoServicio(politica(), new Date(Date.UTC(2026, 1, 10)));
+      expect(p).toMatchObject({ inicio: '2026-01-11', fin: '2026-02-10' });
+
+      // Y el bisiesto deja de importar. `diaPago` está acotado a 28 (`DIA_PAGO_MAXIMO`),
+      // así que el día 28 existe en los doce meses de cualquier año y el ciclo nunca tiene
+      // que decidir qué hacer con un 30 o un 31 que no existe.
+      expect(svc.periodoServicio(politica(), new Date(Date.UTC(2028, 1, 28))))
+        .toMatchObject({ inicio: '2028-01-29', fin: '2028-02-28' });
     });
 
     it('prepago en diciembre cruza de año', () => {
       const p = svc.periodoServicio(politica({ tipo: 'prepago' }), new Date(Date.UTC(2026, 11, 28)));
-      expect(p).toMatchObject({ inicio: '2027-01-01', mes: 1, anio: 2027 });
+      expect(p).toMatchObject({ inicio: '2026-12-29', fin: '2027-01-28', mes: 1, anio: 2027 });
     });
   });
 
