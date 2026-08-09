@@ -47,12 +47,25 @@ facturación, el segundo en el plano de red.
 | | Eje comercial | Eje de aprovisionamiento | Recursos en el ERP |
 |---|---|---|---|
 | **Internet** | principal | OLT/ONU + MikroTik | ONU, IP, PPPoE, cola, NAP |
-| **Cable IPTV** | principal | **XUI One** (API externa) | un usuario en XUI |
-| **Cable coaxial** | principal | **ninguno** | ninguno |
+| **Cable IPTV** | principal · **producto propio** | **XUI One** (API externa) | un usuario en XUI |
+| **Cable coaxial** | principal · **producto propio** | **ninguno** | ninguno |
 | **Streaming** | adicional | cuenta de un tercero | una cuenta |
 
 **Cable es hermano de internet en el eje comercial y primo del streaming en el técnico.** Esa es
 la observación que ordena todo lo demás.
+
+### IPTV y coaxial son DOS productos, no uno con dos entregas — *(cerrado 2026-08-09)*
+
+> *«Mejor que sean dos servicios separados, así pueden tener un precio distinto.»*
+
+El precio zanja la pregunta comercial, y hay un segundo motivo estructural: **con un solo producto
+«Cable», la capacidad de corte dejaría de ser propiedad del producto** —habría que mirar el atributo
+de cada instancia—, y eso contradice §5. Con dos productos, «tiene corte automático» es una columna
+del catálogo y el barrido de morosos la lee sin excepciones.
+
+Y es lo más simple de construir: **cero columnas nuevas en el contrato**, el cambio de coaxial a
+IPTV reusa el prorrateo por cambio de plan, y el catálogo hay que tocarlo igualmente. Las filas de
+catálogo son baratas; las columnas en la instancia y los casos especiales, no.
 
 ### El cable, en palabras del propietario
 
@@ -361,10 +374,24 @@ forma. Si no, el abonado paga dos veces el día del cambio — o ninguna de las 
 
 | Evento | Qué se prorratea | Estado |
 |---|---|---|
-| **Alta a mitad de ciclo** | Los días desde la instalación hasta el cierre. Se **añade a la siguiente facturación** | Confirmado |
+| **Alta a mitad de ciclo** | Los días desde la activación hasta el cierre. Se **añade a la siguiente facturación** | Confirmado |
 | **Baja anticipada** | Se cobra hasta el día efectivo, no el ciclo completo | Confirmado |
-| Cambio de plan a mitad de ciclo | — | **Sin decidir** |
+| **Cambio de plan a mitad de ciclo** | Los días de cada plan por separado | **Confirmado 2026-08-09.** Es el ejemplo canónico de Stripe: *«−5 USD for unused time on the initial price, and 10 USD for the remaining time on the new price»* |
 | Suspensión voluntaria | — | **Sin decidir.** Ojo: si el corte es por mora, prorratear premia al que no paga |
+
+### Desde qué fecha cuenta el alta
+
+Lo justo es **desde que hay servicio, no desde que hay firma**. Tres candidatas, medidas:
+
+| Candidata | Estado |
+|---|---|
+| `contratos.fecha_inicio` | Existe y es obligatoria, pero es **papel**: la fecha del acuerdo, no la del servicio |
+| `ordenes_trabajo.fecha_fin_real` | Sería la ideal —instalación efectiva con firma y coordenadas— pero la tabla está **vacía**: si el alta no genera orden, ese campo es siempre nulo |
+| **`contratos_historial`, transición a `activo`** | **La correcta hoy.** Hay **14 activaciones registradas** con su `created_at`. Es cuándo el servicio empezó a funcionar de verdad |
+
+**Recomendación: la fecha de activación del historial.** Y cuando las órdenes de trabajo estén en
+uso, seguirá siendo la misma cosa — la orden se cierra y eso activa el servicio. No hay que elegir
+entre las dos: la segunda alimentará a la primera.
 
 ### El mecanismo ya existe
 
@@ -382,17 +409,29 @@ literalmente «se le adiciona el costo a la siguiente facturación».
    propietario lo aplazó: requiere consultas externas. Ahora está mejor acotado — un plan
    **combinado no tiene campos técnicos**, así que las 21 columnas de conexión en null dejan de ser
    una anomalía y pasan a ser lo correcto para esa fila.
-2. **¿Cable IPTV y coaxial son dos productos, o uno con dos formas de entrega?** Para el abonado y
-   la factura es lo mismo; para el ERP no: uno crea un usuario en XUI One y el otro no hace nada.
-3. **El nombre de las tablas.** Hoy `contratos` es lo que el modelo llama **servicio**. O se
-   renombra —26 columnas, 14 FKs, 48 referencias y toda la UI— o el padre nuevo lleva otro nombre y
-   se declara la correspondencia (PD-13 §4). Lo segundo cuesta cinco tablas repuntadas.
-4. **Prorrateo — quedan dos.** En qué fecha empieza a contar el alta: ¿`contratos.fecha_inicio`,
-   que es papel, o `ordenes_trabajo.fecha_fin_real`, que es servicio efectivo? Lo justo es la
-   segunda: se cobra desde que hay servicio, no desde que hay firma. Y si el **cambio de plan** y la
-   **suspensión voluntaria** también prorratean. La convención de días ya está cerrada (§7-ter).
-5. **Dónde viven las credenciales** de las cuentas de streaming revendidas.
-6. **Las dos columnas de precio** de `contratos` (§7-bis).
+2. **¿Prorratea la suspensión voluntaria?** Lo demás del prorrateo está cerrado (§7-ter). Ojo con
+   este: si la suspensión viene de una mora, prorratear premia al que no paga.
+3. **Dónde viven las credenciales** de las cuentas de streaming revendidas.
+4. **Las dos columnas de precio** de `contratos` (§7-bis).
+
+### Cerrados el 2026-08-09
+
+| | Decisión |
+|---|---|
+| ~~Cable IPTV vs coaxial~~ | **Dos productos.** Por precio distinto, y porque con uno solo la capacidad de corte dejaría de ser propiedad del producto (§2) |
+| ~~El nombre de las tablas~~ | **El nivel de contrato se llama `contratos`.** La tabla actual se renombra a `servicios`. Coste desglosado abajo |
+| ~~Cambio de plan~~ | **Sí prorratea** (§7-ter) |
+| ~~Desde qué fecha cuenta el alta~~ | **La activación en `contratos_historial`**, no la firma ni la orden de trabajo (§7-ter) |
+
+**El renombrado, desglosado — es menos de lo que se dijo primero.** Se había estimado como
+«migración grande»; al desglosarlo:
+
+| Parte | Qué implica |
+|---|---|
+| `ALTER TABLE contratos RENAME TO servicios` | Una sentencia |
+| Las **17 columnas `contrato_id`** del plano de red → `servicio_id` | **Mecánico, sin mover datos.** Los valores ya apuntan a la fila correcta; solo cambia el nombre |
+| Las **5 tablas de dinero** → apuntar al contrato nuevo | **Migración real.** Es la parte con riesgo |
+| El barrido de código y la UI | Grande pero mecánico |
 
 ## 9. Fuentes
 
