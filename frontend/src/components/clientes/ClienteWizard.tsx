@@ -718,7 +718,9 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
 }
 
 // ── Step 2 options (iguales a plantillas-config) ───────────────
-const S2_DIAS_MES = Array.from({ length: 28 }, (_, i) => String(i + 1).padStart(2, '0'));
+// 1..31 — ANCLAJE de ciclo, no fecha. El backend lo recorta al último día real del mes
+// (el 31 vence el 28 de febrero) y vuelve al 31 en marzo, sin que el anclaje cambie.
+const S2_DIAS_MES = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
 const S2_CREAR_FACTURA_OPTS = [
   { value: 'desactivado', label: 'Desactivado' },
   ...Array.from({ length: 25 }, (_, i) => ({ value: String(i + 1), label: i === 0 ? '1 día antes' : `${i + 1} días antes` })),

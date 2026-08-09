@@ -124,7 +124,7 @@ haberlo buscado, y conviene saber cuál es cuál.
 
 | Concepto propio | Correspondencia | Estado |
 |---|---|---|
-| `diaPago` como ancla | `BillingCycleSpecification.billingDateShift` · Stripe `day_of_month` | **Adaptado, con defecto abierto**: falta el recorte a fin de mes y el tope está en 28 (PENDIENTES 29-ter, incumple PD-13) |
+| `diaPago` como ancla | `BillingCycleSpecification.billingDateShift` · Stripe `day_of_month` | **ADOPTADO 2026-08-09.** Anclaje 1–31 con recorte a fin de mes y sin deriva, como el ejemplo de Stripe |
 | `crearFactura` (N días antes) | `mailingDateOffset` · ERPNext `Bill N days before` | **Alineado** — equivalente exacto, y ERPNext lo tiene como uno de sus tres modos |
 | **vencimiento = `diaPago`** | `paymentDueDateOffset` | **Adaptado con el campo ausente.** Equivale a un offset de 0, pero **no existe como campo**, así que un plazo de crédito es inexpresable. Stripe lo confirma: el vencimiento coincide con el ancla solo cuando el cobro es automático |
 | Periodo = ciclo del abonado | `billingPeriod` | **Adoptado** — corregido el 2026-08-08; antes era el mes de calendario |
@@ -158,7 +158,7 @@ seria; ahora es un cambio de esquema.
 |---|---|---|
 | **1** | `BillingAccount`, **una por cliente creada automáticamente**, invisible en la UI. El ciclo y el tipo de comprobante se mudan a ella | **Antes de la instalación limpia** |
 | **2** | `paymentDueDateOffset` como campo, con valor 0 por defecto — nada cambia para nadie | Con la fase 1 |
-| **3** | Anclaje 1–31 con recorte a fin de mes (PENDIENTES 29-ter) | Independiente; se puede hacer ya |
+| ~~**3**~~ | ~~Anclaje 1–31 con recorte a fin de mes~~ | ✅ **HECHA 2026-08-09.** Era independiente del resto |
 | **4** | Libro de cargos + `chargeDateOffset`/`creditDateOffset` + prorrateo | **Con SUNAT**, no antes: la emisión electrónica toca el mismo código (correlativo, series, anulaciones) y hacerlo dos veces sale caro |
 | **5** | Segunda cuenta por cliente visible en la UI | Cuando exista el caso |
 

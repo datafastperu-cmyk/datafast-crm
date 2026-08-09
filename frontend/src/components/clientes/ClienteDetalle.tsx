@@ -3253,15 +3253,27 @@ function cicloDelAbonado(diaPago: number, tipo: string): {
 } {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const hoy = new Date();
-  const dia = Math.min(Math.max(diaPago || 1, 1), 28);
+  const ancla = Math.min(Math.max(diaPago || 1, 1), 31);
 
-  const venc = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), dia));
+  // Materializa el anclaje recortándolo al último día real del mes. `Date.UTC(2026, 1, 31)`
+  // —31 de febrero— es el 3 de MARZO, así que sin el recorte la previsualización mostraría
+  // un ciclo en el mes equivocado. Misma corrección que `anclaEnMes` en el backend.
+  const anclaEnMes = (anio: number, mes: number) => {
+    const ultimo = new Date(Date.UTC(anio, mes + 1, 0)).getUTCDate();
+    return new Date(Date.UTC(anio, mes, Math.min(ancla, ultimo)));
+  };
+
+  let venc = anclaEnMes(hoy.getUTCFullYear(), hoy.getUTCMonth());
   if (venc < new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()))) {
-    venc.setUTCMonth(venc.getUTCMonth() + 1);
+    venc = anclaEnMes(hoy.getUTCFullYear(), hoy.getUTCMonth() + 1);
   }
 
-  const desplaza = (d: Date, meses: number) =>
-    new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + meses, d.getUTCDate()));
+  // Se navega al mes con día 1 —que existe siempre— y solo después se materializa el
+  // anclaje: desplazar sobre la fecha ya recortada haría derivar el ciclo.
+  const desplaza = (d: Date, meses: number) => {
+    const bruto = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + meses, 1));
+    return anclaEnMes(bruto.getUTCFullYear(), bruto.getUTCMonth());
+  };
 
   const fin    = tipo === 'prepago' ? desplaza(venc, 1) : new Date(venc.getTime());
   const inicio = tipo === 'prepago' ? new Date(venc.getTime()) : desplaza(venc, -1);

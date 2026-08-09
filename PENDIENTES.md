@@ -426,29 +426,20 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
-### 29-ter. `DIA_PAGO_MAXIMO = 28` incumple PD-13 — el anclaje debe llegar a 31
+### ~~29-ter~~. Anclaje 1-31 con recorte a fin de mes — RESUELTO 2026-08-09
+**Cerrado.** El tope en 28 evitaba el problema de febrero prohibiendo los tres dias de cierre mas
+usados en tarifa plana. Ahora el abonado guarda un ANCLAJE de 1 a 31 y la fecha se recorta al
+ultimo dia real del mes, como documenta Stripe. **El anclaje no cambia**: tras el 28 de febrero
+vuelve al 31 en marzo.
 
-**Por qué importa:** el tope en 28 se eligió para **evitar** el problema de febrero —«el único día
-que existe en los doce meses»—, que es razonar desde el estado de la instalación. El sector lo
-resuelve al revés: Stripe tiene literalmente `billing_cycle_anchor_config.day_of_month = 31` y
-*«if a month has less than 31 days, the subscription renews on the last day of that month»*. El
-coste real es que hoy **no se puede cerrar el ciclo los días 29, 30 ni 31**, y el 30 es el más
-usado en tarifa plana.
+La trampa que estaba medida se confirmó al implementar, y además apareció una segunda:
+`periodoServicio` tenía una **precondición tácita** —«el día que recibes ES el anclaje»— y
+devolvía un periodo con un extremo derivado del anclaje y el otro del día suelto que le pasaran.
+La detectó un test, no una revisión.
 
-**Está analizado y medido, no implementado.** Se llegó a escribir y se revirtió a petición del
-propietario para no mezclar análisis con código. Lo que hay que hacer:
-
-- `DIA_ANCLAJE_MAXIMO = 31` y **recortar al materializar**, nunca al guardar: el anclaje no cambia
-  — si tras cobrar el 28 de febrero se guardara 28, el abonado derivaría a 28 para siempre.
-- **La trampa medida:** `Date.UTC(2026, 0+1, 31)` —31 de enero más un mes— devuelve el **3 de
-  marzo**. La aritmética de meses de `periodoServicio` desborda en silencio; con el tope en 28
-  nunca se dispara y funciona **por accidente**. Al abrirlo a 31 empieza a producir vencimientos en
-  el mes equivocado, sin error y sin que ningún test lo note.
-- Tres selectores del frontend con `length: 28` (wizard, tab del cliente, plantillas-config).
-- Tests: recorte por mes, **vuelta al 31 tras febrero** (el que importa: que no derive), y que
-  ninguna fecha del ciclo se desborde con 29/30/31.
-
-**Cómo se comprueba:** anclaje 31 → vence 31/01, 28/02, **31/03** (no 28/03), 30/04.
+Barrido completo: politica del backend, 3 selectores del frontend y **3 helpers de fecha que
+desbordaban igual** (la previsualizacion habria mostrado el 3 de marzo como fecha de pago).
+26 tests en la politica; suite 77/77 - 658 tests.
 
 ---
 

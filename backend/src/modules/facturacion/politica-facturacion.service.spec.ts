@@ -130,12 +130,18 @@ describe('PoliticaFacturacionService', () => {
       expect(svc.fechaCorte(p, new Date())).toBeNull();
     });
 
-    it('recorta al día 28: es el único que existe en los doce meses', async () => {
+    /**
+     * Antes esto recortaba a 28 «porque es el único día que existe en los doce meses».
+     * Cambió el 2026-08-09: el anclaje se guarda **tal cual** y el recorte ocurre al
+     * materializar cada fecha. Guardarlo ya recortado haría derivar el ciclo — ver el
+     * bloque «anclaje de ciclo» más abajo.
+     */
+    it('el anclaje se guarda íntegro: no se recorta al resolver la política', async () => {
       query.mockResolvedValue([{
         facturacion_config: { diaPago: '31' }, dia_facturacion: 1, dias_gracia: 5,
       }]);
 
-      expect((await svc.resolver('c1', 'e1')).diaPago).toBe(28);
+      expect((await svc.resolver('c1', 'e1')).diaPago).toBe(31);
     });
   });
 
@@ -153,6 +159,100 @@ describe('PoliticaFacturacionService', () => {
   // Hasta 2026-08-05 el campo `tipo` ni siquiera se leía: todo se facturaba como postpago
   // aunque el abonado estuviera marcado como prepago.
   // ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Anclaje de ciclo con recorte a fin de mes (2026-08-09, POL-001 PD-13).
+  //
+  // Antes el día de pago estaba topado en 28 —«el único que existe en los doce meses»—, que
+  // evita el problema de febrero PROHIBIENDO los tres días de cierre más usados en tarifa
+  // plana. El sector lo resuelve al revés: Stripe documenta `day_of_month = 31` con recorte
+  // al último día real del mes.
+  //
+  // Lo que estos tests protegen es la parte que se hace mal: **el anclaje no se toca, solo
+  // se recorta la materialización.** Si tras cobrar el 28 de febrero se guardara «28» como
+  // nuevo día de pago, el abonado se quedaría en 28 para siempre y el ciclo habría derivado
+  // sin que nadie lo decidiera.
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe('anclaje de ciclo — recorte a fin de mes sin deriva', () => {
+    const ancla31 = politica({ diaPago: 31 });
+    const vencEn = (pol: PoliticaFacturacion, anio: number, mes: number) =>
+      svc.aIso(svc.proximoVencimiento(pol, new Date(Date.UTC(anio, mes - 1, 1))));
+
+    it('el anclaje se recorta al último día real de cada mes', () => {
+      expect(vencEn(ancla31, 2026, 1)).toBe('2026-01-31');
+      expect(vencEn(ancla31, 2026, 2)).toBe('2026-02-28'); // febrero común
+      expect(vencEn(ancla31, 2028, 2)).toBe('2028-02-29'); // bisiesto
+      expect(vencEn(ancla31, 2026, 4)).toBe('2026-04-30'); // mes de 30
+      expect(vencEn(politica({ diaPago: 30 }), 2026, 2)).toBe('2026-02-28');
+    });
+
+    /**
+     * **El test que importa.** Recortar es fácil; no derivar, no. Marzo vuelve al 31 porque
+     * cada fecha se materializa desde el anclaje, nunca desplazando la anterior.
+     */
+    it('tras febrero el anclaje VUELVE al 31: no se queda en 28', () => {
+      expect(vencEn(ancla31, 2026, 3)).toBe('2026-03-31');
+      expect(vencEn(ancla31, 2026, 5)).toBe('2026-05-31');
+    });
+
+    it('el ciclo no se solapa ni deja hueco al cruzar febrero', () => {
+      const pol = politica({ diaPago: 31, tipo: 'postpago' });
+      // El ciclo que cierra el 28/02 abrió el día siguiente al 31/01.
+      expect(svc.periodoServicio(pol, new Date(Date.UTC(2026, 1, 28))))
+        .toMatchObject({ inicio: '2026-02-01', fin: '2026-02-28' });
+      // Y el siguiente arranca el 1/03 —sin hueco ni solape— y cierra en el anclaje.
+      expect(svc.periodoServicio(pol, new Date(Date.UTC(2026, 2, 31))))
+        .toMatchObject({ inicio: '2026-03-01', fin: '2026-03-31' });
+    });
+
+    /**
+     * `Date.UTC(2026, 1, 31)` es el **3 de marzo**. El código anterior usaba esa aritmética
+     * y funcionaba **por accidente**: con el tope en 28 nunca recibía un 29, 30 ni 31.
+     */
+    it('ninguna fecha del ciclo se desborda al mes siguiente', () => {
+      for (const dia of [29, 30, 31]) {
+        const pol = politica({ diaPago: dia });
+        const v   = svc.proximoVencimiento(pol, new Date(Date.UTC(2026, 1, 1)));
+
+        // El vencimiento de febrero cae en febrero, recortado. El síntoma del
+        // desbordamiento sería marzo.
+        expect(svc.aIso(v)).toBe('2026-02-28');
+
+        const p = svc.periodoServicio(pol, v);
+        expect(p.fin).toBe('2026-02-28');
+        // El inicio sale del anclaje del mes anterior + 1 día: 30/01, 31/01 y 01/02
+        // respectivamente. Ninguno en marzo, que es lo que este test vigila.
+        expect(p.inicio.startsWith('2026-03')).toBe(false);
+        expect(p.inicio < p.fin).toBe(true);
+      }
+    });
+
+    /**
+     * `periodoServicio` normaliza el vencimiento al anclaje de su mes. Sin eso tendría una
+     * precondición tácita —«el día que recibes ES el anclaje»— y devolvería un periodo con
+     * un extremo derivado del anclaje y el otro del día suelto que le pasaran.
+     */
+    it('el periodo sale del ANCLAJE aunque se le pase otra fecha del mismo mes', () => {
+      const pol = politica({ diaPago: 28, tipo: 'postpago' });
+      const desdeElAncla = svc.periodoServicio(pol, new Date(Date.UTC(2026, 1, 28)));
+      const desdeOtroDia = svc.periodoServicio(pol, new Date(Date.UTC(2026, 1, 10)));
+
+      expect(desdeOtroDia).toEqual(desdeElAncla);
+      expect(desdeElAncla).toMatchObject({ inicio: '2026-01-29', fin: '2026-02-28' });
+    });
+
+    it('el anclaje admite hasta 31 y acota lo que se salga de rango', async () => {
+      query.mockResolvedValueOnce([{
+        facturacion_config: { diaPago: '31' }, dia_facturacion: null, dias_gracia: 5,
+      }]);
+      expect((await svc.resolver('c1', 'e1')).diaPago).toBe(31);
+
+      query.mockResolvedValueOnce([{
+        facturacion_config: { diaPago: '45' }, dia_facturacion: null, dias_gracia: 5,
+      }]);
+      expect((await svc.resolver('c1', 'e1')).diaPago).toBe(31);
+    });
+  });
+
   describe('prepago vs postpago — el periodo es el ciclo del abonado', () => {
     const vencimiento = new Date(Date.UTC(2026, 7, 28)); // 28/08/2026
 
@@ -180,17 +280,20 @@ describe('PoliticaFacturacionService', () => {
       expect(abril.inicio).toBe('2026-03-29'); // el día siguiente exacto, sin hueco
     });
 
-    it('febrero no se acorta: el ciclo lo marca el día de pago, no el calendario', () => {
-      // Antes esto devolvía '2026-02-28' porque era el último día del mes. Ahora el 28 sale
-      // del día de pago, y con día 10 el ciclo termina el 10 aunque sea febrero.
-      const p = svc.periodoServicio(politica(), new Date(Date.UTC(2026, 1, 10)));
-      expect(p).toMatchObject({ inicio: '2026-01-11', fin: '2026-02-10' });
+    it('febrero no acorta el ciclo de quien no está anclado a fin de mes', () => {
+      // Con anclaje 10, febrero cierra el 10 como cualquier otro mes: el ciclo lo marca el
+      // día de pago, no el calendario. Antes de que el periodo fuera el ciclo del abonado,
+      // esto devolvía '2026-02-01 → 2026-02-28'.
+      const dia10 = politica({ diaPago: 10 });
+      expect(svc.periodoServicio(dia10, new Date(Date.UTC(2026, 1, 10))))
+        .toMatchObject({ inicio: '2026-01-11', fin: '2026-02-10' });
 
-      // Y el bisiesto deja de importar. `diaPago` está acotado a 28 (`DIA_PAGO_MAXIMO`),
-      // así que el día 28 existe en los doce meses de cualquier año y el ciclo nunca tiene
-      // que decidir qué hacer con un 30 o un 31 que no existe.
-      expect(svc.periodoServicio(politica(), new Date(Date.UTC(2028, 1, 28))))
-        .toMatchObject({ inicio: '2028-01-29', fin: '2028-02-28' });
+      // Y a quien SÍ está anclado a fin de mes, febrero se lo recorta — pero solo ese mes.
+      const dia31 = politica({ diaPago: 31 });
+      expect(svc.periodoServicio(dia31, new Date(Date.UTC(2028, 1, 29))))
+        .toMatchObject({ inicio: '2028-02-01', fin: '2028-02-29' }); // bisiesto
+      expect(svc.periodoServicio(dia31, new Date(Date.UTC(2028, 2, 31))))
+        .toMatchObject({ inicio: '2028-03-01', fin: '2028-03-31' }); // y vuelve al 31
     });
 
     it('prepago en diciembre cruza de año', () => {

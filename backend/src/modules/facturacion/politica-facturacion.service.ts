@@ -34,8 +34,54 @@ import { DataSource } from 'typeorm';
  * `fecha_vencimiento` que la factura lleva grabado, nunca recalculándolo.
  */
 
-/** Día máximo admitido: el único que existe en los doce meses del año. */
-export const DIA_PAGO_MAXIMO = 28;
+/**
+ * Día máximo admitido como **anclaje** de facturación.
+ *
+ * Hasta el 2026-08-09 esto valía **28**, «el único que existe en los doce meses del año»:
+ * el problema de febrero se evitaba **prohibiendo** los días que no siempre existen. Es una
+ * decisión tomada desde el estado, no desde el modelo — y le niega al operador los tres días
+ * de cierre más usados en tarifa plana, el 30 incluido (POL-001 **PD-13**).
+ *
+ * Se adopta el patrón del sector: **anclaje de ciclo con recorte a fin de mes**. Stripe lo
+ * documenta con este ejemplo textual:
+ *
+ * > *«A monthly subscription with a billing cycle anchor date of January 31 bills the last
+ * > day of the month closest to the anchor date, so February 28 (or February 29 in a leap
+ * > year), then March 31, April 30, and so on.»*
+ *
+ * **El anclaje NO se toca nunca; solo se recorta la materialización.** Es la parte que se
+ * hace mal: si tras cobrar el 28 de febrero se guardara «28» como nuevo día de pago, el
+ * abonado se quedaría en 28 **para siempre** y el ciclo habría derivado sin que nadie lo
+ * decidiera. Por eso toda fecha se deriva de `politica.diaPago` —el anclaje— y jamás de la
+ * fecha recortada anterior.
+ */
+export const DIA_ANCLAJE_MAXIMO = 31;
+
+/**
+ * @deprecated Nombre anterior, conservado para no romper importaciones.
+ * El tope real es {@link DIA_ANCLAJE_MAXIMO}, y ya no es «el día máximo que existe en todos
+ * los meses» sino «el anclaje máximo», que es otra cosa.
+ */
+export const DIA_PAGO_MAXIMO = DIA_ANCLAJE_MAXIMO;
+
+/** Días reales de un mes (`mes` en base 1). Día 0 del siguiente = último de este. */
+export const diasDelMes = (anio: number, mes: number): number =>
+  new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+
+/**
+ * Materializa el anclaje en un mes concreto, recortándolo si ese día no existe.
+ *
+ * **Toda fecha del ciclo pasa por aquí, y no es una comodidad: es una corrección.** La
+ * aritmética ingenua de meses en JavaScript **desborda en silencio**:
+ *
+ *     new Date(Date.UTC(2026, 0 + 1, 31))   // 31 de enero + 1 mes  →  3 de MARZO
+ *
+ * Con el anclaje topado en 28 eso nunca se disparaba y el código funcionaba **por
+ * accidente**. Al abrirlo a 31 habría empezado a producir vencimientos y periodos en el mes
+ * equivocado, sin error y sin que ningún test lo notara.
+ */
+export const anclaEnMes = (anio: number, mes: number, anclaje: number): Date =>
+  new Date(Date.UTC(anio, mes - 1, Math.min(anclaje, diasDelMes(anio, mes))));
 
 export interface PoliticaFacturacion {
   /**
@@ -43,7 +89,11 @@ export interface PoliticaFacturacion {
    * cobra el que ya consumió. Decide qué mes de servicio ampara el comprobante.
    */
   tipo: 'prepago' | 'postpago';
-  /** Día del mes en que vence la factura (1..28). */
+  /**
+   * **Anclaje** del ciclo: día del mes en que vence la factura (1..31). No es una fecha —
+   * es el día al que el abonado está anclado. Se recorta a fin de mes al materializarlo
+   * (`anclaEnMes`) y el anclaje en sí no cambia nunca.
+   */
   diaPago: number;
   /** Días antes del vencimiento en que se emite. `null` = no emitir automáticamente. */
   diasAntesEmision: number | null;
@@ -226,9 +276,12 @@ export class PoliticaFacturacionService {
     // hay ciclo que aplicar y se hereda todo, como antes de que esta pantalla existiera.
     const tieneConfigPropia = diaPagoCfg !== null;
 
+    // El ANCLAJE se guarda tal cual (1..31); el recorte a fin de mes ocurre al materializar
+    // cada fecha, no aquí. Guardarlo ya recortado haría derivar el ciclo: un abonado
+    // anclado en 31 se quedaría en 28 después del primer febrero.
     const diaPago = Math.min(
       Math.max(diaPagoCfg ?? fila?.dia_facturacion ?? 1, 1),
-      DIA_PAGO_MAXIMO,
+      DIA_ANCLAJE_MAXIMO,
     );
 
     return {
@@ -270,11 +323,27 @@ export class PoliticaFacturacionService {
    * factura al emitirla, y el ancla de la que cuelgan la emisión y el corte.
    */
   proximoVencimiento(politica: PoliticaFacturacion, desde: Date): Date {
-    const venc = new Date(Date.UTC(
-      desde.getUTCFullYear(), desde.getUTCMonth(), politica.diaPago,
-    ));
-    if (venc < this.soloFecha(desde)) venc.setUTCMonth(venc.getUTCMonth() + 1);
-    return venc;
+    // Se materializa el ANCLAJE en el mes de `desde`, recortado a fin de mes si ese día no
+    // existe. Si ya pasó, el del mes siguiente — recortado otra vez **desde el anclaje**,
+    // nunca desplazando la fecha recortada anterior: así un abonado anclado en 31 vence el
+    // 28 de febrero y **vuelve al 31 en marzo**, en vez de quedarse en 28 para siempre.
+    const anio = desde.getUTCFullYear();
+    const mes  = desde.getUTCMonth() + 1;
+
+    const esteMes = anclaEnMes(anio, mes, politica.diaPago);
+    if (esteMes >= this.soloFecha(desde)) return esteMes;
+
+    return mes === 12
+      ? anclaEnMes(anio + 1, 1, politica.diaPago)
+      : anclaEnMes(anio, mes + 1, politica.diaPago);
+  }
+
+  /** El anclaje materializado en el mes anterior o siguiente al de `fecha`. */
+  private anclaDesplazada(politica: PoliticaFacturacion, fecha: Date, meses: 1 | -1): Date {
+    // Se navega al mes con día 1 —que existe siempre— y solo después se materializa el
+    // anclaje. Hacerlo al revés es el desbordamiento que documenta `anclaEnMes`.
+    const bruto = new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + meses, 1));
+    return anclaEnMes(bruto.getUTCFullYear(), bruto.getUTCMonth() + 1, politica.diaPago);
   }
 
   /** Fecha de corte de una factura: su vencimiento más los días de gracia. */
@@ -312,22 +381,33 @@ export class PoliticaFacturacionService {
    * contradecía el resto del módulo — todo lo demás (emisión, vencimiento, corte) ya salía
    * de SU día de pago, y solo el periodo seguía anclado al calendario.
    *
-   * `diaPago` está acotado a 28 (`DIA_PAGO_MAXIMO`), así que el ciclo existe todos los
-   * meses y no hay que decidir qué hacer con un día 31 en febrero.
+   * Los extremos se materializan **desde el anclaje** (`anclaEnMes`), no desplazando la
+   * fecha de vencimiento: con anclaje 31, el ciclo que cierra el 28 de febrero abrió el 1
+   * de febrero —día siguiente al 31 de enero— y el que abre ahí cierra el 31 de marzo.
+   * Desplazar «un mes» sobre la fecha ya recortada haría derivar el ciclo mes a mes.
    */
   periodoServicio(
     politica: PoliticaFacturacion,
     vencimiento: Date,
   ): { inicio: string; fin: string; mes: number; anio: number } {
-    // Prepago: el ciclo EMPIEZA en el vencimiento y termina en el siguiente.
-    // Postpago: el ciclo TERMINA en el vencimiento y empezó en el anterior.
+    // El vencimiento se NORMALIZA al anclaje de su propio mes antes de nada. En producción
+    // siempre llega ya materializado por `proximoVencimiento`, pero sin esta línea la
+    // función tendría una precondición tácita —«el día de `vencimiento` es el anclaje»— y
+    // devolvería un periodo incoherente en cuanto alguien la llamara con otra fecha: un
+    // extremo derivado del anclaje y el otro del día que se pasó. Lo detectó un test.
+    const cierre = anclaEnMes(
+      vencimiento.getUTCFullYear(), vencimiento.getUTCMonth() + 1, politica.diaPago,
+    );
+
+    // Prepago: el ciclo EMPIEZA en el cierre y termina en el siguiente.
+    // Postpago: el ciclo TERMINA en el cierre y empezó en el anterior.
     const finCiclo = politica.tipo === 'prepago'
-      ? this.mismoDiaMesSiguiente(vencimiento)
-      : new Date(vencimiento.getTime());
+      ? this.anclaDesplazada(politica, cierre, 1)
+      : new Date(cierre.getTime());
 
     const inicioCiclo = politica.tipo === 'prepago'
-      ? new Date(vencimiento.getTime())
-      : this.mismoDiaMesAnterior(vencimiento);
+      ? new Date(cierre.getTime())
+      : this.anclaDesplazada(politica, cierre, -1);
 
     // El día del pago pertenece al ciclo que se cierra, no al que abre: el periodo empieza
     // al día siguiente. Sin esto, dos comprobantes consecutivos se solaparían un día.
@@ -344,13 +424,11 @@ export class PoliticaFacturacionService {
     };
   }
 
-  private mismoDiaMesSiguiente(d: Date): Date {
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()));
-  }
-
-  private mismoDiaMesAnterior(d: Date): Date {
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, d.getUTCDate()));
-  }
+  // Aquí había un `mismoDiaMesSiguiente` / `mismoDiaMesAnterior` que hacían
+  // `Date.UTC(año, mes ± 1, día)`. **Se borraron: desbordan en silencio.** El 31 de enero
+  // más un mes da el 3 de MARZO, porque JavaScript normaliza el día 31 de un mes de 28.
+  // Con el anclaje topado en 28 nunca se disparaba y funcionaban por accidente.
+  // Los reemplaza `anclaDesplazada`, que navega al mes con día 1 y materializa el ANCLAJE.
 
   /** `YYYY-MM-DD` — el formato en que viajan las fechas a Postgres y al frontend. */
   aIso(fecha: Date): string {

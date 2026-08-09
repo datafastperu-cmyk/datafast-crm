@@ -28,7 +28,23 @@ const DEF_NOTIF: NotificacionesConfig = {
 };
 
 // ── Opciones ──────────────────────────────────────────────────────
-const DIAS_MES = Array.from({ length: 28 }, (_, i) => String(i + 1).padStart(2, '0'));
+// 1..31 — es un ANCLAJE de ciclo, no una fecha. El backend lo recorta al último día real
+// del mes cuando ese día no existe (el 31 vence el 28 de febrero) y vuelve al 31 en marzo,
+// sin que el anclaje del abonado cambie. Antes llegaba solo a 28, que evitaba el problema
+// de febrero prohibiendo los tres días de cierre más usados en tarifa plana.
+const DIAS_MES = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
+
+/**
+ * Materializa el anclaje en un mes, recortándolo si no existe ese día.
+ *
+ * **Sin esto la previsualización miente.** `new Date(2026, 1, 31)` —31 de febrero— es el
+ * **3 de marzo** en JavaScript, así que al operador se le mostraría una fecha de pago en
+ * otro mes. Misma corrección que `anclaEnMes` en el backend, que es quien decide de verdad.
+ */
+function anclaEnMes(anio: number, mes: number, anclaje: number): Date {
+  const ultimo = new Date(anio, mes + 1, 0).getDate();
+  return new Date(anio, mes, Math.min(anclaje, ultimo));
+}
 
 const CREAR_FACTURA_OPTS = [
   { value: 'desactivado', label: 'Desactivado' },
@@ -110,8 +126,9 @@ export function calcularFechas(diaPago: string, crearFactura: string, diasGracia
   const hoy = new Date();
   const dia = parseInt(diaPago, 10) || 1;
 
-  let pago = new Date(hoy.getFullYear(), hoy.getMonth(), dia);
-  if (pago <= hoy) pago = new Date(hoy.getFullYear(), hoy.getMonth() + 1, dia);
+  // El anclaje se materializa recortado; sin esto el dia 31 en febrero saltaria a marzo.
+  let pago = anclaEnMes(hoy.getFullYear(), hoy.getMonth(), dia);
+  if (pago <= hoy) pago = anclaEnMes(hoy.getFullYear(), hoy.getMonth() + 1, dia);
 
   const fmt = (d: Date) =>
     d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -136,8 +153,9 @@ export function calcularFechaRecordatorio(diaPago: string, valor: string): strin
   if (valor === 'desactivado') return null;
   const hoy = new Date();
   const dia = parseInt(diaPago, 10) || 1;
-  let pago = new Date(hoy.getFullYear(), hoy.getMonth(), dia);
-  if (pago <= hoy) pago = new Date(hoy.getFullYear(), hoy.getMonth() + 1, dia);
+  // El anclaje se materializa recortado; sin esto el dia 31 en febrero saltaria a marzo.
+  let pago = anclaEnMes(hoy.getFullYear(), hoy.getMonth(), dia);
+  if (pago <= hoy) pago = anclaEnMes(hoy.getFullYear(), hoy.getMonth() + 1, dia);
   const offset = parseInt(valor, 10);
   if (isNaN(offset)) return null;
   const fecha = new Date(pago.getTime() + offset * 86400000);

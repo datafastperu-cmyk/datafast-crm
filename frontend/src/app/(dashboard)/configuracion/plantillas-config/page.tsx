@@ -27,7 +27,8 @@ const DEFAULT_NOTIFICACIONES: NotificacionesConfig = {
 };
 
 // ─── Opciones ─────────────────────────────────────────────────────
-const DIAS_MES = Array.from({ length: 28 }, (_, i) => String(i + 1).padStart(2, '0'));
+// 1..31 — ANCLAJE de ciclo, no fecha. El backend lo recorta a fin de mes (`anclaEnMes`).
+const DIAS_MES = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
 
 const CREAR_FACTURA_OPTS = [
   { value: 'desactivado', label: 'Desactivado' },
