@@ -426,7 +426,7 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
-### 32. H-10 · Hay DOS generadores de facturas vivos, y las correcciones fueron a uno
+### ~~32~~. H-10 · Dos generadores de facturas — **RESUELTO 2026-08-09**
 
 **Encontrado el 2026-08-09 cableando la fase 4.2a.** Es el hallazgo con más alcance de la sesión y
 **bloquea la fase 4.2b**.
@@ -455,7 +455,43 @@ inmediato y **no decide cuál de los dos generadores es el bueno**.
 Es una violación de «reutilizar antes de construir» que lleva tiempo ahí: dos caminos al mismo
 resultado que ya han divergido. Hay que quedarse con uno.
 
-**Recomendación: el generador de `FacturacionService`**, y retirar el del worker. Es el que tiene
+**Decisión del propietario (2026-08-09), y ejecutada:** `FacturacionService` queda como **único
+componente autorizado** para determinar y generar facturas. El worker **sigue existiendo como
+mecanismo de ejecución** —cola, reintentos, concurrencia— pero sin reglas propias de elegibilidad,
+periodo, prorrateo, agrupación ni idempotencia.
+
+> No se mantendrán dos implementaciones de la política de facturación para lograr el mismo resultado.
+
+**Lo ejecutado:** el disparo automático por `servicios.dia_facturacion` desaparece, y las ~320
+líneas del job pasan a delegar en `generarMensual` —el mismo patrón que
+`processGenerarFacturaIndividual` ya usaba veinte líneas más abajo—. El botón manual del operador
+sigue funcionando. `forzar` NO se traslada: era la puerta para esquivar la idempotencia, y darle
+una a la autoridad única sería devolverle al worker una regla propia por detrás.
+
+**Comprobado antes de retirar, porque retirar a ciegas era el riesgo:**
+
+- El generador que sobrevive **sí está programado** (cron diario → `generar-mensual` →
+  `generarFacturasDelDia`). Borrar el otro no deja al ERP sin facturar.
+- El aviso al abonado **no se pierde**: `FacturacionService` emite `FACTURA_EMITIDA` igual, y mejor
+  —respeta las preferencias y la plantilla del cliente—.
+- `facturacion.generacion.completada` **no lo escuchaba nadie**.
+
+**Y la arqueología cierra el caso:** el worker correcto lleva escrito en un comentario por qué
+existe — *«con el disparo por `dia_facturacion`, un cliente configurado para vencer el 28 se
+facturaba igual el día 1»*. El camino nuevo se escribió PORQUE el viejo estaba mal, y el viejo
+nunca se retiró. Esto no eligió entre dos diseños: terminó una migración a medias.
+
+**Consecuencia anotada:** `servicios.dia_facturacion` queda **inerte**. Ya mentía — los dos
+servicios vivos lo tienen en 1 mientras su día de pago es 28.
+
+**Barrera:** `facturacion/una-sola-autoridad.spec.ts` (4). Falla si alguien vuelve a enumerar
+candidatos a facturar fuera del módulo, si inserta comprobantes desde otro sitio, si el worker
+recupera criterio propio, o si `dia_facturacion` vuelve a decidir cuándo facturar. Comprobada:
+reintroducir un `INSERT INTO facturas` en el controller de workers la hace fallar.
+
+---
+
+~~**Recomendación: el generador de `FacturacionService`**, y retirar el del worker. Es el que tiene
 la política del abonado, el prorrateo y las barreras; el del worker es el que quedó atrás dos veces
 —primero con el tipo de comprobante (incidente 2026-08-04) y ahora con todo el bloque del dinero—.
 

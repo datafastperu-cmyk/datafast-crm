@@ -456,98 +456,48 @@ describe('FacturacionWorker', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  describe('processGenerarFacturasEmpresa()', () => {
-    it('debe generar factura correctamente con IGV', async () => {
-      const job = createMockJob({
-        empresaId: 'emp-001', mes: 1, anio: 2024, forzar: false,
-      });
+  describe('processGenerarFacturasEmpresa() — H-10: delega, no interpreta', () => {
+    // Este job tenia ~320 lineas con SQL propio, su propio criterio de elegibilidad
+    // (`estado = activo`, sin dias entregados), su propio periodo (mes de calendario) y su
+    // propia idempotencia. Era la SEGUNDA autoridad sobre la misma decision de negocio.
+    //
+    // Habia divergido dos veces —el tipo de comprobante el 04/08 y todo el bloque del dinero
+    // el 08-09/08— y estuvo a punto de emitir un comprobante duplicado el 1 de septiembre.
+    // Los tests que vivian aqui comprobaban SU calculo del IGV, SU idempotencia y SUS eventos:
+    // sostenian la duplicidad en vez de delatarla.
+    //
+    // Lo que queda por comprobar es lo unico que debe ser cierto: que llama a la autoridad.
+
+    it('delega en FacturacionService en vez de generar por su cuenta', async () => {
+      const job = createMockJob({ empresaId: 108, mes: 1, anio: 2024 });
+
+      await worker.processGenerarFacturasEmpresa(job as any);
+
+      expect(mockFacturacionSvc.generarMensual).toHaveBeenCalledWith(
+        { mes: 1, anio: 2024 },
+        expect.objectContaining({ sub: 'sistema' }),
+      );
+    });
+
+    it('no traslada `forzar`: saltarse la idempotencia era una regla propia del worker', async () => {
+      // Darle una puerta para esquivar la comprobacion de la autoridad seria devolverle una
+      // regla propia por la puerta de atras.
+      const job = createMockJob({ empresaId: 108, mes: 1, anio: 2024, forzar: true });
+
+      await worker.processGenerarFacturasEmpresa(job as any);
+
+      const dto = mockFacturacionSvc.generarMensual.mock.calls.at(-1)[0];
+      expect(dto).not.toHaveProperty('forzar');
+    });
+
+    it('devuelve el resultado de la autoridad, no uno calculado aqui', async () => {
+      const job = createMockJob({ empresaId: 108, mes: 1, anio: 2024 });
 
       const result = await worker.processGenerarFacturasEmpresa(job as any);
 
       expect(result.exitosas).toBe(1);
-      expect(result.errores).toBe(0);
-      expect(result.montoTotal).toBeGreaterThan(0);
-    });
-
-    it('debe omitir contrato si ya fue facturado en el periodo', async () => {
-      // Mismo mock por patrón que el resto, salvo que la comprobación de duplicado SÍ
-      // encuentra una factura del periodo. Es la protección contra la doble facturación:
-      // si el cron se ejecuta dos veces (reintento, dos instancias PM2), el cliente no
-      // puede recibir dos facturas del mismo mes.
-      const dsMockConDuplicado = jest.fn(async (sql: string) => {
-        const s = String(sql);
-        if (/FROM\s+empresas/i.test(s))                  return [mockEmpresa];
-        if (/FROM\s+configuracion_facturacion/i.test(s)) return [{ igv_rate: '0.18' }];
-        if (/FROM\s+comprobantes_config/i.test(s))       return [{ serie: 'B001' }];
-        if (/FROM\s+servicios\b/i.test(s))               return [mockContratoFactura];
-        if (/AS\s+siguiente|nextval/i.test(s))           return [{ siguiente: '1' }];
-        if (/FROM\s+facturas/i.test(s))                  return [{ id: 'fac-existe' }];
-        return [];
-      });
-
-      const m = await Test.createTestingModule({
-        providers: [
-          FacturacionWorker,
-          { provide: FacturacionService, useValue: mockFacturacionSvc },
-        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
-        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
-          { provide: AuditoriaService,   useValue: mockAuditoria },
-        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
-        { provide: RedisLockService,   useValue: {
-          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
-          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
-          // sin ninguna llamada al hardware.
-          withLock: jest.fn(async (...args: any[]) => {
-            const fn = args.find((a) => typeof a === 'function');
-            return fn ? fn() : undefined;
-          }),
-          adquirir: jest.fn(), liberar: jest.fn(),
-        } },
-        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
-        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
-          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
-          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
-          // reactivación se rechaza siempre.
-          reactivarServicio:   jest.fn().mockResolvedValue(true),
-          suspenderServicio:   jest.fn().mockResolvedValue(true),
-          provisionarServicio: jest.fn().mockResolvedValue(true),
-        } },
-          { provide: EventEmitter2,      useValue: mockEvents },
-          { provide: getDataSourceToken(), useValue: { query: dsMockConDuplicado } },
-        ],
-      }).compile();
-      const w = m.get<FacturacionWorker>(FacturacionWorker);
-
-      const result = await w.processGenerarFacturasEmpresa(
-        createMockJob({ empresaId: 'emp-001', mes: 1, anio: 2024, forzar: false }) as any,
-      );
-
-      expect(result.omitidas).toBe(1);
-      expect(result.exitosas).toBe(0);
-    });
-
-    it('emite el aviso de factura emitida (no llama al gateway directamente)', async () => {
-      // Igual que cobranza: el worker EMITE `notification.factura.emitida` y quien
-      // entrega el mensaje se suscribe. Facturar no puede quedar acoplado a que WhatsApp
-      // esté disponible — una factura tiene que emitirse aunque no se pueda avisar.
-      const job = createMockJob({ empresaId: 'emp-001', mes: 1, anio: 2024, forzar: false });
-      await worker.processGenerarFacturasEmpresa(job as any);
-
-      expect(mockEvents.emit).toHaveBeenCalledWith(
-        'notification.factura.emitida',
-        expect.anything(),
-      );
-    });
-
-    it('debe emitir evento al completar generación', async () => {
-      const job = createMockJob({ empresaId: 'emp-001', mes: 1, anio: 2024, forzar: false });
-      await worker.processGenerarFacturasEmpresa(job as any);
-      expect(mockEvents.emit).toHaveBeenCalledWith(
-        'facturacion.generacion.completada',
-        expect.objectContaining({ empresaId: 'emp-001', mes: 1, anio: 2024 }),
-      );
+      expect(result.mes).toBe(1);
+      expect(result.anio).toBe(2024);
     });
   });
 

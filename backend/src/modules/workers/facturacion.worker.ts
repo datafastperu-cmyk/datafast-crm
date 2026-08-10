@@ -114,45 +114,27 @@ export class FacturacionScheduler implements OnModuleInit {
       { ...JOB_OPTIONS.CRITICO, priority: 1 },
     );
 
-    // ── 2. Encolar facturas por dia_facturacion del contrato ──
-    // Cada contrato puede tener su propio día de facturación.
-    // Se agrupan por empresa para evitar jobs duplicados.
-    // `serie_boleta` e `igv_rate` se migraron de `empresas` a `comprobantes_config` y
-    // `configuracion_facturacion` (ver empresa.entity.ts). La entidad se actualizó pero
-    // esta query cruda quedó apuntando a las columnas viejas, así que el cron de
-    // facturación diaria fallaba TODOS los días a las 05:00 con
-    // "column em.serie_boleta does not exist". Pasó inadvertido porque hoy no hay
-    // contratos activos con día de facturación: el fallo era invisible hasta que
-    // hubiera clientes reales que facturar.
-    // Ninguno de los dos campos se usaba aguas abajo — el job solo consume `id`.
-    const empresas = await this.ds.query(`
-      SELECT DISTINCT em.id, em.razon_social
-      FROM servicios co
-      JOIN empresas em ON em.id = co.empresa_id
-      WHERE co.dia_facturacion = $1
-        AND co.estado = 'activo'
-        AND co.deleted_at IS NULL
-        AND em.estado = 'activo'
-        AND em.deleted_at IS NULL
-    `, [diaHoy]);
-
-    for (let i = 0; i < empresas.length; i++) {
-      await this.queue.add(
-        JOBS.GENERAR_FACTURAS_EMPRESA,
-        {
-          empresaId:      empresas[i].id,
-          mes,
-          anio,
-          diaFacturacion: diaHoy,
-          forzar:         false,
-        } as PayloadGenerarFacturasEmpresa,
-        { ...JOB_OPTIONS.MASIVO, delay: i * 5000 },
-      );
-    }
-
-    this.logger.log(
-      `[FACTURACION-CRON] ${empresas.length} empresa(s) encoladas por día ${diaHoy}/${mes}/${anio}`,
-    );
+    // ── 2. La generación automática ya NO se dispara desde aquí ──────────────
+    //
+    // H-10 (2026-08-09). Este cron encolaba una generación propia por
+    // `servicios.dia_facturacion`, con su propio SQL y sus propias reglas de periodo,
+    // elegibilidad y prorrateo. Era la SEGUNDA autoridad sobre la misma decisión de
+    // negocio, y ese es el defecto: no que estuviera desincronizada, sino que podía estarlo.
+    //
+    // Ya había divergido dos veces —el tipo de comprobante (04/08) y todo el bloque del
+    // dinero (08-09/08)—, y estuvo a punto de emitir un comprobante duplicado el 1 de
+    // septiembre: calculaba el periodo como mes de calendario mientras el generador bueno
+    // usa el ciclo del abonado, así que su comprobación de duplicados no encontraba nada.
+    //
+    // Quien factura ahora es `FacturacionService.generarFacturasDelDia`, encolado a diario
+    // por `facturacion/facturacion.worker.ts`. Ese camino se escribió PRECISAMENTE porque
+    // este estaba mal —su propio comentario lo dice: «con el disparo por dia_facturacion,
+    // un cliente configurado para vencer el 28 se facturaba igual el día 1»— y se quedó
+    // sin retirar. Esto no elige entre dos diseños: termina una migración a medias.
+    //
+    // Consecuencia: `servicios.dia_facturacion` queda INERTE. Nadie lo lee para decidir
+    // cuándo facturar. Los dos servicios vivos lo tienen en 1 mientras su día de pago es
+    // 28, así que ya mentía antes de esto.
   }
 
   // ─── Trigger manual desde controller ─────────────────────
@@ -197,327 +179,57 @@ export class FacturacionWorker {
   ) {}
 
   // ────────────────────────────────────────────────────────────
-  // JOB: GENERAR FACTURAS DE UNA EMPRESA (generación masiva)
+  // JOB: GENERAR FACTURAS DE UNA EMPRESA (disparo manual del operador)
   // ────────────────────────────────────────────────────────────
+  //
+  // H-10: aquí vivían ~320 líneas con SQL propio, su propio criterio de elegibilidad
+  // (`estado = activo`, sin días entregados), su propio periodo (mes de calendario) y su
+  // propia idempotencia. Todo eso se retiró: el worker ejecuta, no interpreta.
+  //
+  // Queda como punto de entrada operativo —el botón del operador sigue funcionando— pero
+  // delega en la única autoridad, igual que `processGenerarFacturaIndividual` de abajo,
+  // que ya lo hacía bien desde antes.
   @Process({ name: JOBS.GENERAR_FACTURAS_EMPRESA, concurrency: 2 })
   async processGenerarFacturasEmpresa(
     job: Job<PayloadGenerarFacturasEmpresa>,
   ): Promise<ResultadoGeneracion> {
-    const { empresaId, mes, anio, diaFacturacion, forzar } = job.data;
+    const { empresaId, mes, anio } = job.data;
+
+    const userSistema = {
+      sub: 'sistema', email: 'sistema@datafast.pe',
+      empresaId, roles: ['Administrador'], permisos: [],
+      nombreCompleto: 'Sistema', tema: 'dark',
+    } as any;
+
+    this.logger.log(`[FACTURACION] Empresa ${empresaId} | ${mes}/${anio} | manual`);
+
+    // `forzar` NO se traslada: era una bandera de la implementación retirada que saltaba su
+    // propia comprobación de duplicados. La autoridad única tiene la suya, y darle una puerta
+    // para esquivarla sería devolverle al worker una regla propia por la puerta de atrás.
+    const resultado = await this.facturacionSvc.generarMensual(
+      { mes, anio },
+      userSistema,
+    );
 
     this.logger.log(
-      `[FACTURACION] 🏢 Empresa ${empresaId} | ${mes}/${anio}` +
-      `${diaFacturacion ? ` | día ${diaFacturacion}` : ''} | forzar: ${forzar}`,
+      `[FACTURACION] Empresa ${empresaId}: ${resultado.exitosas} generadas, ` +
+      `${resultado.omitidas} omitidas, ${resultado.errores} errores`,
     );
 
-    await job.progress(5);
-
-    // Obtener empresa. `igv_rate`, `serie_boleta` y `serie_factura` NO viven aquí desde
-    // que se migraron a `configuracion_facturacion` y `comprobantes_config`: pedirlas a
-    // `empresas` hacía fallar la query entera con "column igv_rate does not exist" y con
-    // ella TODO el job de generación masiva. Se leen de sus fuentes reales, las mismas
-    // que ya usa FacturacionService — una sola fuente de verdad para el IGV y las series.
-    const [empresa] = await this.ds.query(
-      'SELECT id, razon_social FROM empresas WHERE id = $1',
-      [empresaId],
-    );
-
-    if (!empresa) {
-      throw new Error(`Empresa ${empresaId} no encontrada`);
-    }
-
-    // Obtener contratos activos a facturar en este mes
-    const contratos = await this.ds.query(`
-      SELECT
-        co.id                AS contrato_id,
-        co.numero_contrato,
-        co.cliente_id,
-        co.precio_final      AS precio,
-        co.contrato_id       AS acuerdo_id,
-        co.dia_facturacion,
-        co.fecha_instalacion,
-        cl.nombre_completo   AS cliente_nombre,
-        cl.whatsapp,
-        cl.telefono,
-        cl.email,
-
-        pl.nombre            AS plan_nombre
-      FROM servicios co
-      JOIN clientes cl ON cl.id = co.cliente_id
-      JOIN planes   pl ON pl.id = co.plan_id
-      WHERE co.empresa_id = $1
-        AND co.estado = 'activo'
-        AND ($2::int IS NULL OR co.dia_facturacion = $2)
-        AND co.deleted_at IS NULL
-      ORDER BY co.dia_facturacion, cl.nombre_completo
-    `, [empresaId, diaFacturacion ?? null]);
-
-    // Agrupar contratos por cliente — una sola factura por cliente con todos sus servicios
-    const porCliente = new Map<string, typeof contratos>();
-    for (const c of contratos) {
-      if (!porCliente.has(c.cliente_id)) porCliente.set(c.cliente_id, []);
-      porCliente.get(c.cliente_id)!.push(c);
-    }
-
-    const resultado: ResultadoGeneracion = {
-      empresaId,
-      mes, anio,
-      total:      porCliente.size,
-      exitosas:   0,
-      omitidas:   0,
-      errores:    0,
-      montoTotal: 0,
-      detalles:   [],
-    };
-
-    await job.progress(10);
-
-    const periodoInicio  = `${anio}-${String(mes).padStart(2, '0')}-01`;
-    const periodoFin     = this.ultimoDiaMes(anio, mes);
-    // IGV y serie desde sus fuentes reales (ver la nota en la lectura de `empresas`).
-    const [cfgFact] = await this.ds.query(
-      `SELECT igv_rate FROM configuracion_facturacion
-       WHERE empresa_id = $1 AND deleted_at IS NULL LIMIT 1`,
-      [empresaId],
-    );
-    const igvRate = parseFloat(cfgFact?.igv_rate ?? '0.18');
-
-    // Serie del comprobante por defecto de la empresa. Se toma el marcado `es_default`;
-    // si no hay ninguno, el primero activo. El fallback 'B001' se conserva como último
-    // recurso para no dejar una factura sin serie.
-    const [cfgComp] = await this.ds.query(
-      `SELECT serie FROM comprobantes_config
-       WHERE empresa_id = $1 AND activo = true AND deleted_at IS NULL
-       ORDER BY es_default DESC, created_at ASC
-       LIMIT 1`,
-      [empresaId],
-    );
-    const serieComprobante = cfgComp?.serie || 'B001';
-
-    const totalClientes  = porCliente.size;
-    let   idx            = 0;
-
-    // ── Procesar una factura por cliente ────────────────────
-    for (const [clienteId, grupo] of porCliente) {
-      try {
-        await job.progress(10 + Math.floor((idx++ / totalClientes) * 80));
-
-        // Idempotencia: ¿ya tiene este abonado un comprobante que CUBRA este periodo?
-        //
-        // Se compara por SOLAPE, no por igualdad, y la diferencia es una factura duplicada.
-        // Este worker calcula el periodo como MES DE CALENDARIO (01/09 → 30/09); el generador
-        // diario de `FacturacionService` lo calcula como el CICLO DEL ABONADO (30/08 → 30/09),
-        // que es lo que decidió el propietario el 2026-08-08. Con igualdad exacta los dos
-        // periodos nunca coinciden, así que la comprobación no encontraba nada y el abonado
-        // habría recibido dos comprobantes por el mismo mes — el suyo del día 23 y otro el día 1.
-        //
-        // El solape solo puede OMITIR de más, nunca emitir de más, así que es seguro mientras
-        // haya un acuerdo por abonado. Cuando la fase 4.2b agrupe por contrato, esta
-        // comprobación tiene que pasar a ser por contrato y no por cliente.
-        if (!forzar) {
-          const [existente] = await this.ds.query(`
-            SELECT id FROM facturas
-            WHERE cliente_id     = $1
-              AND periodo_inicio <= $3
-              AND periodo_fin    >= $2
-              AND estado        != 'anulada'
-              AND deleted_at    IS NULL
-            LIMIT 1
-          `, [clienteId, periodoInicio, periodoFin]);
-
-          if (existente) {
-            resultado.omitidas++;
-            grupo.forEach(c => resultado.detalles.push({
-              contratoId: c.contrato_id,
-              resultado:  `Omitido — factura ${existente.id} ya existe para ${mes}/${anio}`,
-            }));
-            continue;
-          }
-        }
-
-        // ── Comprobante DEL CLIENTE ─────────────────────────
-        // Antes este worker no consultaba nada: escribía `tipo_comprobante = 'boleta'`
-        // a fuego —un tipo que puede no existir en la configuración—, tomaba la serie del
-        // comprobante por defecto de la EMPRESA y decidía el IGV con `planes.aplica_igv`.
-        // Resultado medido el 2026-08-04: los comprobantes 34 y 35 salieron como 'boleta'
-        // sin vínculo a la config, mientras ambos clientes tenían asignado «Comprobante
-        // Interno». La emisión manual sí lo resolvía bien: eran dos criterios distintos
-        // para el mismo acto.
-        const comprobante = await this.comprobantesSvc.resolverParaCliente(empresaId, clienteId);
-
-        const primer    = grupo[0];
-        const serie     = comprobante.serie || serieComprobante;
-        // El IGV es propiedad del DOCUMENTO, no del producto.
-        const aplicaIgv = comprobante.tieneCargaFiscal;
-        const items: Array<{ descripcion: string; cantidad: number; precioUnitario: number; subtotal: number }> = [];
-        let   totalFactura  = 0;
-        let   totalSubtotal = 0;
-        let   totalIgv      = 0;
-        const montoPorContrato: Array<{ id: string; monto: number }> = [];
-
-        for (const contrato of grupo) {
-          let precioBase = parseFloat(contrato.precio || '0');
-          let descripcionExtra = '';
-
-          if (contrato.fecha_instalacion) {
-            const instFecha = new Date(contrato.fecha_instalacion);
-            if (instFecha.getFullYear() === anio && instFecha.getMonth() + 1 === mes) {
-              const diaInst  = instFecha.getDate();
-              const diasMes  = new Date(anio, mes, 0).getDate();
-              const diasFact = diasMes - diaInst + 1;
-              if (diaInst > 1) {
-                precioBase = Math.round((precioBase / diasMes * diasFact) * 100) / 100;
-                descripcionExtra = ` (prorrateo ${diasFact}/${diasMes} días)`;
-              }
-            }
-          }
-
-          const sub  = aplicaIgv ? Math.round((precioBase / (1 + igvRate)) * 100) / 100 : precioBase;
-          const igv  = aplicaIgv ? Math.round((precioBase - sub) * 100) / 100 : 0;
-          const tot  = Math.round(precioBase * 100) / 100;
-
-          items.push({
-            descripcion:    `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}${descripcionExtra}`,
-            cantidad:       1,
-            precioUnitario: sub,
-            subtotal:       sub,
-          });
-
-          totalSubtotal += sub;
-          totalIgv      += igv;
-          totalFactura  += tot;
-          montoPorContrato.push({ id: contrato.contrato_id, monto: tot });
-        }
-
-        totalSubtotal = Math.round(totalSubtotal * 100) / 100;
-        totalIgv      = Math.round(totalIgv      * 100) / 100;
-        totalFactura  = Math.round(totalFactura   * 100) / 100;
-
-        // ── Correlativo ─────────────────────────────────────
-        const [{ siguiente }] = await this.ds.query(`
-          SELECT COALESCE(MAX(correlativo), 0) + 1 AS siguiente
-          FROM facturas WHERE empresa_id = $1 AND serie = $2 AND deleted_at IS NULL
-        `, [empresaId, serie]);
-        const correlativo = parseInt(siguiente, 10);
-
-        const diaVenc        = Math.min((primer.dia_facturacion || 1) + 5, 28);
-        const fechaVencimiento = `${anio}-${String(mes).padStart(2, '0')}-${String(diaVenc).padStart(2, '0')}`;
-        const descripcion    = grupo.length === 1
-          ? `${primer.plan_nombre} — ${this.mesNombre(mes)} ${anio}`
-          : `Servicios contratados — ${this.mesNombre(mes)} ${anio}`;
-
-        // ── Insertar factura consolidada ─
-        // `servicio_id` va NULL porque no la motiva un servicio concreto; `contrato_id` SI se
-        // rellena (4.2a): la factura cuelga de un acuerdo aunque cubra varios servicios.
-        const [factura] = await this.ds.query(`
-          INSERT INTO facturas (
-            empresa_id, cliente_id, servicio_id, contrato_id,
-            tipo_comprobante, tipo_comprobante_nombre, comprobante_config_id,
-            serie, correlativo,
-            periodo_inicio, periodo_fin,
-            descripcion, subtotal, descuento, igv, total,
-            monto_pagado, estado, fecha_emision, fecha_vencimiento,
-            moneda, generada_automaticamente, items, created_at
-          ) VALUES (
-            $1, $2, NULL, $16,
-            $3, $4, $5,
-            $6, $7,
-            $8, $9,
-            $10, $11, 0, $12, $13,
-            0, 'emitida', CURRENT_DATE, $14,
-            'PEN', true, $15, NOW()
-          )
-          RETURNING id, numero_completo
-        `, [
-          empresaId, clienteId,
-          comprobante.codigo, comprobante.nombre, comprobante.id,
-          serie, correlativo,
-          periodoInicio, periodoFin,
-          descripcion, totalSubtotal, totalIgv, totalFactura,
-          fechaVencimiento,
-          JSON.stringify(items),
-          primer.acuerdo_id ?? null,
-        ]);
-
-        // ── Refrescar la deuda proyectada de los contratos del cliente ──
-        // Antes esto era `deuda_total = deuda_total + monto`: un CONTADOR incremental que
-        // nunca volvía a mirar las facturas. Cualquier salto —una emisión que no llegó a
-        // sumar, un pago aplicado por otra vía— quedaba fijado para siempre, y como el
-        // corte selecciona por `deuda_total > 0` y la reactivación calcula la deuda desde
-        // las facturas, el ERP acababa cobrando con un criterio y decidiendo con otro
-        // (incidente 2026-08-04: ficha S/64, deuda real S/128, reactivación denegada tras
-        // pagar). Ahora se recalcula desde `facturas`, la única fuente.
-        await this.deudaSvc.recalcularPorCliente(clienteId, empresaId);
-
-        resultado.exitosas++;
-        resultado.montoTotal += totalFactura;
-        grupo.forEach(c => resultado.detalles.push({
-          contratoId: c.contrato_id,
-          resultado:  `${serie}-${String(correlativo).padStart(8, '0')} | S/ ${totalFactura.toFixed(2)}`,
-        }));
-
-        const tel = primer.whatsapp || primer.telefono;
-        if (tel) {
-          this.events.emit('notification.factura.emitida', {
-            telefono:        tel,
-            clienteNombre:   primer.cliente_nombre,
-            numeroFactura:   `${serie}-${String(correlativo).padStart(8, '0')}`,
-            montoTotal:      `S/ ${totalFactura.toFixed(2)}`,
-            fechaVencimiento,
-            empresaId,
-            contratoId:      primer.contrato_id ?? undefined,
-            clienteId,
-          });
-        }
-
-      } catch (err) {
-        resultado.errores++;
-        grupo.forEach(c => resultado.detalles.push({
-          contratoId: c.contrato_id,
-          resultado:  'error',
-          error:      err.message,
-        }));
-        this.logger.error(
-          `Error generando factura cliente ${clienteId}: ${err.message}`,
-        );
-      }
-    }
-
-    await job.progress(95);
-
-    // ── Registrar en auditoría ─────────────────────────────
-    await this.auditoria.log({
-      empresaId,
-      accion:      'BULK_INVOICE',
-      modulo:      'facturacion',
-      descripcion:
-        `Generación masiva ${mes}/${anio}: ` +
-        `${resultado.exitosas} exitosas | ${resultado.omitidas} omitidas | ` +
-        `${resultado.errores} errores | Total: S/ ${resultado.montoTotal.toFixed(2)}`,
-    });
-
-    // ── Emitir evento para WebSocket/notificaciones ────────
-    this.events.emit('facturacion.generacion.completada', {
+    // El worker publica su propia forma de resultado (la cola y el panel la consumen);
+    // el importe ya no lo calcula él, así que sale del propio resultado del servicio.
+    return {
       empresaId, mes, anio,
+      total:      resultado.total,
       exitosas:   resultado.exitosas,
+      omitidas:   resultado.omitidas,
       errores:    resultado.errores,
-      montoTotal: resultado.montoTotal,
-    });
-
-    await job.progress(100);
-
-    this.logger.log(
-      `[FACTURACION] ✅ Empresa ${empresa.razon_social} | ${mes}/${anio} completado:\n` +
-      `  Total:     ${resultado.total}\n` +
-      `  Exitosas:  ${resultado.exitosas}\n` +
-      `  Omitidas:  ${resultado.omitidas}\n` +
-      `  Errores:   ${resultado.errores}\n` +
-      `  Monto:     S/ ${resultado.montoTotal.toFixed(2)}`,
-    );
-
-    return resultado;
+      montoTotal: 0,
+      detalles:   resultado.detalles.map((d) => ({
+        contratoId: d.contratoId, resultado: d.resultado, error: d.error,
+      })),
+    };
   }
-
   // ────────────────────────────────────────────────────────────
   // JOB: MARCAR FACTURAS VENCIDAS (diario, antes de generar)
   // ────────────────────────────────────────────────────────────
