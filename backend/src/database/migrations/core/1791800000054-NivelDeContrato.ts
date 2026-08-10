@@ -23,6 +23,33 @@ export class NivelDeContrato1791800000054 implements MigrationInterface {
   name = 'NivelDeContrato1791800000054';
 
   public async up(q: QueryRunner): Promise<void> {
+    // ── Deuda de 3a: renombrar una tabla NO renombra sus índices ─────────────
+    //
+    // `servicios` seguía con doce índices llamados `idx_contratos_*` y su clave primaria
+    // `contratos_pkey`. Se descubrió aquí, y de la peor manera posible: al crear
+    // `idx_contratos_cliente` para la tabla nueva, PostgreSQL lo rechazó porque ese nombre ya
+    // existía —apuntando a `servicios`—. La migración falló entera y atómica, que es justo lo
+    // que se quiere de un fallo, pero deja la lección escrita: el renombrado de 3a estaba
+    // incompleto y nadie lo habría notado hasta que un nombre colisionara.
+    //
+    // Se hace en bucle y no a mano porque la lista depende del histórico de migraciones de cada
+    // instalación: enumerarla aquí sería adivinar qué índices tiene el servidor de al lado.
+    await q.query(`
+      DO $$
+      DECLARE r RECORD; nuevo TEXT;
+      BEGIN
+        FOR r IN SELECT indexname FROM pg_indexes
+                  WHERE tablename IN ('servicios', 'servicios_historial')
+                    AND indexname LIKE '%contrato%'
+        LOOP
+          nuevo := replace(r.indexname, 'contrato', 'servicio');
+          IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = nuevo) THEN
+            EXECUTE format('ALTER INDEX %I RENAME TO %I', r.indexname, nuevo);
+          END IF;
+        END LOOP;
+      END $$;
+    `);
+
     await q.query(`
       CREATE TABLE contratos (
         id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
