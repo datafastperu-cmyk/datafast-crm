@@ -322,6 +322,14 @@ días. El divisor solo aparece cuando hay que partir un ciclo.
    `proration_denominator`, `proration_days`, `unit_rate`. El desglose de un cobro ya vive en el
    ítem; una tabla aparte duplicaría la verdad (PA-12).
 
+### Dónde vive
+
+`facturacion/domain/prorrateo.ts`. **`cargoDelPeriodo` es el único punto de entrada**, y es
+deliberado: la regla del ciclo completo no la implementa quien llama, así que no se puede olvidar.
+El prorrateo suelto no se exporta — dejarlo accesible permitiría cobrar `31 × precio/30` sin
+darse cuenta. Mismo criterio con el que `estados-con-saldo.ts` esconde el SQL crudo tras
+`sqlDeudaExigible`: **la forma incorrecta no debe ser expresable.**
+
 ### El nombre: `ACTUAL_360`, nunca `30/360`
 
 No es purismo. Son convenciones distintas y confundirlas cambia importes:
@@ -352,9 +360,10 @@ largo posible— y eso da exactamente el precio mensual.
 
 Es una garantía sobre el propio sistema, así que **no vale afirmarla: lleva test** (PD-06). El
 importe prorrateado nunca excede el precio mensual, para todo anclaje 1-31 y todo mes del año; si
-algún día saltara, sería un defecto y no un caso de negocio. **El test se escribe junto con la
-función, no después** — a fecha de hoy la fórmula está especificada y todavía no construida, y esta
-frase no debe leerse como que ya está comprobada.
+algún día saltara, sería un defecto y no un caso de negocio. **Comprobado**, no afirmado:
+`facturacion/domain/prorrateo.spec.ts` lo recorre con los ciclos **reales** que genera `anclaEnMes`
+—no con longitudes inventadas—, así que si alguien cambiara el recorte a fin de mes y apareciera un
+ciclo de 32 días, el test lo diría.
 
 ### Por qué es política comercial y no norma
 
