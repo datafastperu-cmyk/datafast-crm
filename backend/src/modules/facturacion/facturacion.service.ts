@@ -39,6 +39,12 @@ export interface ResultadoGeneracion {
   detalles: Array<{ contratoId: string; numeroContrato: string; resultado: string; error?: string }>;
 }
 
+const DESCRIPCION_CARGO: Record<string, string> = {
+  mora:       'Cargo por mora',
+  reconexion: 'Cargo por reconexión',
+  servicio:   'Servicio prorrateado',
+};
+
 @Injectable()
 export class FacturacionService {
   private readonly logger = new Logger(FacturacionService.name);
@@ -792,7 +798,7 @@ export class FacturacionService {
     empresaId: string;
     clienteId: string;
     contratoId: string | null;
-    tipo: 'mora' | 'reconexion';
+    tipo: 'mora' | 'reconexion' | 'servicio';
     monto: number;
     descripcion?: string;
     generadoPor?: string;
@@ -806,6 +812,9 @@ export class FacturacionService {
     if (params.tipo === 'reconexion' && !configGlobal.reconexionAcumulaSiguienteCiclo) {
       throw new BadRequestException('La reconexión está configurada para no acumularse');
     }
+    // 'servicio' NO tiene interruptor, y es deliberado: mora y reconexión son cargos que el
+    // operador decide aplicar o no, mientras que un tramo de servicio entregado se debe siempre.
+    // Dejarlo configurable sería ofrecer la opción de regalar días ya prestados.
 
     const repo = this.ds.getRepository(CargoPendiente);
     const cargo = repo.create({
@@ -814,8 +823,16 @@ export class FacturacionService {
       contratoId:  params.contratoId,
       tipo:        params.tipo,
       monto:       params.monto,
-      // mora = NUNCA IGV | reconexion = SIEMPRE IGV
-      aplicaIgv:   params.tipo === 'reconexion',
+      // mora = NUNCA IGV | reconexion = SIEMPRE IGV | servicio = lo que diga su comprobante.
+      //
+      // En los dos primeros la carga fiscal es una propiedad del cargo. En un tramo de servicio
+      // no: es exactamente el mismo producto que la mensualidad, así que tributa igual que ella.
+      // Se resuelve AQUÍ y se congela, como los otros dos, porque el generador no recalcula
+      // (ver el comentario de la columna) — y porque el comprobante del abonado puede cambiar
+      // entre que se genera el cargo y se emite la factura que lo recoge.
+      aplicaIgv:   params.tipo === 'servicio'
+        ? (await this.comprobantesSvc.resolverParaCliente(params.empresaId, params.clienteId)).tieneCargaFiscal
+        : params.tipo === 'reconexion',
       descripcion: params.descripcion ?? null,
       incluidoEnFacturaId: null,
       incluidoEn:  null,
@@ -1142,7 +1159,9 @@ export class FacturacionService {
         cargo.monto, 0, cargo.aplicaIgv, igvRate,
       );
       items.push({
-        descripcion:    cargo.descripcion ?? (cargo.tipo === 'mora' ? 'Cargo por mora' : 'Cargo por reconexión'),
+        // El texto por defecto se resuelve por tipo. Con un ternario, 'servicio' habría salido
+        // rotulado como reconexión en la factura del abonado.
+        descripcion:    cargo.descripcion ?? DESCRIPCION_CARGO[cargo.tipo] ?? 'Cargo',
         cantidad:       1,
         precioUnitario: subtotal,
         descuento:      0,

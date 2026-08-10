@@ -386,6 +386,31 @@ export class PoliticaFacturacionService {
    * de febrero —día siguiente al 31 de enero— y el que abre ahí cierra el 31 de marzo.
    * Desplazar «un mes» sobre la fecha ya recortada haría derivar el ciclo mes a mes.
    */
+  /**
+   * El ciclo que está **transcurriendo hoy**: el que CIERRA en la próxima fecha de pago.
+   *
+   * No es lo mismo que `periodoServicio`, y la diferencia solo se nota en prepago. Para un
+   * abonado prepago, `periodoServicio` devuelve el ciclo que va a **comprar** —el siguiente—;
+   * este devuelve el que está **usando**. En postpago coinciden, porque postpago paga justamente
+   * el que termina.
+   *
+   * Se calcula con la forma postpago a propósito: «el ciclo que cierra en la próxima fecha de
+   * pago» ES la definición de postpago, y vale igual para los dos porque describe el calendario
+   * del abonado, no cómo se le cobra.
+   *
+   * Lo necesita H-9: un prepago dado de alta a mitad de ciclo ya está consumiendo el ciclo en
+   * curso, y ese tramo no lo cubre ningún comprobante — el suyo del alta ampara el siguiente.
+   */
+  cicloEnCurso(
+    politica: PoliticaFacturacion,
+    desde: Date,
+  ): { inicio: string; fin: string; mes: number; anio: number } {
+    return this.periodoServicio(
+      { ...politica, tipo: 'postpago' },
+      this.proximoVencimiento(politica, desde),
+    );
+  }
+
   periodoServicio(
     politica: PoliticaFacturacion,
     vencimiento: Date,

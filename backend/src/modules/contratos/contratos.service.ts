@@ -31,6 +31,7 @@ import { PromesasPagoService } from '../promesas-pago/promesas-pago.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 import { FacturacionService } from '../facturacion/facturacion.service';
 import { PoliticaFacturacionService } from '../facturacion/politica-facturacion.service';
+import { cargoDelPeriodo, diasFacturables } from '../facturacion/domain/prorrateo';
 
 export interface ActivarResultado {
   contrato:     Contrato;
@@ -1342,6 +1343,8 @@ export class ContratosService {
       advertencias.push(`Estado del abonado no pudo actualizarse a "activo" — actualízalo manualmente.`);
     }
 
+    await this.registrarTramoDeAlta(c, user);
+
     await this.sagaLog.completar(sagaId);
 
     return {
@@ -1350,6 +1353,74 @@ export class ContratosService {
       antenaOk:   antenaResult.ok,
       advertencias,
     };
+  }
+
+  /**
+   * H-9 (2026-08-09) — el tramo del ciclo EN CURSO que un prepago empieza a consumir al activarse.
+   *
+   * Un abonado con anclaje 30 activado el 22/08 usa el servicio del 22 al 30, pero su comprobante
+   * del alta ampara el ciclo SIGUIENTE (`[31/08 → 30/09]`) porque prepago cobra por delante. Los
+   * nueve días de en medio pertenecen a `[31/07 → 30/08]`, que se emitió el 25/07 —cuando el
+   * abonado no existía— y al que nadie vuelve a mirar: `proximoVencimiento` no devuelve fechas
+   * pasadas. Eran gratis.
+   *
+   * **Solo prepago.** En postpago esto no hace falta: su ciclo se emite por detrás, así que la
+   * generación cuenta los días entregados y lo prorratea sola (H-6). Cobrarlo aquí además sería
+   * cobrarlo dos veces.
+   *
+   * **Va en la activación, no en el alta.** Al crear el contrato no se sabe cuántos días se van a
+   * entregar —nace en `pendiente_activacion` y puede tardar—, así que cobrarlo entonces sería
+   * cobrar servicio que quizá no se preste. Aquí ya hay una fecha real de puesta en servicio.
+   *
+   * **Y va como cargo pendiente, no como comprobante propio.** Es lo que pidió el propietario
+   * para el prorrateo del alta: *«en su próxima facturación se prorratea para esos días y se le
+   * adiciona el costo»*. Emitir un comprobante de nueve días por separado sería papeleo extra
+   * para el abonado y para la caja.
+   */
+  private async registrarTramoDeAlta(contrato: Contrato, user: JwtPayload): Promise<void> {
+    try {
+      const politica = await this.politicaSvc.resolver(contrato.clienteId, user.empresaId);
+      if (politica.tipo !== 'prepago') return;
+
+      const hoy   = new Date();
+      const ciclo = this.politicaSvc.cicloEnCurso(politica, hoy);
+
+      const inicio  = new Date(`${ciclo.inicio}T00:00:00.000Z`);
+      const cierre  = new Date(`${ciclo.fin}T00:00:00.000Z`);
+      const desdeHoy = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()));
+
+      // Activado antes de que empiece el ciclo en curso (o después de que cierre): no hay tramo.
+      if (desdeHoy > cierre) return;
+      const arranque = desdeHoy < inicio ? inicio : desdeHoy;
+
+      const cargo = cargoDelPeriodo(
+        contrato.precioConDescuento,
+        diasFacturables(inicio, cierre),
+        diasFacturables(arranque, cierre),
+      );
+      if (cargo.importe <= 0) return;
+
+      await this.facturacionSvc.registrarCargoPendiente({
+        empresaId:   user.empresaId,
+        clienteId:   contrato.clienteId,
+        contratoId:  contrato.id,
+        tipo:        'servicio',
+        monto:       cargo.importe,
+        descripcion: `Servicio ${ciclo.inicio} a ${ciclo.fin} · ${cargo.dias} días desde la activación`,
+        generadoPor: user.sub,
+      });
+
+      this.logger.log(
+        `Alta ${contrato.numeroContrato}: tramo prepago de ${cargo.dias} días ` +
+        `(${ciclo.inicio}→${ciclo.fin}) = ${cargo.importe} — irá en el próximo comprobante`,
+      );
+    } catch (e: any) {
+      // No tumba la activación: el servicio ya está en producción y el abonado navegando.
+      // Pero queda escrito, porque es dinero que si no se registra no lo cobra nadie.
+      this.logger.error(
+        `Alta ${contrato.numeroContrato}: no se pudo registrar el tramo prepago — ${e?.message}`,
+      );
+    }
   }
 
   // `actualizarDeuda(id, deudaTotal, mesesDeuda)` se eliminó el 2026-08-08 (desviación A-4).

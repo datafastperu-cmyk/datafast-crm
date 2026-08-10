@@ -426,7 +426,7 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
-### 31. H-9 · El tramo del alta en PREPAGO no lo factura nadie
+### ~~31~~. H-9 · El tramo del alta en PREPAGO — **CERRADO 2026-08-09**
 
 **Apareció al cerrar H-6**, verificando qué eventos de prorrateo quedaban cableados. No es teoría:
 las fechas salen de ejecutar `periodoServicio` con la política real.
@@ -462,6 +462,30 @@ reconexión siempre) y en un servicio debe seguir la carga fiscal del comprobant
 
 **Impacto hoy:** los dos abonados vivos son prepago, así que es el camino que corre en producción.
 Con 2 contratos el importe es anecdótico; con parque real, un mes de altas.
+
+**Corregido el mismo día.** `ContratosService.registrarTramoDeAlta`, invocado desde `activar()`:
+si el abonado es prepago, el tramo desde la puesta en servicio hasta el cierre del ciclo en curso
+se registra como **cargo pendiente** y lo recoge el siguiente comprobante — que es lo que se había
+pedido para el prorrateo del alta.
+
+Piezas nuevas: `PoliticaFacturacionService.cicloEnCurso` —el ciclo que se está **usando**, que en
+prepago NO es el que ampara su comprobante— y `cargos_pendientes` de tipo `servicio`, que ya
+existía en `TipoItem` y no necesitó migración.
+
+**Dos decisiones que se tomaron al construirlo:**
+
+- **El tipo `servicio` no tiene interruptor de acumulación**, al contrario que mora y reconexión.
+  Esos dos el operador decide si los aplica; un tramo ya entregado se debe siempre, y hacerlo
+  configurable sería ofrecer la opción de regalar días prestados.
+- **Su IGV sale del comprobante del abonado**, no de una constante. En mora y reconexión la carga
+  fiscal es propiedad del cargo (nunca / siempre); un tramo de servicio es el mismo producto que
+  la mensualidad y tributa igual. Se congela al registrarlo, como los otros dos.
+
+Un caso que el hallazgo no mencionaba y también estaba abierto: **activar el primer día del ciclo**
+no es un tramo parcial, es el ciclo entero — y también estaba sin cobrar. Se cobra completo, sin
+pasar por la división.
+
+7 tests en `tramo-de-alta.spec.ts`. Suite completa: 82 suites, 721 tests.
 
 
 ### ~~30~~. Los hallazgos de facturación — **los cuatro CERRADOS** (H-3, H-6, H-7, H-8)
