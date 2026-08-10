@@ -470,57 +470,83 @@ nombre y no un efecto colateral.
 
 ## 7-ter. El prorrateo
 
+> **Cerrado el 2026-08-09. La definición vinculante es PD-14 en `POL-001`**; esta sección conserva
+> el razonamiento que llevó hasta ella, incluidas las dos versiones que se descartaron.
+
 ### La regla del ciclo completo: nunca se prorratea
 
 **Un ciclo completo se cobra a tarifa plana, dure 28 o 31 días.** El abonado de febrero paga lo
-mismo que el de marzo. El `/30` **solo aparece cuando hay que partir un ciclo**, y ese es el sentido
-del «mes comercial de 30 días»: hace que el día de servicio valga igual todo el año.
-
-Sin esta regla, un ciclo de 31 días calculado como `31 × (precio/30)` daría el **103 %** de la
-mensualidad.
+mismo que el de marzo. El divisor **solo aparece cuando hay que partir un ciclo**.
 
 ### La fórmula
 
 ```
-importe = mínimo( precio_mensual ,  precio_mensual / 30 × días )
+importe_prorrateado = REDONDEAR( precio_mensual × días_facturables / 30 )
+
+días_facturables = días de calendario en los que el servicio estuvo efectivamente activo
+                   dentro del ciclo, INCLUYENDO el día de inicio y el día de término.
 ```
 
-**El tope no es decorativo:** con la convención de contar el primer día, un tramo de 31 días
-existe y daría más que la mensualidad completa.
+Base **`ACTUAL_360`** — numerador de días reales, denominador comercial 30. **Nunca «30/360»**, que
+es otra convención: cuenta también el numerador en meses de 30 días y da importes distintos.
 
-### La convención: `[inicio, fin)` — el primer día CUENTA
+**Ejemplo.** Plan S/ 80, alta el 10/08, cierre de ciclo el 30/08:
 
-Decidido el 2026-08-09, siguiendo el estándar. El propietario lo planteó y aceptó la recomendación:
-*«sigamos estándares ya validados»*.
+```
+días facturables = 30 − 10 + 1 = 21
+80 × 21 / 30 = S/ 56,00
+```
 
-**Lo primero que hay que decir es que el modelo validado no cuenta días:**
+### Dos versiones descartadas, y por qué
 
-> **Stripe:** *«By default, Stripe calculates prorations **down to the second**. To change the time
-> granularity —for example, to prorate by day, hour, week, or month— use proration customizations.»*
+**Primera: `mínimo(precio, precio/30 × días)`.** El tope existía porque un tramo de 31 días daría el
+103 % de la mensualidad. Se descartó al separar ciclo y prorrateo: **un tramo prorrateado es por
+definición parcial**, así que como mucho son 30 días de un ciclo de 31 y eso da exactamente el
+precio. El tope pasó de necesario a inalcanzable — y por eso ahora lleva test en vez de código.
 
-Instalado el 22 a las 15:00, se cobra desde las 15:00. La pregunta «¿cuenta el 22?» no existe ahí.
-**Contar por días es una simplificación propia**, y conviene saberlo.
+**Segunda: `precio × días / díasDelCiclo`** (Actual/Actual, la de Stripe, Odoo y ERPNext). Se
+propuso porque elimina casos de borde y porque el importe se verifica leyendo el periodo impreso en
+el comprobante. Se descartó por una razón operativa: **la tarifa diaria dejaría de ser constante**
+—diez días de febrero costarían más que diez de marzo—, y explicar eso en el call center es peor
+que la ventaja que aporta. La objeción de trazabilidad se resolvió imprimiendo la base en el recibo.
 
-Sobre el conteo por días, la fuente es explícita en que **no hay regla universal** —«no hay
-terminología estándar», varía según el mercado—. La convención más usada, Actual/Actual ISDA:
+Lo que hizo posible elegir fue **separar los dos conceptos**, propuesto por el propietario: el
+ciclo se define por fechas de calendario reales, y el prorrateo es una política aparte que no tiene
+por qué compartir convención. Mientras estuvieron mezclados, cada base arrastraba parches — y los
+parches eran del acoplamiento, no de la base.
 
-> *«In this convention **the first day of the period is included and the last day is excluded**.»*
+### La convención de conteo: inclusiva en los dos extremos
 
-Y coincide con lo que el propio propietario había recomendado antes: *«el ERP debe definir
-formalmente si los períodos utilizan `[start, end)` o `[start, end]`. Yo recomiendo intervalos
-semiabiertos»*.
+**Un día con servicio es un día facturable.** Cuenta el día de instalación —con activación matutina
+son catorce horas de servicio, y con instalación el mismo día, que es lo normal en FTTH, no
+cobrarlo sería un regalo *sistemático*— y cuenta el día del corte, por lo mismo.
 
-**Ejemplo trabajado.** Anclaje 30, alta el 22 de agosto. El ciclo es `[31/07 → 30/08]`, que en
-notación semiabierta es `[31/07, 31/08)` — el mismo intervalo. El abonado tuvo servicio del **22 al
-30 = 9 días**, y se le cobra `precio / 30 × 9`.
+Es **una sola regla aplicada a los dos extremos**. Si el alta cuenta el primer día, la baja cuenta
+el último: de lo contrario el abonado paga dos veces el día del cambio, o ninguna de las dos.
 
-**Por qué no empezar el 23**, que era la intuición inicial: el abonado **tuvo servicio ese día** —
-con activación matutina, catorce horas—, y con instalación el mismo día, que es lo normal en FTTH,
-no cobrarlo sería un regalo **sistemático**, no ocasional. Sería una cortesía comercial legítima,
-pero no una convención, y habría que declararla como tal.
+Se descartó `[inicio, fin)` —media abierta, la convención Actual/Actual ISDA— por coherencia
+interna, no por la referencia: ISDA describe periodos de interés donde el fin de uno **es** el
+inicio del siguiente, y nuestro ciclo abre al día después del anclaje. Mezclarlas inventa un día
+que no pertenece a ningún ciclo. La prueba de que la convención cerrada es la buena: **los tramos
+parciales suman el ciclo entero.**
 
-**Una sola regla para todo.** Si el alta cuenta el primer día, la baja cuenta el último de la misma
-forma. Si no, el abonado paga dos veces el día del cambio — o ninguna de las dos.
+**Lo que el modelo validado hace, y conviene no olvidar:** Stripe prorratea **al segundo**, así que
+la pregunta «¿cuenta el día 22?» allí no existe. Contar por días es una simplificación nuestra.
+
+### El anclaje es el día de cierre
+
+No es decisión nueva: es lo que `periodoServicio` ya implementa. Con anclaje 30:
+
+```
+[31/12 → 30/01]   31 días
+[31/01 → 28/02]   29 días      ← recorte a fin de mes
+[01/03 → 30/03]   30 días
+[31/03 → 30/04]   31 días
+```
+
+Sin huecos y sin solapes. Los borradores que escribían `01/01–30/01` seguido de `01/02–28/02`
+dejaban el **31/01 sin dueño** — un día de facturación perdido al mes.
+
 
 ### Los eventos
 

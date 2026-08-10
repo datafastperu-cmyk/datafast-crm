@@ -196,8 +196,18 @@ ambas cambian el modelo de dinero; quedan declaradas para que nadie las tome por
 ## 8. Decisiones abiertas del propietario
 
 1. **¿Se aprueban las fases 1 y 2 antes de la instalación limpia?**
-2. **Prorrateo** — ¿en qué eventos: alta, baja, cambio de plan? Y confirmar el tope al precio
-   mensual: `precio / 30 × 31 días` da el 103 % de la mensualidad.
+2. ~~**Prorrateo** — ¿en qué eventos, y el tope?~~ **CERRADO el 2026-08-09 → PD-14.** Base
+   `ACTUAL_360` (días reales / 30), conteo inclusivo en los dos extremos, redondeo único y base
+   congelada en el ítem. Los eventos quedan los tres: **alta** a mitad de ciclo, **cambio de plan**
+   y **baja de postpago**; la **baja de prepago NO prorratea** —el periodo está comprado y el
+   servicio corre hasta su fin—. El tope desapareció: con la regla del ciclo completo es
+   inalcanzable, así que es un test y no una rama.
+
+   **Queda un resto sin decidir:** el cambio de plan a mitad de ciclo, en el sector, produce **dos
+   apuntes de signo contrario** —crédito por el tiempo no consumido del plan viejo y cargo por el
+   restante del nuevo—, no un importe recalculado. El total sigue siendo positivo, así que
+   `facturas_total_check` no estorba, pero **los ítems tendrían que admitir importe negativo** y hoy
+   no está previsto en ninguna parte del diseño.
 3. **¿La nota de crédito y los cargos únicos vencen en el ancla del abonado o el día de emisión?**
    Hoy hay tres reglas distintas y ninguna declarada.
 4. **Los cinco campos de configuración que no hacen nada** (`aplicarMora`, `montoMora`,

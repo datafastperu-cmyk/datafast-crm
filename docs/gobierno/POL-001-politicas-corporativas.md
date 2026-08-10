@@ -17,6 +17,7 @@
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
 | 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
+| **2.1** | **2026-08-09** | **PD-14 — el prorrateo tiene UNA definición y viaja congelada en el cargo.** Base `ACTUAL_360` (días reales / 30), conteo inclusivo en los dos extremos, redondeo único al final, y `proration_basis`/`_denominator`/`_days`/`unit_rate` persistidos en el ítem del comprobante | El propietario verificó el marco de OSIPTEL antes de decidir (PD-12): el regulador manda sobre el ciclo y sobre facturar lo prestado, **no sobre la base de prorrateo**. Eso la convierte en política comercial propia, y se escribe como tal. Separar ciclo de prorrateo —propuesta suya— fue lo que hizo desaparecer los dos parches que arrastraba cada base candidata |
 | **2.0** | **2026-08-09** | **PD-13 — el modelo cubre la forma del sector; la funcionalidad, la instalación.** El ERP es un producto para varios operadores, y el modelo de datos se diseñaba contra el estado de la instalación que lo estrena. Incluye la clasificación obligatoria **adoptado / adaptado / extendido**, la línea **regla vs estructura**, y cinco condiciones sin las cuales sería una licencia para abstraer sin límite | Lo planteó el propietario al corregir una evaluación que medía `BillingAccount` contra las necesidades de Datafast en vez de contra la forma del sector. La política **cambia una decisión ya tomada** (`DIA_PAGO_MAXIMO = 28`) y mejora el argumento de otra (`moroso`), que es como se comprueba que no es decorativa |
 | **1.9** | **2026-08-08** | **B-3 medida y acotada**: 102 endpoints mutantes sin autorización alguna (no «con rol grueso», como decía la ficha), techo congelado. Corregidos los cinco de `auditoria` y un rol fantasma que dejaba `papelera/eliminar` inalcanzable | El guard deja pasar a cualquier autenticado cuando no hay ni rol ni permiso. La ficha describía un problema distinto y menos grave del real |
 | **1.8** | **2026-08-08** | **Criterio de PD-11 corregido el mismo dia**: «hay autoridad» no bastaba — dejaba cinco modulos en 🔴 sin que existiera nadie que pudiera reclamar nada. Ahora 🔴 exige **al menos una de tres razones** (interoperabilidad, examen de un tercero, riesgo asimetrico) **y la fila dice cual** | Lo detecto el propietario al preguntar quien es esa autoridad. De cinco modulos en 🔴 quedo **uno**: si todo es 🔴, nada lo es |
@@ -280,6 +281,106 @@ Una política que no cambia ninguna decisión pasada es decorativa. Esta cambia 
 | `DIA_PAGO_MAXIMO = 28` | **La incumple.** Se eligió para *evitar* el problema de febrero — razonar desde el estado. El sector lo resuelve al revés: Stripe tiene `day_of_month = 31` con recorte a fin de mes |
 | ADR-031 (mono-empresa) | **La resiste, y marca el límite.** Parece «estado de una instalación», pero cada operador tiene su propio VPS: mono-empresa **es** la forma del producto |
 | Borrar el estado `moroso` | **La resiste, con mejor argumento del que se dio.** Se justificó con «nadie lo usa» —argumento de instalación—; el correcto es que el sector no modela la mora como estado del contrato sino como condición derivada |
+
+---
+
+## PD-14 · El prorrateo tiene UNA definición, y viaja congelada en el cargo — **DEBE**
+
+*(2026-08-09. Decisión del propietario tras verificar el marco de OSIPTEL: «es una política
+comercial de Datafast, implementada sobre un modelo de billing alineado con prácticas del sector»)*
+
+> **Existe exactamente una fórmula de prorrateo en el repositorio.** Un cargo prorrateado guarda la
+> base con la que se calculó, de modo que un comprobante de hace dos años sigue siendo
+> reconstruible aunque la política haya cambiado.
+
+### La fórmula
+
+```
+importe_prorrateado = REDONDEAR( precio_mensual × días_facturables / 30 )
+
+días_facturables = días de calendario en los que el servicio estuvo efectivamente activo
+                   dentro del ciclo, INCLUYENDO el día de inicio y el día de término.
+```
+
+**Un periodo completo no se prorratea**: se cobra el cargo mensual íntegro, dure 28, 29, 30 o 31
+días. El divisor solo aparece cuando hay que partir un ciclo.
+
+### Las cuatro reglas que la acompañan
+
+1. **Conteo inclusivo.** Un día con servicio es un día facturable. Por eso cuenta el día de
+   instalación —con activación matutina son catorce horas de servicio— y por eso cuenta el día del
+   corte. Es una sola regla aplicada a los dos extremos: si el alta cuenta el primer día, la baja
+   cuenta el último, o el abonado paga dos veces el día del cambio o ninguna de las dos.
+2. **El anclaje es el día de CIERRE.** El periodo siguiente abre al día siguiente. No es una
+   decisión nueva: es la semántica que `periodoServicio` ya implementa, con recorte a fin de mes.
+   Con anclaje 30 la secuencia es `[31/12→30/01]`, `[31/01→28/02]`, `[01/03→30/03]`,
+   `[31/03→30/04]` — sin huecos y sin solapes.
+3. **Se redondea UNA sola vez, al final.** `unit_rate` se guarda para que el recibo se explique;
+   **jamás se usa para recalcular el importe.** Recalcular desde una tarifa diaria de seis
+   decimales produce discrepancias de un céntimo entre dos partes del ERP, y ninguna manda.
+4. **La base se persiste en el ítem del comprobante**, no en una entidad nueva: `proration_basis`,
+   `proration_denominator`, `proration_days`, `unit_rate`. El desglose de un cobro ya vive en el
+   ítem; una tabla aparte duplicaría la verdad (PA-12).
+
+### El nombre: `ACTUAL_360`, nunca `30/360`
+
+No es purismo. Son convenciones distintas y confundirlas cambia importes:
+
+| | Numerador | Denominador |
+|---|---|---|
+| **30/360** | Cada mes cuenta como 30 días: 31/01→28/02 son **30** | 30 |
+| **`ACTUAL_360`** (el nuestro) | Días de calendario **reales** | 30 |
+
+Documentarlo como «30/360» invita a que alguien implemente el 30/360 de verdad y altere la
+facturación sin que nadie lo note. Para el usuario se llama **«base comercial de 30 días»**; en
+código, `ACTUAL_360`.
+
+### Una política, no un selector
+
+Zuora y Oracle Communications BRM ofrecen varias bases porque **venden a miles de operadores** bajo
+regímenes distintos: esa configurabilidad justifica su modelo de negocio, no la necesidad de un
+ISP. Datafast define **una** base. Se construye la costura —una función, un sitio, la base como
+constante nombrada—, no el interruptor. Cambiarla algún día es editar una línea y emitir una nueva
+versión de la política; los cargos ya emitidos conservan la suya.
+
+### El tope es inalcanzable, y eso se comprueba
+
+La versión anterior de esta fórmula llevaba un `mínimo(precio, ...)` porque `31 × precio/30` da el
+103 % de la mensualidad. **Con la regla del periodo completo el tope no puede activarse**: un tramo
+prorrateado es por definición parcial, así que como mucho son 30 días de un ciclo de 31 —el más
+largo posible— y eso da exactamente el precio mensual.
+
+Es una garantía sobre el propio sistema, así que **no vale afirmarla: lleva test** (PD-06). El
+importe prorrateado nunca excede el precio mensual, para todo anclaje 1-31 y todo mes del año; si
+algún día saltara, sería un defecto y no un caso de negocio. **El test se escribe junto con la
+función, no después** — a fecha de hoy la fórmula está especificada y todavía no construida, y esta
+frase no debe leerse como que ya está comprobada.
+
+### Por qué es política comercial y no norma
+
+Verificado bajo PD-12 antes de decidir: **OSIPTEL regula el ciclo de facturación y que se facture
+lo efectivamente prestado, y contempla el cobro proporcional — pero no impone una base de
+prorrateo.** Sus propios ejemplos de ciclo (del 1 al 30, del 15 al 14, del 10/03 al 09/04) muestran
+que el ciclo se define por fechas, no por un bloque artificial de 30 días.
+
+De ahí la clasificación PD-13: el **ciclo** es *adoptado* del sector —fechas de calendario, cargo
+mensual fijo—; la **base de prorrateo** es *adaptada*, una decisión comercial de Datafast que
+existe en el sector (BRM la documenta, Zuora la ofrece) pero que ningún estándar impone. Escrita
+como decisión propia, con su motivo: **la tarifa diaria es constante todo el año**, que es lo que
+se le explica a un abonado por teléfono.
+
+### El comprobante lo explica
+
+OSIPTEL exige que el recibo permita entender qué se cobra. No hace falta imprimir la fórmula, pero
+sí el desglose:
+
+```
+Cargo proporcional: 21 días × S/ 2,6667 = S/ 56,00
+Base de cálculo: 30 días comerciales
+```
+
+Sin eso, un abonado que divide entre los días impresos del periodo no obtiene el importe, y tiene
+razón en reclamar.
 
 ---
 
