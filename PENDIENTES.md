@@ -426,6 +426,44 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
+### 31. H-9 · El tramo del alta en PREPAGO no lo factura nadie
+
+**Apareció al cerrar H-6**, verificando qué eventos de prorrateo quedaban cableados. No es teoría:
+las fechas salen de ejecutar `periodoServicio` con la política real.
+
+Un abonado con anclaje 30 instalado el **22/08**:
+
+| Modalidad | Qué se emite | Los días 22–30/08 |
+|---|---|---|
+| **Postpago** | nada al alta; el 25/08 se emite el ciclo `[31/07 → 30/08]` | **cobrados** — 9 días prorrateados, sale solo de H-6 |
+| **Prepago** | al alta, el ciclo `[31/08 → 30/09]` completo | **gratis** |
+
+En prepago esos 9 días pertenecen al ciclo `[31/07 → 30/08]`, que se emitió el 25/07 — cuando el
+abonado todavía no existía. Y no lo recoge nadie después: `proximoVencimiento` nunca vuelve a
+devolver el 30/07, así que ese ciclo no se vuelve a mirar.
+
+**Por qué H-6 no lo cubre.** La rama de prepago es «ciclo completo o nada» a propósito: cobra por
+delante, así que no hay días entregados que contar en un ciclo que aún no ha empezado. Esa decisión
+es correcta para el ciclo futuro y es justo la que deja fuera el tramo pasado.
+
+**No se puede resolver en el alta.** El contrato nace en `pendiente_activacion`; los días
+entregados dependen de **cuándo se active**, que en ese momento no se sabe. Cobrarlos al dar de
+alta sería cobrar días que quizá no se entreguen.
+
+**Dónde sí:** en la activación. Cuando `activar()` promueve el contrato a `activo`, si el abonado es
+prepago y la activación cae a mitad de ciclo, se registra el tramo como **cargo pendiente** y el
+siguiente comprobante lo recoge — que es literalmente lo que pidió el propietario para el alta:
+*«en su próxima facturación se prorratea para esos días y se le adiciona el costo»*.
+
+**Lo que hay que decidir antes de construirlo:** `registrarCargoPendiente` acepta hoy
+`'mora' | 'reconexion'`. El tipo `'servicio'` **ya existe** en `TipoItem`, así que no hace falta
+migración — pero sí decidir cómo deriva su `aplica_igv`, que en los otros dos es fijo (mora nunca,
+reconexión siempre) y en un servicio debe seguir la carga fiscal del comprobante.
+
+**Impacto hoy:** los dos abonados vivos son prepago, así que es el camino que corre en producción.
+Con 2 contratos el importe es anecdótico; con parque real, un mes de altas.
+
+
 ### ~~30~~. Los hallazgos de facturación — **los cuatro CERRADOS** (H-3, H-6, H-7, H-8)
 
 **Por qué importa:** son defectos de dinero verificados leyendo el código. Los dos que quedan
