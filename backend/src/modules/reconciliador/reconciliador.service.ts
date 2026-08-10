@@ -84,7 +84,7 @@ export class ReconciliadorService {
           ro.timeout_conexion AS router_timeout,
           ro.version_ros    AS router_version,
           ro.tipo_control   AS tipo_control
-        FROM contratos co
+        FROM servicios co
         LEFT JOIN routers ro ON ro.id = co.router_id
         LEFT JOIN onus    on_ ON on_.id = co.onu_id
         LEFT JOIN olts    ol  ON ol.id  = on_.olt_id
@@ -107,7 +107,7 @@ export class ReconciliadorService {
         try {
           const { hwEstado, correcciones: cor } = await this.verificarContrato(c);
           await this.ds.query(`
-            UPDATE contratos
+            UPDATE servicios
             SET hardware_verificado = $2,
                 hardware_verificado_en = NOW(),
                 hardware_estado = $3
@@ -226,7 +226,7 @@ export class ReconciliadorService {
         SELECT f.contrato_id, f.olt_id, f.sn, f.estado AS onu_estado,
                co.estado AS contrato_estado
         FROM   ftth_onu_registro f
-        LEFT   JOIN contratos co ON co.id = f.contrato_id
+        LEFT   JOIN servicios co ON co.id = f.contrato_id
         WHERE  f.estado IN ${estadosProvisionada}
           AND (co.id IS NULL OR co.estado = 'baja_definitiva' OR co.deleted_at IS NOT NULL)
       `);
@@ -240,7 +240,7 @@ export class ReconciliadorService {
       // 2) Contratos FTTH activos sin ONU aprovisionada.
       const sinOnu = await this.ds.query<any[]>(`
         SELECT co.id, co.numero_contrato
-        FROM   contratos co
+        FROM   servicios co
         WHERE  co.deleted_at IS NULL
           AND  co.estado = 'activo'
           AND  co.tipo_servicio = 'ftth'

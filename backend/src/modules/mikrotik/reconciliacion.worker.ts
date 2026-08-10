@@ -74,7 +74,7 @@ export class ReconciliacionWorker implements OnModuleInit {
         AND ro.deleted_at  IS NULL
         AND ro.tipo_control = 'pppoe'
         AND EXISTS (
-          SELECT 1 FROM contratos co
+          SELECT 1 FROM servicios co
           WHERE  co.router_id    = ro.id
             AND  co.estado       IN ('activo', 'suspendido')
             AND  co.deleted_at   IS NULL
@@ -136,7 +136,7 @@ export class ReconciliacionWorker implements OnModuleInit {
         pl.velocidad_bajada AS "downloadMbps",
         pl.velocidad_subida AS "uploadMbps",
         pl.tipo_queue      AS "tipoQueue"
-      FROM contratos co
+      FROM servicios co
       LEFT JOIN planes pl ON pl.id = co.plan_id
       WHERE co.router_id     = $1
         AND co.estado        IN ('activo', 'suspendido')
@@ -239,7 +239,7 @@ export class ReconciliacionWorker implements OnModuleInit {
     const suspendidos = await this.ds.query<any[]>(`
       SELECT id, ip_asignada AS "ipAsignada", usuario_pppoe AS "usuarioPppoe",
              cliente_id AS "clienteId"
-      FROM contratos
+      FROM servicios
       WHERE router_id   = $1
         AND estado      = 'suspendido'
         AND deleted_at  IS NULL

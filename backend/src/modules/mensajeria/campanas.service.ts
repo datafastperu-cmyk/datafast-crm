@@ -178,7 +178,7 @@ export class CampanasService implements OnModuleInit {
         cl.whatsapp,
         cl.nombre_completo
       FROM clientes cl
-      INNER JOIN contratos co
+      INNER JOIN servicios co
         ON  co.cliente_id  = cl.id
         AND co.empresa_id  = $1
         AND co.estado      = 'activo'

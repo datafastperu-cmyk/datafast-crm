@@ -213,7 +213,7 @@ export class VelocidadController {
     // Obtener planes activos del router
     const contratos = await this.velocidadSvc['ds']?.query?.(`
       SELECT co.usuario_pppoe, pl.velocidad_bajada AS download_mbps, pl.velocidad_subida AS upload_mbps
-      FROM contratos co JOIN planes pl ON pl.id = co.plan_id
+      FROM servicios co JOIN planes pl ON pl.id = co.plan_id
       -- Solo 'activo': el estado 'prorroga' no existe en el enum y una prórroga deja el
       -- contrato en 'activo' con en_prorroga = true.
       WHERE co.router_id = $1 AND co.estado = 'activo' AND co.deleted_at IS NULL

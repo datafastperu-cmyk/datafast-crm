@@ -291,7 +291,7 @@ export class MikrotikService implements OnModuleInit {
 
     const rows: { router_id: string; count: string }[] = await this.ds.query(
       `SELECT router_id, COUNT(*) AS count
-       FROM contratos
+       FROM servicios
        WHERE router_id = ANY($1)
          AND estado IN ('activo','suspendido')
          AND deleted_at IS NULL
@@ -388,7 +388,7 @@ export class MikrotikService implements OnModuleInit {
     ] = await Promise.all([
       // Contratos activos/suspendidos
       this.ds.query<[{ count: string }]>(
-        `SELECT COUNT(*) AS count FROM contratos
+        `SELECT COUNT(*) AS count FROM servicios
          WHERE router_id = $1
            AND estado IN ('activo','suspendido','pendiente_activacion')
            AND deleted_at IS NULL`,
@@ -625,7 +625,7 @@ export class MikrotikService implements OnModuleInit {
              co.tipo_auth AS "tipoAuth",
              cl.nombre_completo AS "nombreCompleto",
              pl.ppp_profile AS "pppProfile"
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id
       LEFT JOIN planes pl ON pl.id = co.plan_id
       WHERE co.router_id  = $1

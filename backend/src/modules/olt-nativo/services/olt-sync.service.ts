@@ -378,7 +378,7 @@ export class OltSyncService implements OnModuleInit {
         `SELECT r.contrato_id, r.sn, r.slot, r.port, c.numero_contrato,
                 COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente
            FROM ftth_onu_registro r
-           JOIN contratos c ON c.id = r.contrato_id
+           JOIN servicios c ON c.id = r.contrato_id
            LEFT JOIN clientes cl ON cl.id = c.cliente_id
           WHERE r.deleted_at IS NULL AND r.olt_id = $1 AND r.empresa_id = $2 AND r.estado = 'activo'`,
         [oltId, empresaId],
@@ -396,7 +396,7 @@ export class OltSyncService implements OnModuleInit {
         `SELECT r.contrato_id, r.sn, r.estado AS onu_estado, c.estado AS contrato_estado, c.numero_contrato,
                 COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente
            FROM ftth_onu_registro r
-           JOIN contratos c ON c.id = r.contrato_id
+           JOIN servicios c ON c.id = r.contrato_id
            LEFT JOIN clientes cl ON cl.id = c.cliente_id
           WHERE r.deleted_at IS NULL AND r.olt_id = $1 AND r.empresa_id = $2
             AND ((r.estado = 'suspendido' AND c.estado = 'activo')
@@ -734,7 +734,7 @@ export class OltSyncService implements OnModuleInit {
         `SELECT r.sn, r.contrato_id, c.numero_contrato,
                 COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente
            FROM ftth_onu_registro r
-           JOIN contratos c ON c.id = r.contrato_id
+           JOIN servicios c ON c.id = r.contrato_id
            LEFT JOIN clientes cl ON cl.id = c.cliente_id
           WHERE r.deleted_at IS NULL AND r.olt_id = $1`,
         [oltId],

@@ -107,8 +107,8 @@ describe('CobranzaWorker', () => {
     // nueva en el worker desplaza todas las siguientes. La cascada al cliente (2026-08-04)
     // se coló justo antes del SELECT del cliente y dejó la notificación sin nombre.
     m.mockResolvedValueOnce([mockRouter])       // getRouter
-      .mockResolvedValueOnce([])                // UPDATE contratos (suspender)
-      .mockResolvedValueOnce([])                // INSERT contratos_historial
+      .mockResolvedValueOnce([])                // UPDATE servicios (suspender)
+      .mockResolvedValueOnce([])                // INSERT servicios_historial
       .mockResolvedValueOnce([])                // UPDATE clientes (cascada) → ninguno bloqueado
       .mockResolvedValueOnce([mockCliente])     // getCliente para WhatsApp
       .mockResolvedValue([]);                   // resto
@@ -240,8 +240,8 @@ describe('CobranzaWorker', () => {
     it('debe notificar por WhatsApp cuando notificar=true', async () => {
       const dsMock = jest.fn()
         .mockResolvedValueOnce([mockRouter])   // getRouter
-        .mockResolvedValueOnce([])             // UPDATE contratos (suspender)
-        .mockResolvedValueOnce([])             // INSERT contratos_historial
+        .mockResolvedValueOnce([])             // UPDATE servicios (suspender)
+        .mockResolvedValueOnce([])             // INSERT servicios_historial
         .mockResolvedValueOnce([])             // UPDATE clientes (cascada) → ninguno
         .mockResolvedValueOnce([mockCliente])  // getCliente para WhatsApp
         .mockResolvedValue([]);
@@ -408,7 +408,7 @@ describe('FacturacionWorker', () => {
       if (/FROM\s+empresas/i.test(s))                  return [mockEmpresa];
       if (/FROM\s+configuracion_facturacion/i.test(s)) return [{ igv_rate: '0.18' }];
       if (/FROM\s+comprobantes_config/i.test(s))       return [{ serie: 'B001' }];
-      if (/FROM\s+contratos\b/i.test(s))               return [mockContratoFactura];
+      if (/FROM\s+servicios\b/i.test(s))               return [mockContratoFactura];
       // El correlativo se calcula con MAX(correlativo)+1 SOBRE `facturas`, así que esta
       // comprobación va ANTES del "sin duplicado": ambas consultan la misma tabla y la
       // primera regla que coincida gana.
@@ -479,7 +479,7 @@ describe('FacturacionWorker', () => {
         if (/FROM\s+empresas/i.test(s))                  return [mockEmpresa];
         if (/FROM\s+configuracion_facturacion/i.test(s)) return [{ igv_rate: '0.18' }];
         if (/FROM\s+comprobantes_config/i.test(s))       return [{ serie: 'B001' }];
-        if (/FROM\s+contratos\b/i.test(s))               return [mockContratoFactura];
+        if (/FROM\s+servicios\b/i.test(s))               return [mockContratoFactura];
         if (/AS\s+siguiente|nextval/i.test(s))           return [{ siguiente: '1' }];
         if (/FROM\s+facturas/i.test(s))                  return [{ id: 'fac-existe' }];
         return [];

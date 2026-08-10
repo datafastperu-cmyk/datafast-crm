@@ -87,7 +87,7 @@ export class PlanesService {
 
     const ids = planes.map(p => p.id);
     const counts: { plan_id: string; cnt: string }[] = await this.ds.query(
-      `SELECT plan_id, COUNT(*) AS cnt FROM contratos
+      `SELECT plan_id, COUNT(*) AS cnt FROM servicios
        WHERE plan_id = ANY($1) AND deleted_at IS NULL
        AND estado IN ('activo','suspendido')
        GROUP BY plan_id`,
@@ -150,7 +150,7 @@ export class PlanesService {
   async remove(id: string, user: JwtPayload): Promise<void> {
     await this.findOne(id, user.empresaId);
     const [{ cnt }] = await this.ds.query(
-      `SELECT COUNT(*) AS cnt FROM contratos
+      `SELECT COUNT(*) AS cnt FROM servicios
        WHERE plan_id = $1 AND deleted_at IS NULL
        AND estado IN ('activo','suspendido')`,
       [id],

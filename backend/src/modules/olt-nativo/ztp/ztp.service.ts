@@ -64,7 +64,7 @@ export class ZtpProvisioningService {
       vlan_id:        number | null;
     }[]>(
       `SELECT usuario_pppoe, password_pppoe, vlan_id
-       FROM   contratos
+       FROM   servicios
        WHERE  id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
       [contratoId, empresaId],
     );

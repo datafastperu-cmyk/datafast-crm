@@ -555,7 +555,7 @@ export class OutboxRedService {
                  co.mac_address   AS "macAddress",
                  co.tipo_auth     AS "tipoAuth",
                  ro.tipo_control  AS "tipoControl"
-          FROM contratos co
+          FROM servicios co
           LEFT JOIN routers ro ON ro.id = co.router_id
           WHERE co.id = $1
         `, [cmd.contrato_id]).catch(() => [null]);
@@ -621,17 +621,17 @@ export class OutboxRedService {
           [p.promesaId],
         ).catch(() => {});
         await this.ds.query(
-          `UPDATE contratos SET estado = 'suspendido', en_prorroga = FALSE, prorroga_hasta = NULL,
+          `UPDATE servicios SET estado = 'suspendido', en_prorroga = FALSE, prorroga_hasta = NULL,
                   fecha_estado = NOW(), motivo_estado = 'Corte por prórroga incumplida'
            WHERE id = $1`,
           [cmd.contrato_id],
         ).catch(() => {});
         await this.ds.query(
-          `INSERT INTO contratos_historial
+          `INSERT INTO servicios_historial
              (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
            SELECT id, empresa_id, 'activo', 'suspendido',
                   'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida'
-             FROM contratos WHERE id = $1`,
+             FROM servicios WHERE id = $1`,
           [cmd.contrato_id],
         ).catch(() => {});
 
@@ -694,7 +694,7 @@ export class OutboxRedService {
           `contrato=${cmd.contrato_id} router=${cmd.router_id} (sigue reintentando) | ${err.message}`,
         );
         const [row] = await this.ds.query<any[]>(
-          `SELECT empresa_id FROM contratos WHERE id = $1 LIMIT 1`,
+          `SELECT empresa_id FROM servicios WHERE id = $1 LIMIT 1`,
           [cmd.contrato_id],
         ).catch(() => [null]);
 

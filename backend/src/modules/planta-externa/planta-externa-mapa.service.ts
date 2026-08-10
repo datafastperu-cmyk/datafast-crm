@@ -53,7 +53,7 @@ const PUNTOS_SERVICIO = `
            COALESCE(co.latitud_instalacion,  c.latitud)::float  AS lat,
            COALESCE(co.longitud_instalacion, c.longitud)::float AS lng,
            TRIM(CONCAT(c.nombres, ' ', COALESCE(c.apellido_paterno, ''))) AS etiqueta
-      FROM contratos co
+      FROM servicios co
       JOIN clientes  c ON c.id = co.cliente_id AND c.deleted_at IS NULL
      WHERE co.empresa_id = $1 AND co.deleted_at IS NULL
        AND COALESCE(co.latitud_instalacion,  c.latitud)  IS NOT NULL
@@ -425,7 +425,7 @@ export class PlantaExternaMapaService {
               inv.estado_operativo, inv.rx_power_dbm,
               EXTRACT(EPOCH FROM (now() - inv.updated_at))::int / 60 AS medido_hace_min,
               nap.codigo AS nap_codigo, ap.numero AS nap_puerto
-         FROM contratos co
+         FROM servicios co
          JOIN clientes c  ON c.id  = co.cliente_id AND c.deleted_at IS NULL
          LEFT JOIN planes pl ON pl.id = co.plan_id
          LEFT JOIN ftth_onu_registro f

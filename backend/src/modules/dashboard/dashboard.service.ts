@@ -31,7 +31,7 @@ export class DashboardService {
             COUNT(*) FILTER (WHERE c.estado = 'activo' AND ${sqlEnMora('c.cliente_id')})     AS en_mora,
             COUNT(*) FILTER (WHERE c.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
                              AND c.estado = 'activo')                                       AS por_vencer
-          FROM contratos c WHERE c.empresa_id = $1
+          FROM servicios c WHERE c.empresa_id = $1
         `, [empresaId]),
 
         this.dataSource.query(`

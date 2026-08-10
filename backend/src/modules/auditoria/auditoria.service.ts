@@ -7,7 +7,7 @@ import { FiltrosAuditoriaDto } from './dto/auditoria.dto';
 
 // Tablas permitidas para operaciones de undo/redo/papelera
 const TABLA_SEGURA = new Set([
-  'clientes', 'contratos', 'facturas', 'pagos', 'planes', 'tickets',
+  'clientes', 'servicios', 'facturas', 'pagos', 'planes', 'tickets',
 ]);
 
 // Campos que NO se restauran al hacer undo (invariantes del sistema)
@@ -118,12 +118,12 @@ export class AuditoriaService {
         --    su tabla porque necesita el par estado_anterior/estado_nuevo.
         SELECT 'contrato', h.id::text, h.created_at,
                h.usuario_id::text, u.email,
-               'contratos',
+               'servicios',
                CASE WHEN h.automatico THEN 'ESTADO_AUTO' ELSE 'ESTADO' END,
                h.estado_anterior::text || ' → ' || h.estado_nuevo::text ||
                  COALESCE(': ' || h.motivo, ''),
                h.contrato_id::text, NULL
-          FROM contratos_historial h
+          FROM servicios_historial h
           LEFT JOIN usuarios u ON u.id = h.usuario_id
          WHERE h.empresa_id = $1
 
@@ -149,7 +149,7 @@ export class AuditoriaService {
         -- for type uuid" en cuanto aparece una fila con otro formato.
         LEFT JOIN clientes  cl    ON cl.id = NULLIF(e.entidad_id, '')::uuid
                                      AND e.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-        LEFT JOIN contratos co    ON co.id = NULLIF(e.entidad_id, '')::uuid
+        LEFT JOIN servicios co    ON co.id = NULLIF(e.entidad_id, '')::uuid
                                      AND e.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         LEFT JOIN clientes  cl_co ON cl_co.id = co.cliente_id
         ${where}`;
@@ -191,12 +191,12 @@ export class AuditoriaService {
         `SELECT
            (SELECT COUNT(*) FROM auditoria_logs
              WHERE empresa_id = $1 AND ${negocio})
-           + (SELECT COUNT(*) FROM contratos_historial WHERE empresa_id = $1)
+           + (SELECT COUNT(*) FROM servicios_historial WHERE empresa_id = $1)
            + (SELECT COUNT(*) FROM notificaciones_logs WHERE empresa_id = $1)   AS total,
 
            (SELECT COUNT(*) FROM auditoria_logs
              WHERE empresa_id = $1 AND ${negocio} AND created_at >= CURRENT_DATE)
-           + (SELECT COUNT(*) FROM contratos_historial
+           + (SELECT COUNT(*) FROM servicios_historial
                WHERE empresa_id = $1 AND created_at >= CURRENT_DATE)
            + (SELECT COUNT(*) FROM notificaciones_logs
                WHERE empresa_id = $1 AND created_at >= CURRENT_DATE)            AS hoy,
@@ -204,14 +204,14 @@ export class AuditoriaService {
            (SELECT COUNT(*) FROM auditoria_logs
              WHERE empresa_id = $1 AND ${negocio} AND created_at >= CURRENT_DATE
                AND usuario_email IS NOT NULL AND usuario_email <> '')
-           + (SELECT COUNT(*) FROM contratos_historial
+           + (SELECT COUNT(*) FROM servicios_historial
                WHERE empresa_id = $1 AND created_at >= CURRENT_DATE
                  AND automatico = false)                                        AS hoy_usuarios,
 
            (SELECT COUNT(*) FROM auditoria_logs
              WHERE empresa_id = $1 AND ${negocio} AND created_at >= CURRENT_DATE
                AND (usuario_email IS NULL OR usuario_email = ''))
-           + (SELECT COUNT(*) FROM contratos_historial
+           + (SELECT COUNT(*) FROM servicios_historial
                WHERE empresa_id = $1 AND created_at >= CURRENT_DATE
                  AND automatico = true)
            + (SELECT COUNT(*) FROM notificaciones_logs
@@ -238,7 +238,7 @@ export class AuditoriaService {
             UNION ALL
             SELECT 'contratos',
                    CASE WHEN automatico THEN 'ESTADO_AUTO' ELSE 'ESTADO' END
-              FROM contratos_historial WHERE empresa_id = $1
+              FROM servicios_historial WHERE empresa_id = $1
             UNION ALL
             SELECT 'mensajeria', 'MSG_' || UPPER(estado_entrega::text)
               FROM notificaciones_logs WHERE empresa_id = $1

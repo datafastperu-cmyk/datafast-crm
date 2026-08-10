@@ -956,7 +956,7 @@ export class PagosService {
           // Incluir contratos suspendidos/morosos/cortados (reactivación) Y contratos
           // activos con prorroga vigente (cumplimiento de promesa sin cambio de estado).
           const afectados: { id: string }[] = await this.ds.query(
-            `SELECT id FROM contratos
+            `SELECT id FROM servicios
              WHERE cliente_id = $1 AND empresa_id = $2 AND deleted_at IS NULL
                AND (
                  estado = 'suspendido'
@@ -1077,7 +1077,7 @@ export class PagosService {
     // ── B. Cortados sin deuda ──────────────────────────────────────
     const cortadosSinDeuda = await this.ds.query<Array<{ id: string; empresa_id: string; numero: string }>>(
       `SELECT co.id, co.empresa_id, co.numero_contrato AS numero
-         FROM contratos co
+         FROM servicios co
         WHERE co.estado = 'suspendido'
           AND co.deleted_at IS NULL
           AND NOT EXISTS (

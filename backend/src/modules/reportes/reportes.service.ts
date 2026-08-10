@@ -185,7 +185,7 @@ export class ReportesService {
 
     const porServicioRaw = await this.ds.query(`
       SELECT pl.nombre AS servicio, COUNT(*) AS total
-      FROM contratos co
+      FROM servicios co
       JOIN planes pl ON pl.id = co.plan_id
       WHERE co.empresa_id = $1 AND co.estado = 'activo' AND co.deleted_at IS NULL
       GROUP BY pl.nombre ORDER BY total DESC

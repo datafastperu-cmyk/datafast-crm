@@ -204,7 +204,7 @@ export class AddressListReconciliadorService {
       // `ip_asignada` es `inet`, no texto: sin el cast Postgres responde
       // «operator does not exist: inet = text» y la revisión entera se cae.
       `SELECT ip_asignada::text AS ip_asignada, estado::text AS estado, en_prorroga
-         FROM contratos
+         FROM servicios
         WHERE router_id = $1
           AND ip_asignada::text = ANY($2::text[])
           AND deleted_at IS NULL

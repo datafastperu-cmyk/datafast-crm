@@ -33,7 +33,7 @@ const URL_MODULES: Array<{ pattern: RegExp; modulo: string }> = [
 // Tablas rastreadas para undo/redo (path contiene → tabla)
 const PATH_TABLA: Array<{ pattern: RegExp; tabla: string }> = [
   { pattern: /\/clientes/,     tabla: 'clientes'   },
-  { pattern: /\/contratos/,    tabla: 'contratos'  },
+  { pattern: /\/contratos/,    tabla: 'servicios'  },
   { pattern: /\/facturacion/,  tabla: 'facturas'   },
   { pattern: /\/facturas/,     tabla: 'facturas'   },
   { pattern: /\/pagos/,        tabla: 'pagos'      },

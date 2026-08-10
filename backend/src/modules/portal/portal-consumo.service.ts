@@ -41,7 +41,7 @@ export class PortalConsumoService {
     hasta?: string,
   ): Promise<PortalConsumo> {
     const [contrato] = await this.dataSource.query<Array<{ id: string }>>(
-      `SELECT id FROM contratos
+      `SELECT id FROM servicios
         WHERE id = $1 AND cliente_id = $2 AND empresa_id = $3 AND deleted_at IS NULL`,
       [contratoId, clienteId, empresaId],
     );

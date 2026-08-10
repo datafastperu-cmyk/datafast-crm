@@ -121,7 +121,7 @@ export class OltNativoService implements OnModuleInit {
     // Validar que el contrato existe, pertenece a la empresa y está ACTIVO
     const [contrato] = await this.ds.query<{ estado: string; aprovisionado: boolean; numero_contrato: string }[]>(
       `SELECT estado, aprovisionado, numero_contrato
-       FROM contratos
+       FROM servicios
        WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
       [dto.contratoId, empresaId],
     );
@@ -368,7 +368,7 @@ export class OltNativoService implements OnModuleInit {
                 COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente,
                 r.estado AS registro_estado
            FROM ftth_onu_registro r
-           JOIN contratos c ON c.id = r.contrato_id
+           JOIN servicios c ON c.id = r.contrato_id
            LEFT JOIN clientes cl ON cl.id = c.cliente_id
           WHERE r.deleted_at IS NULL AND r.olt_id = $1`,
         [oltId],

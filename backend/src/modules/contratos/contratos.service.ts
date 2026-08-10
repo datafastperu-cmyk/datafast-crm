@@ -125,7 +125,7 @@ export class ContratosService {
 
     if (dto.macAddress?.trim()) {
       const [macExistente] = await this.dataSource.query<any[]>(
-        `SELECT numero_contrato FROM contratos WHERE empresa_id = $1 AND mac_address = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL LIMIT 1`,
+        `SELECT numero_contrato FROM servicios WHERE empresa_id = $1 AND mac_address = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL LIMIT 1`,
         [user.empresaId, dto.macAddress.trim()],
       );
       if (macExistente) throw new ConflictException(`La MAC ${dto.macAddress} ya está registrada en el contrato ${macExistente.numero_contrato}`);
@@ -225,7 +225,7 @@ export class ContratosService {
       // y no antes para que el `COUNT` que decide el sufijo y el INSERT que lo consume estén
       // dentro de la misma sección crítica.
       const [{ total: totalContratos }] = await qr.manager.query(
-        `SELECT COUNT(*)::int AS total FROM contratos
+        `SELECT COUNT(*)::int AS total FROM servicios
           WHERE cliente_id = $1 AND empresa_id = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL`,
         [dto.clienteId, user.empresaId],
       );
@@ -233,7 +233,7 @@ export class ContratosService {
       const pppoeBase = dto.usuarioPppoe || (totalContratos > 0 ? `${base}_${totalContratos + 1}` : base);
 
       const [pppoeExistente] = await qr.manager.query(
-        `SELECT numero_contrato FROM contratos
+        `SELECT numero_contrato FROM servicios
           WHERE empresa_id = $1 AND usuario_pppoe = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL
           LIMIT 1`,
         [user.empresaId, pppoeBase],
@@ -713,7 +713,7 @@ export class ContratosService {
     // Validar unicidad de MAC si cambia
     if (dto.macAddress?.trim() && dto.macAddress.trim() !== (existing as any).macAddress) {
       const [macExistente] = await this.dataSource.query<any[]>(
-        `SELECT numero_contrato FROM contratos WHERE empresa_id = $1 AND mac_address = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL AND id != $3 LIMIT 1`,
+        `SELECT numero_contrato FROM servicios WHERE empresa_id = $1 AND mac_address = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL AND id != $3 LIMIT 1`,
         [user.empresaId, dto.macAddress.trim(), id],
       );
       if (macExistente) throw new ConflictException(`La MAC ${dto.macAddress} ya está registrada en el contrato ${macExistente.numero_contrato}`);
@@ -922,7 +922,7 @@ export class ContratosService {
           `UPDATE clientes SET nota_baja = $1
            WHERE id = $2
              AND NOT EXISTS (
-               SELECT 1 FROM contratos
+               SELECT 1 FROM servicios
                WHERE cliente_id = $2 AND id <> $3
                  AND estado <> 'baja_definitiva' AND deleted_at IS NULL
              )`,
@@ -955,7 +955,7 @@ export class ContratosService {
         WHERE id = $1
           AND estado = 'activo'
           AND NOT EXISTS (
-            SELECT 1 FROM contratos
+            SELECT 1 FROM servicios
             WHERE cliente_id = $1
               AND estado IN ('activo', 'pendiente_activacion')
               AND deleted_at IS NULL
@@ -989,7 +989,7 @@ export class ContratosService {
         WHERE id = $1
           AND estado = 'suspendido'
           AND NOT EXISTS (
-            SELECT 1 FROM contratos
+            SELECT 1 FROM servicios
             WHERE cliente_id = $1
               AND estado = 'suspendido'
               AND deleted_at IS NULL
@@ -1035,7 +1035,7 @@ export class ContratosService {
             -- Solo si NO le queda ningún contrato vigente. Un cliente con otro servicio
             -- en curso no puede caer de baja porque uno de sus contratos termine.
             AND NOT EXISTS (
-              SELECT 1 FROM contratos
+              SELECT 1 FROM servicios
               WHERE cliente_id = $1
                 AND estado <> 'baja_definitiva'
                 AND deleted_at IS NULL
@@ -1179,7 +1179,7 @@ export class ContratosService {
     if (!contrato.enProrroga) return;
 
     await this.dataSource.query(`
-      UPDATE contratos
+      UPDATE servicios
       SET en_prorroga = false, prorroga_hasta = NULL, updated_at = NOW()
       WHERE id = $1
     `, [id]);
@@ -1455,7 +1455,7 @@ export class ContratosService {
     const nuevaFechaStr = nuevaFechaVenc.toISOString().split('T')[0];
 
     await this.dataSource.query(`
-      UPDATE contratos SET
+      UPDATE servicios SET
         estado = 'activo',
         fecha_estado = NOW(),
         motivo_estado = 'Reactivación manual por pago',
@@ -1504,7 +1504,7 @@ export class ContratosService {
   async remove(id: string, user: JwtPayload): Promise<void> {
     // Usa raw query para encontrar también registros ya soft-deleted por cambiarEstado(BAJA_DEFINITIVA)
     const [row] = await this.dataSource.query<{ estado: string }[]>(
-      'SELECT estado FROM contratos WHERE id = $1 AND empresa_id = $2',
+      'SELECT estado FROM servicios WHERE id = $1 AND empresa_id = $2',
       [id, user.empresaId],
     );
     if (!row) throw new NotFoundException(`Contrato ${id} no encontrado`);
@@ -1548,7 +1548,7 @@ export class ContratosService {
             ro.usar_ssl         AS "usarSsl",
             ro.version_ros      AS "versionRos",
             pl.crear_reglas_en_router AS "crearReglas"
-          FROM contratos co
+          FROM servicios co
           LEFT JOIN routers ro ON ro.id = co.router_id
           LEFT JOIN planes  pl ON pl.id = co.plan_id
           WHERE co.id = $1
@@ -1620,7 +1620,7 @@ export class ContratosService {
           pl.velocidad_bajada    AS "velocidadBajada",
           pl.velocidad_subida    AS "velocidadSubida",
           pl.crear_reglas_en_router AS "crearReglas"
-        FROM contratos co
+        FROM servicios co
         JOIN clientes cl ON cl.id = co.cliente_id
         LEFT JOIN routers ro ON ro.id = co.router_id
         LEFT JOIN planes pl ON pl.id = co.plan_id
@@ -1717,7 +1717,7 @@ export class ContratosService {
           ro.nombre              AS "routerNombre",
           ro.version_ros         AS "versionRos",
           pl.crear_reglas_en_router AS "crearReglas"
-        FROM contratos co
+        FROM servicios co
         LEFT JOIN routers ro ON ro.id = co.router_id
         LEFT JOIN planes pl ON pl.id = co.plan_id
         WHERE co.id = $1
@@ -1801,7 +1801,7 @@ export class ContratosService {
           onu.id                  AS "onuId",
           onu.smartolt_onu_id     AS "smartoltOnuId",
           olt.smartolt_id         AS "smartoltId"
-        FROM contratos co
+        FROM servicios co
         LEFT JOIN onus onu ON onu.id = co.onu_id
         LEFT JOIN olts olt ON olt.id = onu.olt_id
         WHERE co.id = $1
@@ -1854,7 +1854,7 @@ export class ContratosService {
              dm.contrasena_cifrada AS "contrasenaCifrada",
              dm.puerto_api       AS "puertoApi",
              dm.use_ssl          AS "useSsl"
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id
       LEFT JOIN dispositivos_monitoreo dm ON dm.id = co.antena_ap_id
       WHERE co.id = $1
@@ -1895,7 +1895,7 @@ export class ContratosService {
              dm.contrasena_cifrada AS "contrasenaCifrada",
              dm.puerto_api       AS "puertoApi",
              dm.use_ssl          AS "useSsl"
-      FROM contratos co
+      FROM servicios co
       LEFT JOIN dispositivos_monitoreo dm ON dm.id = co.antena_ap_id
       WHERE co.id = $1
     `, [contratoId]);

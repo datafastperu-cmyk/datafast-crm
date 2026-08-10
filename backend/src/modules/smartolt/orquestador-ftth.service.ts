@@ -103,7 +103,7 @@ export class OrquestadorFtthService {
               ro.version_ros, ro.usuario AS router_user,
               ro.password_cifrado AS router_pass, ro.usar_ssl,
               ro.puerto_api, ro.puerto_api_ssl, ro.timeout_conexion
-            FROM contratos co
+            FROM servicios co
             JOIN clientes cl ON cl.id = co.cliente_id
             JOIN planes   pl ON pl.id = co.plan_id
             JOIN routers  ro ON ro.id = $2
@@ -168,7 +168,7 @@ export class OrquestadorFtthService {
           `, [user.empresaId, dto.segmentoId, dto.contratoId, ip]);
 
           await this.ds.query(
-            'UPDATE contratos SET ip_asignada = $1 WHERE id = $2',
+            'UPDATE servicios SET ip_asignada = $1 WHERE id = $2',
             [ip, dto.contratoId],
           );
 
@@ -322,7 +322,7 @@ export class OrquestadorFtthService {
         fn: async () => {
           // Marcar contrato como aprovisionado (estado ya es 'activo' — validado en paso 1)
           await this.ds.query(`
-            UPDATE contratos
+            UPDATE servicios
             SET aprovisionado     = true,
                 fecha_instalacion = COALESCE(fecha_instalacion, NOW()),
                 motivo_estado     = 'Aprovisionamiento FTTH SmartOLT completado'

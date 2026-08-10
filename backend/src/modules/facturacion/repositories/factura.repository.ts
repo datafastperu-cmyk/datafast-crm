@@ -307,7 +307,7 @@ export class FacturaRepository {
         em.razon_social         AS empresa_nombre,
         em.ruc                  AS empresa_ruc,
         em.direccion_fiscal     AS empresa_direccion
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN planes   pl ON pl.id = co.plan_id
       JOIN empresas em ON em.id = co.empresa_id
@@ -448,8 +448,8 @@ export class FacturaRepository {
       `SELECT ch.contrato_id,
               ch.estado_nuevo,
               TO_CHAR((ch.created_at AT TIME ZONE em.zona_horaria)::date, 'YYYY-MM-DD') AS fecha
-         FROM contratos_historial ch
-         JOIN contratos co ON co.id = ch.contrato_id
+         FROM servicios_historial ch
+         JOIN servicios co ON co.id = ch.contrato_id
          JOIN empresas   em ON em.id = co.empresa_id
         WHERE ch.contrato_id = ANY($1)
           AND (ch.created_at AT TIME ZONE em.zona_horaria)::date <= $2::date

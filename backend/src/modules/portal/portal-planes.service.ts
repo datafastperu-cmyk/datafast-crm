@@ -182,7 +182,7 @@ export class PortalPlanesService {
               c.deuda_total            AS "deudaTotal",
               c.tipo_pago::text        AS "tipoPago"
          FROM portal_solicitud_plan s
-         JOIN contratos c  ON c.id  = s.contrato_id
+         JOIN servicios c  ON c.id  = s.contrato_id
          JOIN clientes  cl ON cl.id = s.cliente_id
          JOIN planes    po ON po.id = s.plan_origen_id
          JOIN planes    pd ON pd.id = s.plan_destino_id
@@ -241,7 +241,7 @@ export class PortalPlanesService {
       `SELECT c.id, c.plan_id, p.nombre AS plan_nombre,
               c.precio_final, c.precio_mensual, c.tipo_pago::text AS tipo_pago,
               c.deuda_total, c.estado::text AS estado
-         FROM contratos c
+         FROM servicios c
          JOIN planes p ON p.id = c.plan_id
         WHERE c.id = $1 AND c.cliente_id = $2 AND c.empresa_id = $3
           AND c.deleted_at IS NULL`,

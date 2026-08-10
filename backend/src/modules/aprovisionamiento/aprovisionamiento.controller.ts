@@ -46,7 +46,7 @@ export class AprovisionamientoController {
       SELECT cl.id AS cliente_id, cl.nombre_completo, cl.telefono, cl.whatsapp,
              pl.nombre AS plan_nombre, pl.velocidad_bajada, pl.velocidad_subida,
              co.usuario_pppoe
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN planes   pl ON pl.id = co.plan_id
       WHERE co.id = $1 AND co.empresa_id = $2

@@ -70,7 +70,7 @@ export class PromesasPagoService {
              c.deuda_total, c.en_prorroga,
              cl.nombre_completo AS nombre_cliente,
              cl.whatsapp, cl.telefono
-      FROM   contratos c
+      FROM   servicios c
       JOIN   clientes cl ON cl.id = c.cliente_id
       WHERE  c.id = $1 AND c.deleted_at IS NULL
     `, [dto.contratoId]);
@@ -117,7 +117,7 @@ export class PromesasPagoService {
       const saved = await em.save(nueva);
 
       await em.query(`
-        UPDATE contratos
+        UPDATE servicios
         SET    en_prorroga        = TRUE,
                prorroga_hasta     = $1,
                prorroga_motivo    = $2,
@@ -129,7 +129,7 @@ export class PromesasPagoService {
       // Reactivar contrato suspendido manualmente durante el período de la promesa
       if (contrato.estado === 'suspendido') {
         await em.query(`
-          UPDATE contratos
+          UPDATE servicios
           SET    estado = 'activo', fecha_estado = NOW(), updated_at = NOW()
           WHERE  id = $1
         `, [dto.contratoId]);
@@ -141,7 +141,7 @@ export class PromesasPagoService {
           WHERE  id = $1
             AND  estado = 'suspendido'
             AND  NOT EXISTS (
-              SELECT 1 FROM contratos
+              SELECT 1 FROM servicios
               WHERE  cliente_id = $1
                 AND  estado = 'suspendido'
                 AND  deleted_at IS NULL
@@ -166,7 +166,7 @@ export class PromesasPagoService {
 
       const estadoNuevo = contrato.estado === 'suspendido' ? 'activo' : contrato.estado;
       await em.query(`
-        INSERT INTO contratos_historial
+        INSERT INTO servicios_historial
           (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
         VALUES ($1, $2, $3, $4, $5, $6, FALSE)
       `, [
@@ -276,7 +276,7 @@ export class PromesasPagoService {
     // Leer el estado REAL del contrato ahora mismo (puede diferir del snapshot si el admin
     // lo cambió manualmente entre la creación de la promesa y esta cancelación).
     const [contratoActual] = await this.ds.query<{ estado: string }[]>(
-      `SELECT estado FROM contratos WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT estado FROM servicios WHERE id = $1 AND deleted_at IS NULL`,
       [promesa.contratoId],
     );
     const estadoRealActual = contratoActual?.estado ?? previo;
@@ -292,7 +292,7 @@ export class PromesasPagoService {
 
     // Limpiar flags de prorroga (siempre)
     await this.ds.query(`
-      UPDATE contratos
+      UPDATE servicios
       SET    en_prorroga  = FALSE,
              prorroga_hasta = NULL,
              updated_at   = NOW()
@@ -303,7 +303,7 @@ export class PromesasPagoService {
     // (previo='suspendido' + estadoRealActual='activo'). Si el admin ya lo cambió, no tocar.
     if (previo === 'suspendido' && estadoRealActual === 'activo') {
       await this.ds.query(`
-        UPDATE contratos
+        UPDATE servicios
         SET    estado = 'suspendido', fecha_estado = NOW(), updated_at = NOW()
         WHERE  id = $1
       `, [promesa.contratoId]);
@@ -315,7 +315,7 @@ export class PromesasPagoService {
         WHERE  id = $1
           AND  estado = 'activo'
           AND  NOT EXISTS (
-            SELECT 1 FROM contratos
+            SELECT 1 FROM servicios
             WHERE  cliente_id = $1
               AND  estado = 'activo'
               AND  deleted_at IS NULL
@@ -341,7 +341,7 @@ export class PromesasPagoService {
     }
 
     await this.ds.query(`
-      INSERT INTO contratos_historial
+      INSERT INTO servicios_historial
         (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
       VALUES ($1, $2, $3, $4, $5, $6, FALSE)
     `, [
@@ -412,7 +412,7 @@ export class PromesasPagoService {
     if (!marcada) return;
 
     await this.ds.query(`
-      UPDATE contratos
+      UPDATE servicios
       SET    en_prorroga = FALSE, prorroga_hasta = NULL, updated_at = NOW()
       WHERE  id = $1
     `, [promesa.contratoId]);
@@ -563,7 +563,7 @@ export class PromesasPagoService {
         ro.nombre            AS "routerNombre"
       FROM  promesas_pago pp
       JOIN  clientes  c  ON c.id  = pp.cliente_id
-      JOIN  contratos co ON co.id = pp.contrato_id
+      JOIN  servicios co ON co.id = pp.contrato_id
       LEFT JOIN routers ro ON ro.id = pp.router_id_snapshot
       WHERE pp.empresa_id = $1
         ${whereEstado}
@@ -619,7 +619,7 @@ export class PromesasPagoService {
     const [deudaRow] = await this.ds.query<Array<{ deuda: string }>>(
       `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
          FROM facturas f
-         JOIN contratos c ON c.id = $1
+         JOIN servicios c ON c.id = $1
         WHERE (f.contrato_id = c.id OR (f.contrato_id IS NULL AND f.cliente_id = c.cliente_id))
           AND ${sqlDeudaExigible('f')}
           AND f.deleted_at IS NULL`,
@@ -698,13 +698,13 @@ export class PromesasPagoService {
     // registrar el estado del que se corta a alguien que hasta ahora tenía servicio.
     // (Antes caía en `'moroso'`, un estado que nunca existió en los datos.)
     const [contratoActual] = await this.ds.query<{ estado: string }[]>(
-      `SELECT estado FROM contratos WHERE id = $1`,
+      `SELECT estado FROM servicios WHERE id = $1`,
       [promesa.contratoId],
     );
     const estadoAnterior = contratoActual?.estado ?? promesa.contratoEstadoPrevio ?? 'activo';
 
     await this.ds.query(`
-      UPDATE contratos
+      UPDATE servicios
       SET    estado        = 'suspendido',
              en_prorroga   = FALSE,
              prorroga_hasta = NULL,
@@ -714,7 +714,7 @@ export class PromesasPagoService {
     `, [promesa.contratoId]);
 
     await this.ds.query(`
-      INSERT INTO contratos_historial
+      INSERT INTO servicios_historial
         (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico)
       VALUES ($1, $2, $3, 'suspendido', 'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida')
     `, [promesa.contratoId, promesa.empresaId, estadoAnterior]);
@@ -726,7 +726,7 @@ export class PromesasPagoService {
       WHERE  id = $1
         AND  estado = 'activo'
         AND  NOT EXISTS (
-          SELECT 1 FROM contratos
+          SELECT 1 FROM servicios
           WHERE  cliente_id = $1
             AND  estado = 'activo'
             AND  deleted_at IS NULL
@@ -754,7 +754,7 @@ export class PromesasPagoService {
         const [row] = await this.ds.query<any[]>(`
           SELECT cl.nombre_completo, cl.whatsapp, cl.telefono,
                  em.razon_social AS empresa_nombre, co.deuda_total
-          FROM   contratos co
+          FROM   servicios co
           JOIN   clientes  cl ON cl.id = co.cliente_id
           JOIN   empresas  em ON em.id = co.empresa_id
           WHERE  co.id = $1

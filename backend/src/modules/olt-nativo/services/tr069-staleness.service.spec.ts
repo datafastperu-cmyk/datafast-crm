@@ -18,7 +18,7 @@ describe('Tr069StalenessService', () => {
 
     const ds = {
       query: jest.fn(async (sql: string, params?: any[]) => {
-        if (/FROM\s+ftth_onu_registro/i.test(sql) && /JOIN\s+contratos/i.test(sql)) {
+        if (/FROM\s+ftth_onu_registro/i.test(sql) && /JOIN\s+servicios/i.test(sql)) {
           return opts.candidatos;
         }
         if (/FROM\s+olt_dispositivos/i.test(sql)) {

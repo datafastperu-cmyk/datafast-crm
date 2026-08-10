@@ -37,7 +37,7 @@ export class XuiLinesService {
   async crearLineParaContrato(contratoId: string, empresaId: string): Promise<XuiLine | null> {
     const [contrato] = await this.dataSource.query<any[]>(
       `SELECT c.id, c.cliente_id AS "clienteId", c.plan_id AS "planId"
-       FROM contratos c WHERE c.id = $1 AND c.empresa_id = $2 AND c.deleted_at IS NULL`,
+       FROM servicios c WHERE c.id = $1 AND c.empresa_id = $2 AND c.deleted_at IS NULL`,
       [contratoId, empresaId],
     );
     if (!contrato) throw new NotFoundException(`Contrato ${contratoId} no encontrado`);

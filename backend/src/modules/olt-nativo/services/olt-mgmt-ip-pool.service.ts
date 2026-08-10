@@ -301,7 +301,7 @@ export class OltMgmtIpPoolService {
     const base = `
       FROM olt_mgmt_ip_pool p
       LEFT JOIN ftth_onu_registro r ON r.contrato_id = p.contrato_id AND r.deleted_at IS NULL
-      LEFT JOIN contratos co        ON co.id = p.contrato_id
+      LEFT JOIN servicios co        ON co.id = p.contrato_id
       LEFT JOIN clientes cl         ON cl.id = co.cliente_id
       WHERE ${filtro}`;
 

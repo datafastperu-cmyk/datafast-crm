@@ -58,7 +58,7 @@ export class OnuRepository {
     // La ONU está ligada al contrato via la columna onu_id en contratos
     const [row] = await this.ds.query(`
       SELECT o.* FROM onus o
-      JOIN contratos c ON c.onu_id = o.id
+      JOIN servicios c ON c.onu_id = o.id
       WHERE c.id = $1 AND o.deleted_at IS NULL
     `, [contratoId]);
     return row || null;
@@ -77,7 +77,7 @@ export class OnuRepository {
     if (filters.oltId)        qb.andWhere('o.olt_id = :oltId',  { oltId: filters.oltId });
     if (filters.serialNumber) qb.andWhere('o.serial_number ILIKE :sn', { sn: `%${filters.serialNumber}%` });
     if (filters.ponPort)      qb.andWhere('o.pon_port = :pp', { pp: filters.ponPort });
-    if (filters.sinContrato)  qb.andWhere(`o.id NOT IN (SELECT onu_id FROM contratos WHERE onu_id IS NOT NULL AND deleted_at IS NULL)`);
+    if (filters.sinContrato)  qb.andWhere(`o.id NOT IN (SELECT onu_id FROM servicios WHERE onu_id IS NOT NULL AND deleted_at IS NULL)`);
     if (filters.search) {
       qb.andWhere('(o.serial_number ILIKE :s OR o.descripcion ILIKE :s)', { s: `%${filters.search}%` });
     }
@@ -143,7 +143,7 @@ export class OnuRepository {
         pl.velocidad_subida
       FROM onus o
       LEFT JOIN olts      ol ON ol.id = o.olt_id
-      LEFT JOIN contratos c  ON c.onu_id = o.id  AND c.deleted_at IS NULL
+      LEFT JOIN servicios c  ON c.onu_id = o.id  AND c.deleted_at IS NULL
       LEFT JOIN clientes  cl ON cl.id = c.cliente_id
       LEFT JOIN planes    pl ON pl.id = c.plan_id
       WHERE o.id = $1 AND o.empresa_id = $2 AND o.deleted_at IS NULL

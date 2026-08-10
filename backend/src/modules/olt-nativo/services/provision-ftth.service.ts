@@ -811,7 +811,7 @@ export class ProvisionFtthService {
     try {
       const [row] = await this.ds.query<Array<{ cliente: string | null; numero: string | null }>>(
         `SELECT cl.nombre_completo AS cliente, co.numero_contrato AS numero
-         FROM   contratos co JOIN clientes cl ON cl.id = co.cliente_id
+         FROM   servicios co JOIN clientes cl ON cl.id = co.cliente_id
          WHERE  co.id = $1 AND co.empresa_id = $2`,
         [contratoId, empresaId],
       );
@@ -1424,7 +1424,7 @@ export class ProvisionFtthService {
   private async _syncVlanContrato(contratoId: string, empresaId: string, vlan: number): Promise<void> {
     try {
       await this.ds.query(
-        `UPDATE contratos SET vlan_id = $1 WHERE id = $2 AND empresa_id = $3 AND deleted_at IS NULL`,
+        `UPDATE servicios SET vlan_id = $1 WHERE id = $2 AND empresa_id = $3 AND deleted_at IS NULL`,
         [vlan, contratoId, empresaId],
       );
     } catch (e) {
@@ -1454,7 +1454,7 @@ export class ProvisionFtthService {
               host(netmask(s.red_cidr)) AS mask,
               host(s.gateway)           AS gateway,
               host(s.dns_primario)      AS dns_primario
-       FROM   contratos c
+       FROM   servicios c
        LEFT JOIN segmentos_ipv4 s ON s.id = c.segmento_id
        WHERE  c.id = $1 AND c.empresa_id = $2 AND c.deleted_at IS NULL`,
       [contratoId, empresaId],
@@ -1639,7 +1639,7 @@ export class ProvisionFtthService {
     // botón manual `desaprovisionar` NO pasa por aquí, así que la acción explícita del operador
     // nunca se bloquea.
     const [contrato] = await this.ds.query<Array<{ estado: string; deleted_at: string | null }>>(
-      `SELECT estado, deleted_at FROM contratos WHERE id = $1 AND empresa_id = $2`,
+      `SELECT estado, deleted_at FROM servicios WHERE id = $1 AND empresa_id = $2`,
       [contratoId, empresaId],
     );
     if (!contrato) {
@@ -1852,7 +1852,7 @@ export class ProvisionFtthService {
              pd.service_port_id AS data_sp,
              pg.service_port_id AS mgmt_sp
       FROM   olt_onu_inventario inv
-      JOIN   contratos c
+      JOIN   servicios c
              ON c.id = inv.contrato_id AND c.deleted_at IS NULL AND c.estado <> 'baja_definitiva'
       JOIN   olt_service_port_pool pd
              ON pd.contrato_id = inv.contrato_id AND pd.olt_id = inv.olt_id
@@ -2034,7 +2034,7 @@ export class ProvisionFtthService {
     }[]>(
       `SELECT r.contrato_id, r.empresa_id, r.olt_id, r.slot, r.port, r.onu_id, c.usuario_pppoe
        FROM   ftth_onu_registro r
-       JOIN   contratos c ON c.id = r.contrato_id
+       JOIN   servicios c ON c.id = r.contrato_id
        WHERE  r.estado = 'activo' AND r.wan_mode = 'routing' AND r.deleted_at IS NULL
          AND  c.usuario_pppoe IS NOT NULL AND c.deleted_at IS NULL
          AND  c.estado NOT IN ('suspendido', 'baja_definitiva')`,
@@ -2708,7 +2708,7 @@ export class ProvisionFtthService {
       `SELECT co.id AS contrato_id,
               cl.nombre_completo AS cliente_nombre,
               pl.nombre AS plan_nombre
-       FROM contratos co
+       FROM servicios co
        JOIN clientes cl ON cl.id = co.cliente_id
        LEFT JOIN planes pl ON pl.id = co.plan_id
        WHERE co.id = ANY($1) AND co.deleted_at IS NULL`,

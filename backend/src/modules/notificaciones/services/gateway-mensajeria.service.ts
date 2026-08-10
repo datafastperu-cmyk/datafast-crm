@@ -559,7 +559,7 @@ export class GatewayMensajeriaService {
               co.deuda_total::text     AS monto,
               co.meses_deuda::text     AS dias_vencidos,
               co.meses_deuda::text     AS meses_deuda
-            FROM contratos co
+            FROM servicios co
             JOIN clientes  cl ON cl.id = co.cliente_id
             JOIN empresas  em ON em.id = co.empresa_id
             LEFT JOIN planes pl ON pl.id = co.plan_id
@@ -753,7 +753,7 @@ export class GatewayMensajeriaService {
     try {
       if (params.contratoId) {
         const [row] = await this.ds.query(
-          `SELECT cl.email FROM contratos co JOIN clientes cl ON cl.id = co.cliente_id WHERE co.id = $1`,
+          `SELECT cl.email FROM servicios co JOIN clientes cl ON cl.id = co.cliente_id WHERE co.id = $1`,
           [params.contratoId],
         );
         return row?.email ?? null;

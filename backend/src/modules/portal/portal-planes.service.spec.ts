@@ -27,7 +27,7 @@ interface EscenarioContrato {
 
 function servicioCon({ tipoPago, deuda }: EscenarioContrato) {
   const query = jest.fn((sql: string) => {
-    if (sql.includes('FROM contratos c')) {
+    if (sql.includes('FROM servicios c')) {
       return Promise.resolve([{
         id: CONTRATO,
         plan_id: PLAN_CARO,
@@ -114,7 +114,7 @@ describe('PortalPlanesService — bajada de plan con deuda', () => {
 describe('PortalPlanesService — una solicitud a la vez', () => {
   it('con una solicitud en curso, el catálogo bloquea y solicitar de nuevo falla', async () => {
     const query = jest.fn((sql: string) => {
-      if (sql.includes('FROM contratos c')) {
+      if (sql.includes('FROM servicios c')) {
         return Promise.resolve([{
           id: CONTRATO, plan_id: PLAN_CARO, plan_nombre: 'Plan 300 Mbps',
           precio_final: '120.00', precio_mensual: '120.00',

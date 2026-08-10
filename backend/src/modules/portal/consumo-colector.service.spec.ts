@@ -38,7 +38,7 @@ function colectorCon({ snapshotPrevio, bytesQueue }: Escenario) {
     escrituras.push({ sql, params });
 
     if (sql.includes('FROM routers r'))   return Promise.resolve([ROUTER]);
-    if (sql.includes('FROM contratos'))   return Promise.resolve([CONTRATO]);
+    if (sql.includes('FROM servicios'))   return Promise.resolve([CONTRATO]);
     if (sql.includes('FROM consumo_snapshot')) {
       return Promise.resolve(
         snapshotPrevio

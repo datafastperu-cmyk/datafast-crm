@@ -65,11 +65,11 @@ describe('La mora se deriva de las facturas, no se almacena', () => {
 // La barrera. El estado se BORRÓ; esto impide que vuelva por la puerta de atrás.
 //
 // Se comprobó contra producción antes de borrarlo: **cero contratos en `moroso` y cero
-// registros entre las 44 filas de `contratos_historial`**. No es que estuviera en desuso —
+// registros entre las 44 filas de `servicios_historial`**. No es que estuviera en desuso —
 // no ocurrió nunca, ni una vez, en toda la vida del sistema.
 //
 // El valor sigue en el tipo `estado_contrato` de PostgreSQL: quitarlo obliga a recrear el
-// tipo con las tres columnas (`contratos.estado`, `contratos_historial.estado_anterior`,
+// tipo con las tres columnas (`contratos.estado`, `servicios_historial.estado_anterior`,
 // `estado_nuevo`) y la vista `v_contratos_completos` que dependen de él. Se hará en la
 // instalación limpia, donde el tipo nace ya sin el valor. Hasta entonces, lo que importa es
 // que **ningún literal `'moroso'` viva en el código** — que es de donde salieron los bugs.
@@ -146,7 +146,7 @@ describe('El estado `moroso` no existe en el código', () => {
 
     expect(linea).toContain("'suspendido'");
     // 'cortado' se retiró el 2026-08-09 (fase 1): describía la CAUSA de una suspensión,
-    // no un estado distinto del servicio. Esa causa vive ahora en contratos_historial.origen.
+    // no un estado distinto del servicio. Esa causa vive ahora en servicios_historial.origen.
     expect(linea).not.toContain("'cortado'");
     // El error que estuvo latente durante meses: contarlo entre los que NO tienen servicio.
     expect(linea).not.toContain("'moroso'");

@@ -165,7 +165,7 @@ export class GoogleSyncProcessor {
 
     if (contratoId) {
       await this.ds.query(
-        `UPDATE contratos SET latitud_instalacion = $1, longitud_instalacion = $2
+        `UPDATE servicios SET latitud_instalacion = $1, longitud_instalacion = $2
          WHERE id = $3 AND empresa_id = $4`,
         [result.lat, result.lng, contratoId, empresaId],
       );

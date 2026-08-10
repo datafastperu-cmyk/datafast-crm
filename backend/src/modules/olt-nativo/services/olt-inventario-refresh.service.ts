@@ -91,7 +91,7 @@ export class OltInventarioRefreshService {
         `SELECT r.sn, r.contrato_id, c.numero_contrato,
                 COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente
            FROM ftth_onu_registro r
-           JOIN contratos c ON c.id = r.contrato_id
+           JOIN servicios c ON c.id = r.contrato_id
            LEFT JOIN clientes cl ON cl.id = c.cliente_id
           WHERE r.deleted_at IS NULL AND r.olt_id = $1`,
         [oltId],

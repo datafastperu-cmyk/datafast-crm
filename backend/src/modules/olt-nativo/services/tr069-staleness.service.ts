@@ -82,7 +82,7 @@ export class Tr069StalenessService {
       SELECT r.id, r.contrato_id, r.empresa_id, r.sn,
              r.olt_id, r.slot, r.port, r.onu_id, r.tr069_stale_desde
       FROM   ftth_onu_registro r
-      JOIN   contratos c ON c.id = r.contrato_id
+      JOIN   servicios c ON c.id = r.contrato_id
       WHERE  r.deleted_at IS NULL
         AND  r.estado       = 'activo'
         AND  r.carril_estado = 'activo'

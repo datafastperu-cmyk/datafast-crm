@@ -266,7 +266,7 @@ export class VelocidadOrquestador {
           pl.tipo_queue,
           pl.tipo             AS tipo_plan,
           pl.nombre           AS plan_nombre
-        FROM contratos co
+        FROM servicios co
         JOIN planes pl ON pl.id = co.plan_id
         WHERE co.router_id = $1
           -- 'prorroga' no existe en el enum estado_contrato: una prórroga deja el contrato

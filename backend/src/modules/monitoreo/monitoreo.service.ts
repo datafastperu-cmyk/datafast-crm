@@ -492,7 +492,7 @@ export class MonitoreoService {
     if (!d) throw new NotFoundException(`Dispositivo ${id} no encontrado`);
 
     const [{ count }] = await this.ds.query(
-      `SELECT COUNT(*) as count FROM contratos
+      `SELECT COUNT(*) as count FROM servicios
        WHERE antena_ap_id = $1 AND deleted_at IS NULL
          AND estado IN ('activo','suspendido','pendiente_activacion')`,
       [id],
@@ -735,7 +735,7 @@ export class MonitoreoService {
       `SELECT co.numero_contrato AS "numeroContrato",
               co.mac_address     AS "mac",
               cl.nombre_completo AS "nombre"
-       FROM   contratos co
+       FROM   servicios co
        JOIN   clientes cl ON cl.id = co.cliente_id
        WHERE  co.antena_ap_id = $1
          AND  co.mac_address IS NOT NULL

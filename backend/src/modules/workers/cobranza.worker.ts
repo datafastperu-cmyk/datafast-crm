@@ -165,7 +165,7 @@ export class CobranzaScheduler implements OnModuleInit {
         -- gracia. No desde el primero: ver el comentario de la regla, arriba.
         (CURRENT_DATE - im.vencimiento_del_ultimo)::int AS dias_vencido,
         cl.nombre_completo AS nombre_cliente
-      FROM contratos co
+      FROM servicios co
       JOIN empresas em ON em.id = co.empresa_id
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN impagas  im ON im.cliente_id = co.cliente_id
@@ -256,7 +256,7 @@ export class CobranzaScheduler implements OnModuleInit {
                co.fecha_vencimiento,
                CAST(co.precio_final AS FLOAT) AS precio_final,
                cl.whatsapp, cl.telefono
-        FROM contratos co
+        FROM servicios co
         JOIN clientes cl ON cl.id = co.cliente_id AND cl.deleted_at IS NULL
         WHERE co.estado = 'activo'
           AND co.fecha_vencimiento IS NOT NULL
@@ -351,7 +351,7 @@ export class CobranzaScheduler implements OnModuleInit {
              cl.facturacion_config,
              im.vencimiento,
              (im.vencimiento - CURRENT_DATE)::int AS dias_restantes
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl  ON cl.id  = co.cliente_id AND cl.deleted_at IS NULL
       JOIN (
         SELECT cliente_id, MIN(fecha_vencimiento) AS vencimiento
@@ -584,7 +584,7 @@ export class CobranzaWorker {
     // ── 5. Actualizar estado en BD ─────────────────────────
     await job.progress(60);
     await this.ds.query(`
-      UPDATE contratos SET
+      UPDATE servicios SET
         estado = 'suspendido',
         fecha_estado = NOW(),
         motivo_estado = $1
@@ -595,7 +595,7 @@ export class CobranzaWorker {
     ]);
 
     await this.ds.query(`
-      INSERT INTO contratos_historial
+      INSERT INTO servicios_historial
         (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
       VALUES ($1, $2, 'activo', 'suspendido', $3, NULL, true)
     `, [contratoId, empresaId, `Corte automático: deuda S/ ${deudaTotal}`]);
@@ -611,12 +611,12 @@ export class CobranzaWorker {
     const [clienteBloqueado] = await this.ds.query<Array<{ id: string; cliente_id: string }>>(`
       UPDATE clientes cl
       SET    estado = 'suspendido', fecha_estado = NOW()
-      FROM   contratos co
+      FROM   servicios co
       WHERE  co.id = $1
         AND  cl.id = co.cliente_id
         AND  cl.estado = 'activo'
         AND  NOT EXISTS (
-          SELECT 1 FROM contratos otro
+          SELECT 1 FROM servicios otro
           WHERE otro.cliente_id = cl.id
             AND otro.estado IN ('activo', 'pendiente_activacion')
             AND otro.deleted_at IS NULL
@@ -644,7 +644,7 @@ export class CobranzaWorker {
     const [cliente] = await this.ds.query(`
       SELECT cl.nombre_completo, cl.whatsapp, cl.telefono,
              em.razon_social AS empresa_nombre
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN empresas em ON em.id = co.empresa_id
       WHERE co.id = $1
@@ -754,7 +754,7 @@ export class CobranzaWorker {
 
       // ── 2b. Habilitar PPPoE secret (permite reconexión) ──
       const [conRow] = await this.ds.query(
-        'SELECT usuario_pppoe FROM contratos WHERE id = $1',
+        'SELECT usuario_pppoe FROM servicios WHERE id = $1',
         [contratoId],
       ).catch(() => [null]);
 
@@ -792,7 +792,7 @@ export class CobranzaWorker {
       mensual: 1, bimestral: 2, trimestral: 3, semestral: 6, anual: 12,
     };
     const [contratoData] = await this.ds.query(`
-      SELECT ciclo_facturacion, estado FROM contratos WHERE id = $1
+      SELECT ciclo_facturacion, estado FROM servicios WHERE id = $1
     `, [contratoId]).catch(() => [null]);
 
     const estadoAnterior = contratoData?.estado ?? 'suspendido';
@@ -834,7 +834,7 @@ export class CobranzaWorker {
 
     // RETURNING id para saber si realmente cambió de estado (evita historial fantasma).
     const [contratoActualizado] = filasUpdateReturning<{ id: string }>(await this.ds.query(`
-      UPDATE contratos SET
+      UPDATE servicios SET
         estado = 'activo',
         fecha_estado = NOW(),
         motivo_estado = 'Reactivación automática por pago registrado',
@@ -849,7 +849,7 @@ export class CobranzaWorker {
 
     if (contratoActualizado) {
       await this.ds.query(`
-        INSERT INTO contratos_historial
+        INSERT INTO servicios_historial
           (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
         VALUES ($1, $2, $3, 'activo', $4, NULL, true)
       `, [contratoId, empresaId, estadoAnterior, `Reactivación automática por pago | Nuevo vencimiento: ${nuevaFechaStr}`]);
@@ -862,7 +862,7 @@ export class CobranzaWorker {
       WHERE id = $1
         AND estado = 'suspendido'
         AND NOT EXISTS (
-          SELECT 1 FROM contratos
+          SELECT 1 FROM servicios
           WHERE cliente_id = $1
             AND estado = 'suspendido'
             AND deleted_at IS NULL
@@ -893,7 +893,7 @@ export class CobranzaWorker {
     if (notificar !== false) {
       const [cliente] = await this.ds.query(`
         SELECT cl.nombre_completo, cl.whatsapp, cl.telefono
-        FROM contratos co JOIN clientes cl ON cl.id = co.cliente_id
+        FROM servicios co JOIN clientes cl ON cl.id = co.cliente_id
         WHERE co.id = $1
       `, [contratoId]).catch(() => [null]);
 
@@ -950,7 +950,7 @@ export class CobranzaWorker {
       SELECT co.id, co.deuda_total, co.router_id,
              co.ip_asignada, co.usuario_pppoe, co.meses_deuda, co.estado,
              cl.nombre_completo AS nombre_cliente
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id
       WHERE co.id = $1 AND co.deleted_at IS NULL
     `, [contratoId]);

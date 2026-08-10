@@ -168,7 +168,7 @@ export class PortalClienteService {
               c.deuda_total,
               c.meses_deuda,
               c.onu_id
-         FROM contratos c
+         FROM servicios c
          JOIN planes   p ON p.id = c.plan_id
         WHERE c.cliente_id = $1
           AND c.empresa_id = $2
@@ -260,7 +260,7 @@ export class PortalClienteService {
               i.estado_operativo,
               i.rx_power_dbm,
               i.updated_at   AS observado_en
-         FROM contratos c
+         FROM servicios c
          LEFT JOIN olt_onu_inventario i
                 ON i.contrato_id = c.id AND i.empresa_id = c.empresa_id
         WHERE c.id = $1 AND c.cliente_id = $2 AND c.empresa_id = $3

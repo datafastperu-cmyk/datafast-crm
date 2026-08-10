@@ -100,7 +100,7 @@ export class PagoRepository {
       `SELECT COUNT(*) AS total
        FROM pagos p
        LEFT JOIN clientes cl ON cl.id = p.cliente_id
-       LEFT JOIN contratos co ON co.id = p.contrato_id
+       LEFT JOIN servicios co ON co.id = p.contrato_id
        WHERE ${where}`,
       params,
     );
@@ -138,7 +138,7 @@ export class PagoRepository {
          f.numero_completo   AS numero_comprobante
        FROM pagos p
        LEFT JOIN clientes cl ON cl.id = p.cliente_id
-       LEFT JOIN contratos co ON co.id = p.contrato_id
+       LEFT JOIN servicios co ON co.id = p.contrato_id
        LEFT JOIN facturas f ON f.id = p.factura_id AND f.deleted_at IS NULL
        WHERE ${where}
        ORDER BY ${sortCol} ${sortDir}

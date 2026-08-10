@@ -61,7 +61,7 @@ export class PortalFacturacionService {
     // El contrato se valida contra el cliente del token EN LA MISMA consulta. Filtrar
     // solo por contrato_id convertiría el endpoint en un IDOR sobre todo el parque.
     const [contrato] = await this.dataSource.query<Array<{ id: string }>>(
-      `SELECT id FROM contratos
+      `SELECT id FROM servicios
         WHERE id = $1 AND cliente_id = $2 AND empresa_id = $3 AND deleted_at IS NULL`,
       [contratoId, clienteId, empresaId],
     );

@@ -127,7 +127,7 @@ export class FacturacionScheduler implements OnModuleInit {
     // Ninguno de los dos campos se usaba aguas abajo — el job solo consume `id`.
     const empresas = await this.ds.query(`
       SELECT DISTINCT em.id, em.razon_social
-      FROM contratos co
+      FROM servicios co
       JOIN empresas em ON em.id = co.empresa_id
       WHERE co.dia_facturacion = $1
         AND co.estado = 'activo'
@@ -241,7 +241,7 @@ export class FacturacionWorker {
         cl.email,
 
         pl.nombre            AS plan_nombre
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN planes   pl ON pl.id = co.plan_id
       WHERE co.empresa_id = $1

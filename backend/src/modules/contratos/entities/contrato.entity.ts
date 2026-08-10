@@ -16,7 +16,7 @@ export enum TipoPago {
  * que el corte por acumulación lo suspende.
  *
  * Se comprobó contra producción antes de borrarlo: **cero contratos y cero registros en las
- * 44 filas de `contratos_historial`**. El estado no ocurrió nunca, ni una vez. Lo que sí
+ * 44 filas de `servicios_historial`**. El estado no ocurrió nunca, ni una vez. Lo que sí
  * había eran veintiséis lecturas repartidas por el código, y una de ellas estaba al revés:
  * `address-list-reconciliador` lo contaba entre los estados SIN servicio, de modo que un
  * operador que lo asignara a mano le habría cortado el tráfico a un abonado que, por la
@@ -35,7 +35,7 @@ export enum EstadoContrato {
    * @deprecated RETIRADO el 2026-08-09 (fase 1, tres estados). No se escribe nunca y ninguna
    * transición lleva a él. Describía la CAUSA de una suspensión —haber roto una prórroga—, no
    * un estado distinto del servicio: el abonado está sin él en los dos. La causa vive ahora en
-   * `contratos_historial.origen`, donde además sirve para TODAS las suspensiones y no solo
+   * `servicios_historial.origen`, donde además sirve para TODAS las suspensiones y no solo
    * para ésta. El valor no se borra del enum de PostgreSQL: sería irreversible y no aporta
    * nada, igual que con `MOROSO`.
    */
@@ -44,7 +44,7 @@ export enum EstadoContrato {
 }
 
 // ─── Contrato ─────────────────────────────────────────────────
-@Entity('contratos')
+@Entity('servicios')
 @Index(['empresaId', 'estado'])
 @Index(['empresaId', 'clienteId'])
 @Index(['ipAsignada'])
@@ -319,7 +319,7 @@ export class Contrato extends BaseModel {
 }
 
 // ─── Historial de estados del contrato ───────────────────────
-@Entity('contratos_historial')
+@Entity('servicios_historial')
 @Index(['contratoId', 'createdAt'])
 export class ContratoHistorial {
   @Column({ type: 'bigint', primary: true, generated: 'increment' })

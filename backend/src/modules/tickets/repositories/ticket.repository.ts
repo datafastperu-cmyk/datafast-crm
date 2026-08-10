@@ -31,7 +31,7 @@ export class TicketRepository {
       FROM tickets t
       LEFT JOIN clientes  cl ON cl.id = t.cliente_id
       LEFT JOIN usuarios  u  ON u.id  = t.tecnico_id
-      LEFT JOIN contratos co ON co.id = t.contrato_id
+      LEFT JOIN servicios co ON co.id = t.contrato_id
       WHERE t.id = $1 AND t.empresa_id = $2 AND t.deleted_at IS NULL
     `, [id, empresaId]);
     return rows[0] || null;

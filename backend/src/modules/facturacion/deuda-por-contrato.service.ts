@@ -105,7 +105,7 @@ export class DeudaPorContratoService {
   async recalcularPorCliente(clienteId: string, empresaId: string): Promise<void> {
     try {
       const contratos = await this.ds.query<Array<{ id: string }>>(
-        `SELECT id FROM contratos
+        `SELECT id FROM servicios
           WHERE cliente_id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
         [clienteId, empresaId],
       );
@@ -128,7 +128,7 @@ export class DeudaPorContratoService {
       for (const { id } of contratos) {
         const d = deudas.get(id) ?? { monto: 0, comprobantes: 0 };
         await this.ds.query(
-          `UPDATE contratos
+          `UPDATE servicios
               SET deuda_total = $1,
                   meses_deuda = $2,
                   fecha_ultimo_pago = COALESCE($3::date, fecha_ultimo_pago)
@@ -171,7 +171,7 @@ export class DeudaPorContratoService {
     // Contratos con ciclo de vida vivo: los que pueden cargar con una deuda. Un contrato
     // dado de baja no debe recibir imputaciones nuevas.
     const contratosVivos = (await this.ds.query<Array<{ id: string }>>(
-      `SELECT id FROM contratos
+      `SELECT id FROM servicios
         WHERE cliente_id = $1 AND empresa_id = $2
           AND deleted_at IS NULL AND estado <> 'baja_definitiva'`,
       [clienteId, empresaId],

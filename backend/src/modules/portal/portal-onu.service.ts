@@ -484,7 +484,7 @@ export class PortalOnuService implements OnModuleInit {
       `SELECT r.id AS registro_id, r.sn, r.estado::text AS estado,
               r.carril_estado::text AS carril_estado,
               c.estado::text AS contrato_estado
-         FROM contratos c
+         FROM servicios c
          JOIN ftth_onu_registro r
            ON r.contrato_id = c.id AND r.empresa_id = c.empresa_id
         WHERE c.id = $1 AND c.cliente_id = $2 AND c.empresa_id = $3

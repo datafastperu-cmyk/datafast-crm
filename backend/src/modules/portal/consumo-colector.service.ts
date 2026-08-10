@@ -84,7 +84,7 @@ export class ConsumoColectorService implements OnModuleInit {
          FROM routers r
         WHERE r.activo = true AND r.deleted_at IS NULL
           AND EXISTS (
-            SELECT 1 FROM contratos c
+            SELECT 1 FROM servicios c
              WHERE c.router_id = r.id AND c.deleted_at IS NULL
                AND c.nombre_queue IS NOT NULL
           )
@@ -126,7 +126,7 @@ export class ConsumoColectorService implements OnModuleInit {
 
     const contratos = await this.dataSource.query<FilaContrato[]>(
       `SELECT id AS contrato_id, cliente_id, empresa_id, nombre_queue
-         FROM contratos
+         FROM servicios
         WHERE router_id = $1 AND deleted_at IS NULL AND nombre_queue IS NOT NULL`,
       [router.id],
     );

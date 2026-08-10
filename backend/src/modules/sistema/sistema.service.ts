@@ -591,7 +591,7 @@ export class SistemaService implements OnModuleInit {
                 'DATAFAST'
               ) AS cliente_nombre
        FROM notificaciones_logs nl
-       LEFT JOIN contratos co  ON co.id  = nl.contrato_id AND co.deleted_at IS NULL
+       LEFT JOIN servicios co  ON co.id  = nl.contrato_id AND co.deleted_at IS NULL
        LEFT JOIN clientes  cl  ON cl.id  = co.cliente_id
        LEFT JOIN clientes  cl2 ON cl2.id = nl.cliente_id
        LEFT JOIN empresas  em  ON em.id  = nl.empresa_id
@@ -854,7 +854,7 @@ export class SistemaService implements OnModuleInit {
              f.total              AS factura_total,
              f.numero_completo    AS factura_numero,
              f.fecha_vencimiento  AS factura_vencimiento
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id AND cl.deleted_at IS NULL
       JOIN empresas em ON em.id = co.empresa_id
       JOIN planes   pl ON pl.id = co.plan_id
@@ -963,7 +963,7 @@ export class SistemaService implements OnModuleInit {
                f.total                  AS factura_total,
                f.numero_completo        AS factura_numero,
                f.fecha_vencimiento      AS factura_vencimiento
-        FROM contratos co
+        FROM servicios co
         JOIN clientes cl ON cl.id = co.cliente_id AND cl.deleted_at IS NULL
         JOIN empresas em ON em.id = co.empresa_id
         JOIN planes   pl ON pl.id = co.plan_id

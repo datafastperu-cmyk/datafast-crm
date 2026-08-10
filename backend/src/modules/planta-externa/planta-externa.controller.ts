@@ -406,7 +406,7 @@ export class PlantaExternaController {
     // pero no valida nada — y el veredicto lo dice explícitamente en vez de callarlo.
     const [medicion] = await this.ds.query(
       `SELECT inv.rx_power_dbm
-         FROM contratos c
+         FROM servicios c
          JOIN ftth_onu_registro r ON r.contrato_id = c.id
          JOIN olt_onu_inventario inv
            ON inv.olt_id = r.olt_id AND inv.sn = r.sn

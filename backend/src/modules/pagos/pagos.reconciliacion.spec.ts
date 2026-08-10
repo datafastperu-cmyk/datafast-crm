@@ -19,7 +19,7 @@ describe('PagosService — reconciliación del cobro', () => {
       query: jest.fn(async (sql: string) => {
         queries.push(sql);
         if (/FROM\s+pagos/i.test(sql))     return opts.pendientes ?? [];
-        if (/FROM\s+contratos/i.test(sql)) return opts.cortadosSinDeuda ?? [];
+        if (/FROM\s+servicios/i.test(sql)) return opts.cortadosSinDeuda ?? [];
         return [];
       }),
       getRepository: () => ({
@@ -95,7 +95,7 @@ describe('PagosService — reconciliación del cobro', () => {
     const { svc, queries } = hacer();
     await conCrons(() => svc.reconciliarPagosNoAplicados());
 
-    const q = queries.find((s) => /FROM\s+contratos/i.test(s))!;
+    const q = queries.find((s) => /FROM\s+servicios/i.test(s))!;
     expect(q).toMatch(/f\.contrato_id\s*=\s*co\.id/i);
     expect(q).toMatch(/f\.cliente_id\s*=\s*co\.cliente_id\s+AND\s+f\.contrato_id\s+IS\s+NULL/i);
   });

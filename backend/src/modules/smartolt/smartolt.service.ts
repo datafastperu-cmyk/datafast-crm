@@ -258,7 +258,7 @@ export class SmartoltService {
 
     // Desasociar del contrato
     await this.ds.query(
-      'UPDATE contratos SET onu_id = NULL, aprovisionado = false WHERE onu_id = $1',
+      'UPDATE servicios SET onu_id = NULL, aprovisionado = false WHERE onu_id = $1',
       [id],
     );
 
@@ -286,7 +286,7 @@ export class SmartoltService {
 
     // Verificar que el contrato pertenece a la empresa
     const [contrato] = await this.ds.query(
-      'SELECT id, onu_id FROM contratos WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL',
+      'SELECT id, onu_id FROM servicios WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL',
       [dto.contratoId, user.empresaId],
     );
 
@@ -297,7 +297,7 @@ export class SmartoltService {
 
     // Actualizar contrato con onu_id y marcar como aprovisionado
     await this.ds.query(
-      `UPDATE contratos SET onu_id = $1, aprovisionado = true, aprovisionado_en = NOW()
+      `UPDATE servicios SET onu_id = $1, aprovisionado = true, aprovisionado_en = NOW()
        WHERE id = $2`,
       [dto.onuId, dto.contratoId],
     );

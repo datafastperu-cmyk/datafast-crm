@@ -155,7 +155,7 @@ export class PoliticaFacturacionService {
               MIN(em.dias_gracia)::int     AS dias_gracia
          FROM clientes cl
          JOIN empresas em ON em.id = cl.empresa_id
-         LEFT JOIN contratos co
+         LEFT JOIN servicios co
                 ON co.cliente_id = cl.id
                AND co.deleted_at IS NULL
                AND co.estado <> 'baja_definitiva'
@@ -185,7 +185,7 @@ export class PoliticaFacturacionService {
               MIN(em.dias_gracia)::int     AS dias_gracia
          FROM clientes cl
          JOIN empresas em ON em.id = cl.empresa_id
-         LEFT JOIN contratos co
+         LEFT JOIN servicios co
                 ON co.cliente_id = cl.id
                AND co.deleted_at IS NULL
                AND co.estado <> 'baja_definitiva'

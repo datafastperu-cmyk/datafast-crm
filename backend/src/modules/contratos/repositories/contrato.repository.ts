@@ -72,7 +72,7 @@ export class ContratoRepository {
         -- que diagnosticarlo, o reemplazar una ONU robada o quemada.
         fo.sn     AS "onuSn",
         fo.estado AS "onuEstado"
-      FROM contratos co
+      FROM servicios co
       LEFT JOIN planes pl ON pl.id = co.plan_id
       LEFT JOIN routers ro ON ro.id = co.router_id
       LEFT JOIN ftth_onu_registro fo ON fo.contrato_id = co.id AND fo.deleted_at IS NULL
@@ -146,7 +146,7 @@ export class ContratoRepository {
     const where = conds.join(' AND ');
 
     const [{ total }] = await this.ds.query(
-      `SELECT COUNT(*) AS total FROM contratos c WHERE ${where}`,
+      `SELECT COUNT(*) AS total FROM servicios c WHERE ${where}`,
       params,
     );
 
@@ -179,7 +179,7 @@ export class ContratoRepository {
         pl.nombre                  AS "planNombre",
         CAST(pl.velocidad_bajada AS FLOAT) AS "velocidadBajada",
         CAST(pl.velocidad_subida AS FLOAT) AS "velocidadSubida"
-      FROM contratos c
+      FROM servicios c
       LEFT JOIN clientes cl ON cl.id = c.cliente_id AND cl.deleted_at IS NULL
       LEFT JOIN planes   pl ON pl.id = c.plan_id   AND pl.deleted_at IS NULL
       WHERE ${where}
@@ -215,7 +215,7 @@ export class ContratoRepository {
         pl.nombre AS plan_nombre, pl.velocidad_bajada, pl.velocidad_subida, pl.tipo_queue, pl.ppp_profile,
         ro.nombre AS router_nombre, ro.ip_gestion AS router_ip, ro.estado AS router_estado,
         on2.serial_number AS onu_serial, on2.estado AS onu_estado, on2.rx_power_dbm AS onu_rx_power
-      FROM contratos co
+      FROM servicios co
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN planes   pl ON pl.id = co.plan_id
       LEFT JOIN routers ro  ON ro.id = co.router_id
@@ -280,7 +280,7 @@ export class ContratoRepository {
 
     const rows = await ejecutor.query<{ max_num: string }[]>(
       `SELECT COALESCE(MAX(CAST(SUBSTRING(numero_contrato, ${pos}) AS INTEGER)), 0) AS max_num
-       FROM contratos
+       FROM servicios
        WHERE empresa_id = $1 AND numero_contrato LIKE $2`,
       [empresaId, `${prefix}%`],
     );
