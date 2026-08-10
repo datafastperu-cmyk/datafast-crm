@@ -30,6 +30,11 @@ export interface PropiedadTabla {
 
 export const PROPIEDAD_TABLAS: Record<string, PropiedadTabla> = {
   // ── Core: el dinero y el abonado ───────────────────────────────────────────
+  // El ACUERDO, creado en la fase 3b. Todavía no lo escribe nadie desde el código: lo pobló la
+  // migración y su entidad llega con la fase 4. Se declara ya para que nazca con dueño — una
+  // tabla sin declarar queda fuera del barrido de escritores y pierde la garantía en silencio.
+  contratos: { dueno: 'contratos', infractores: [] },
+
   servicios: {
     dueno: 'contratos',
     infractores: [
