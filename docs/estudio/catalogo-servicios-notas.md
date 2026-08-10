@@ -727,7 +727,7 @@ equipos** — que es la parte que necesita el almacén que todavía no existe (�
 | ~~Cambio de plan~~ | **Sí prorratea** (§7-ter) |
 | ~~Desde qué fecha cuenta el alta~~ | **La activación en `contratos_historial`**, no la firma ni la orden de trabajo (§7-ter) |
 | ~~Las credenciales de streaming~~ | **Solo el identificador, en claro.** No están cableadas: la cuenta sirve para recordar cuál le tocó a quién (§3) |
-| ~~La suspensión a petición del abonado~~ | **No se ofrece en autoservicio** — la ejecuta siempre el operador, así que no hay vector de abuso y no hace falta límite. Se registra con  para poder informar, no para bloquear |
+| ~~La suspensión a petición del abonado~~ | **No se ofrece en autoservicio** — la ejecuta siempre el operador, así que no hay vector de abuso y no hace falta límite. Se registra con `origen = 'voluntaria'` para poder informar, no para bloquear |
 | ~~Suspensión, corte y baja~~ | **Tres estados para todo** —`activo`, `suspendido`, `baja_definitiva`—; `cortado` se retira. La evidencia del corte físico vive en **la tarea**, no en un estado (§7-quater) |
 | ~~Las dos columnas de precio~~ | **No eran dos verdades:** `precio_final` es GENERADA. Lo que hacía falta era otra cosa — un booleano `sigue_precio_del_plan` (§7-bis) |
 
