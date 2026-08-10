@@ -426,6 +426,49 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
+### 33. H-11 · Un abonado suspendido por una deuda que parece duplicada — **DECISIÓN TUYA**
+
+**Encontrado el 2026-08-10 en la primera ejecución de `backend/scripts/verificar-emision.sql`.**
+El verificador se escribió para el ciclo del 23 y destapó esto en datos históricos, no en los
+nuevos.
+
+**James Peña tiene dos comprobantes que se solapan 29 días:**
+
+| | Emitida | Periodo | Origen | Estado |
+|---|---|---|---|---|
+| **CI-30** | 29/07 | `29/07 – 29/08` | **manual** — el alta, con el periodo calculado a mano por el navegador (`hoy → hoy+1 mes`) | **pagada** S/ 64 |
+| **CI-34** | 01/08 | `01/08 – 31/08` | **automática** — mes de calendario, disparada por `dia_facturacion = 1` | **vencida** S/ 64 |
+
+El solape va del **01/08 al 29/08**. Pagó S/ 64 por ese periodo en CI-30 y se le está cobrando
+S/ 64 otra vez en CI-34.
+
+**Y tiene consecuencia operativa: está suspendido desde el 07/08 por deber CI-34.** Si es un
+duplicado, se le cortó el servicio por una deuda que ya había pagado.
+
+**No es el escenario del 1 de septiembre que H-10 mitigó — es el mismo fallo ya materializado el 1
+de agosto.** Los dos defectos que lo produjeron están corregidos: el periodo calculado a mano en el
+navegador (H-3, cerrado) y el segundo generador con mes de calendario (H-10, retirado). Lo que
+queda es el rastro que dejaron.
+
+#### Por qué no lo he tocado
+
+Anular un comprobante y reactivar a un abonado son **actos de negocio con efecto sobre un cliente
+real**, no correcciones técnicas. Además hay una lectura alternativa que solo tú puedes descartar:
+que CI-30 se emitiera como cobro de instalación o de un periodo anterior y su periodo esté
+simplemente mal escrito, en cuyo caso la deuda de CI-34 es legítima.
+
+#### Qué haría falta decidir
+
+1. **¿CI-34 es un duplicado?** Si lo es, se anula por el flujo del ERP —que deja rastro y nota de
+   crédito—, nunca con un UPDATE.
+2. **¿Se le devuelve el servicio?** Sin CI-34, su deuda vencida baja a cero y la reactivación
+   procede sola por el camino normal.
+3. **¿Hay que revisar los otros dos comprobantes?** Solo hay cuatro facturas en total; conviene
+   mirarlas todas antes de la instalación limpia.
+
+**Cómo comprobarlo:** `backend/scripts/verificar-emision.sql`, apartado 3. Solo lectura.
+
+
 ### ~~32~~. H-10 · Dos generadores de facturas — **RESUELTO 2026-08-09**
 
 **Encontrado el 2026-08-09 cableando la fase 4.2a.** Es el hallazgo con más alcance de la sesión y
