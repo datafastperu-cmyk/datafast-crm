@@ -62,6 +62,8 @@ const mockFactura: Partial<Factura> = {
 };
 
 const mockRepo = {
+  // 4.2a: toda factura cuelga de un acuerdo; el doble devuelve uno cualquiera.
+  contratoDe: jest.fn().mockResolvedValue('ctr-1'),
   create:           jest.fn(d => ({ ...mockFactura, ...d })),
   save:             jest.fn(async f => ({ ...mockFactura, ...f })),
   update:           jest.fn(),

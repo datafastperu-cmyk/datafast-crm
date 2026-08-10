@@ -114,6 +114,9 @@ export class FacturacionService {
       empresaId:            user.empresaId,
       clienteId:            dto.clienteId,
       servicioId:           dto.contratoId,
+      // Toda factura cuelga de un acuerdo (4.2a). Se resuelve por el servicio si lo hay, y
+      // solo entonces por el abonado.
+      contratoId:           await this.facturaRepo.contratoDe(dto.clienteId, user.empresaId, dto.contratoId),
       comprobanteConfigId:  comprobanteConfig.id,
       tipoComprobante:      comprobanteConfig.codigo,
       tipoComprobanteNombre: comprobanteConfig.nombre,
@@ -443,6 +446,8 @@ export class FacturacionService {
           empresaId:               user.empresaId,
           clienteId,
           servicioId:              null,
+          // Consolidada: no la motiva un servicio concreto, pero SI cuelga de un acuerdo.
+          contratoId:              primer.acuerdo_id ?? null,
           comprobanteConfigId:     comprobante.id,
           tipoComprobante:         comprobante.codigo,
           tipoComprobanteNombre:   comprobante.nombre,
@@ -671,6 +676,7 @@ export class FacturacionService {
 
         const factura = this.facturaRepo.create({
           empresaId, clienteId, servicioId: null,
+          contratoId: primer.acuerdo_id ?? null,
           comprobanteConfigId: comprobante.id, tipoComprobante: comprobante.codigo,
           tipoComprobanteNombre: comprobante.nombre, tieneCargaFiscal: comprobante.tieneCargaFiscal,
           serie, correlativo, periodoInicio, periodoFin, descripcion,
@@ -965,6 +971,8 @@ export class FacturacionService {
       empresaId:            user.empresaId,
       clienteId:            original.clienteId,
       servicioId:           original.servicioId,
+      // La nota de credito pertenece al mismo acuerdo que el documento que rectifica.
+      contratoId:           original.contratoId,
       comprobanteConfigId:  original.comprobanteConfigId,
       tipoComprobante:      `nc_${original.tipoComprobante}`,
       tipoComprobanteNombre: `Nota de Crédito — ${original.tipoComprobanteNombre}`,

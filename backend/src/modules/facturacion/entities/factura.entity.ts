@@ -37,6 +37,14 @@ export class Factura extends BaseModel {
   @Column({ name: 'servicio_id', type: 'uuid', nullable: true })
   servicioId: string | null;
 
+  // Acuerdo del que cuelga el comprobante: DE QUIEN es la deuda. Distinto de `servicioId`,
+  // que dice QUE servicio la motivó y es nulo en las consolidadas.
+  //
+  // Nullable en la base para poder añadirla sin reescribir la tabla, pero la emisión la pone
+  // siempre: una factura sin acuerdo es deuda sin dueño en cuanto haya dos por abonado.
+  @Column({ name: 'contrato_id', type: 'uuid', nullable: true })
+  contratoId: string | null;
+
   // ── Tipo de comprobante ────────────────────────────────────
   // FK al código del ComprobantesConfig activo al momento de emitir.
   // Guardado como varchar (snapshot del código) para no perder

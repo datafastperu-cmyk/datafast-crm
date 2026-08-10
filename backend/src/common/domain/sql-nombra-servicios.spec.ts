@@ -35,7 +35,12 @@ describe('Fase 3a · El SQL nombra la tabla por lo que guarda', () => {
    * Vacío en 3a —la tabla aún no existe— y se irá poblando en 3b y 3c. Cada entrada es una
    * decisión explícita, que es justo lo contrario de un descuido.
    */
-  const LEGITIMAS: string[] = [];
+  const LEGITIMAS: string[] = [
+    // `contratoDe` (fase 4.2a) resuelve el ACUERDO de un comprobante. Es la primera consulta
+    // del repositorio que habla del contrato de verdad y no del servicio, asi que nombrar
+    // `contratos` aqui es correcto — y esta linea es la prueba de que fue deliberado.
+    'modules' + path.sep + 'facturacion' + path.sep + 'repositories' + path.sep + 'factura.repository.ts',
+  ];
 
   // Este mismo fichero contiene el patrón que persigue —en la expresión regular y en la
   // explicación—, así que se excluye. Es el cuarto falso positivo de esta forma en el

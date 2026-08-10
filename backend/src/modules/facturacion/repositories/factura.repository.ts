@@ -285,6 +285,9 @@ export class FacturaRepository {
         -- H-6: el estado decide en prepago (¿sigue en pie el servicio?) y el historial
         -- decide en postpago (¿cuántos días se entregaron?).
         co.estado,
+        -- El ACUERDO del que cuelga el servicio (4.2a). Viaja aqui para que la generacion no
+        -- tenga que resolverlo con una segunda consulta por abonado.
+        co.contrato_id          AS acuerdo_id,
         co.empresa_id,
 
         pl.nombre               AS plan_nombre,
@@ -439,6 +442,36 @@ export class FacturaRepository {
    * facturado dependería de cómo estuviera configurada la conexión, que es exactamente la clase
    * de dependencia ambiental que no debe decidir dinero.
    */
+  /**
+   * Acuerdo al que pertenece un comprobante.
+   *
+   * Se resuelve por el SERVICIO cuando la factura nombra uno, porque eso no supone nada. Solo
+   * si es consolidada se cae al abonado — y ahí sí hay un supuesto: que tiene un único
+   * acuerdo. Hoy es cierto, y en cuanto deje de serlo la generación por contrato (4.2b) traerá
+   * el acuerdo consigo y este camino dejará de usarse para las nuevas.
+   */
+  async contratoDe(
+    clienteId: string,
+    empresaId: string,
+    servicioId?: string | null,
+  ): Promise<string | null> {
+    if (servicioId) {
+      const [porServicio] = await this.ds.query<Array<{ contrato_id: string | null }>>(
+        `SELECT contrato_id FROM servicios WHERE id = $1`, [servicioId],
+      );
+      if (porServicio?.contrato_id) return porServicio.contrato_id;
+    }
+
+    const [porCliente] = await this.ds.query<Array<{ id: string }>>(
+      `SELECT id FROM contratos
+        WHERE cliente_id = $1 AND empresa_id = $2 AND deleted_at IS NULL
+        ORDER BY fecha_inicio, created_at
+        LIMIT 1`,
+      [clienteId, empresaId],
+    );
+    return porCliente?.id ?? null;
+  }
+
   async historialParaCiclo(
     contratoIds: string[],
     fin: string,

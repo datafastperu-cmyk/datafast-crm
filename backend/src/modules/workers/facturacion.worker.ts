@@ -233,6 +233,7 @@ export class FacturacionWorker {
         co.numero_contrato,
         co.cliente_id,
         co.precio_final      AS precio,
+        co.contrato_id       AS acuerdo_id,
         co.dia_facturacion,
         co.fecha_instalacion,
         cl.nombre_completo   AS cliente_nombre,
@@ -301,13 +302,24 @@ export class FacturacionWorker {
       try {
         await job.progress(10 + Math.floor((idx++ / totalClientes) * 80));
 
-        // Idempotencia: ya existe factura de este cliente para este periodo
+        // Idempotencia: ¿ya tiene este abonado un comprobante que CUBRA este periodo?
+        //
+        // Se compara por SOLAPE, no por igualdad, y la diferencia es una factura duplicada.
+        // Este worker calcula el periodo como MES DE CALENDARIO (01/09 → 30/09); el generador
+        // diario de `FacturacionService` lo calcula como el CICLO DEL ABONADO (30/08 → 30/09),
+        // que es lo que decidió el propietario el 2026-08-08. Con igualdad exacta los dos
+        // periodos nunca coinciden, así que la comprobación no encontraba nada y el abonado
+        // habría recibido dos comprobantes por el mismo mes — el suyo del día 23 y otro el día 1.
+        //
+        // El solape solo puede OMITIR de más, nunca emitir de más, así que es seguro mientras
+        // haya un acuerdo por abonado. Cuando la fase 4.2b agrupe por contrato, esta
+        // comprobación tiene que pasar a ser por contrato y no por cliente.
         if (!forzar) {
           const [existente] = await this.ds.query(`
             SELECT id FROM facturas
-            WHERE cliente_id    = $1
-              AND periodo_inicio = $2
-              AND periodo_fin    = $3
+            WHERE cliente_id     = $1
+              AND periodo_inicio <= $3
+              AND periodo_fin    >= $2
               AND estado        != 'anulada'
               AND deleted_at    IS NULL
             LIMIT 1
@@ -394,10 +406,12 @@ export class FacturacionWorker {
           ? `${primer.plan_nombre} — ${this.mesNombre(mes)} ${anio}`
           : `Servicios contratados — ${this.mesNombre(mes)} ${anio}`;
 
-        // ── Insertar factura unificada (contrato_id = NULL) ─
+        // ── Insertar factura consolidada ─
+        // `servicio_id` va NULL porque no la motiva un servicio concreto; `contrato_id` SI se
+        // rellena (4.2a): la factura cuelga de un acuerdo aunque cubra varios servicios.
         const [factura] = await this.ds.query(`
           INSERT INTO facturas (
-            empresa_id, cliente_id, servicio_id,
+            empresa_id, cliente_id, servicio_id, contrato_id,
             tipo_comprobante, tipo_comprobante_nombre, comprobante_config_id,
             serie, correlativo,
             periodo_inicio, periodo_fin,
@@ -405,7 +419,7 @@ export class FacturacionWorker {
             monto_pagado, estado, fecha_emision, fecha_vencimiento,
             moneda, generada_automaticamente, items, created_at
           ) VALUES (
-            $1, $2, NULL,
+            $1, $2, NULL, $16,
             $3, $4, $5,
             $6, $7,
             $8, $9,
@@ -422,6 +436,7 @@ export class FacturacionWorker {
           descripcion, totalSubtotal, totalIgv, totalFactura,
           fechaVencimiento,
           JSON.stringify(items),
+          primer.acuerdo_id ?? null,
         ]);
 
         // ── Refrescar la deuda proyectada de los contratos del cliente ──
