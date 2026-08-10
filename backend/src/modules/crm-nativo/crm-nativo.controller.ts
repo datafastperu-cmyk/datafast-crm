@@ -16,6 +16,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { ApiResponse }   from '../../common/dto/response.dto';
 import { WaClientService }   from './wa-client.service';
 import { CrmNativoService }  from './crm-nativo.service';
+import { RequirePermission } from '../../common/decorators/roles.decorator';
 
 const MEDIA_DIR = process.env.MEDIA_DIR || '/opt/datafast/backend/public/crm_whatsapp';
 
@@ -101,6 +102,7 @@ export class CrmNativoController {
 
   // ── POST /api/v1/crm-nativo/vincular ─────────────────────────
   @Post('vincular')
+  @RequirePermission('tickets:manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar la vinculación: levanta el cliente y emite el QR' })
   async vincular() {
@@ -110,6 +112,7 @@ export class CrmNativoController {
 
   // ── POST /api/v1/crm-nativo/sincronizar ──────────────────────
   @Post('sincronizar')
+  @RequirePermission('tickets:manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Releer el listado de conversaciones desde WhatsApp' })
   async sincronizar() {
@@ -190,6 +193,7 @@ export class CrmNativoController {
 
   // ── POST /api/v1/crm-nativo/enviar ───────────────────────────
   @Post('enviar')
+  @RequirePermission('tickets:edit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enviar mensaje de texto desde el CRM' })
   async enviarMensaje(
@@ -207,6 +211,7 @@ export class CrmNativoController {
 
   // ── POST /api/v1/crm-nativo/enviar-media ─────────────────────
   @Post('enviar-media')
+  @RequirePermission('tickets:edit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enviar imagen o PDF al contacto (máx. 10 MB)' })
   @UseFilters(new MulterFilter())

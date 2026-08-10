@@ -81,7 +81,16 @@ export function analizar(): EndpointMutante[] {
 
     // Decoradores de la CLASE: todo lo que hay entre @Controller y `export class`.
     const iCtrl = lineas.findIndex((l) => /^\s*@Controller\(/.test(l));
-    const iClase = lineas.findIndex((l) => /^\s*export class /.test(l));
+    // La clase del CONTROLADOR es la que viene después de @Controller, no la primera del
+    // fichero. Muchos controladores declaran sus DTO arriba —portal.controller.ts tiene
+    // cinco— y buscar el primer `export class` dejaba la cabecera VACÍA: se perdían todos
+    // los decoradores de clase, porque la condición `iClase > iCtrl` no se cumplía.
+    //
+    // Consecuencia medida: los tres endpoints de autenticación del portal figuraban como
+    // DESPROTEGIDOS cuando el controlador entero está marcado @Public(). El barrido decía
+    // 102 abiertos y contaba agujeros que no existen — un informe de seguridad que exagera
+    // es tan inútil como uno que calla, porque el que lo lee deja de creerle.
+    const iClase = lineas.findIndex((l, idx) => idx > iCtrl && /^\s*export class /.test(l));
     const cabecera = iCtrl >= 0 && iClase > iCtrl ? lineas.slice(0, iClase).join('\n') : '';
     const rolesClase = rolesDe(cabecera);
     const permisoClase = /@RequirePermission\(/.test(cabecera);
@@ -121,8 +130,11 @@ export function analizar(): EndpointMutante[] {
 
       const fantasmas = roles.filter((r) => !ROLES_REALES.has(r));
       let clase;
-      if (publico) clase = 'PUBLICO';
-      else if (guardPropioClase || GUARD_PROPIO.test(bloque)) clase = 'GUARD-PROPIO';
+      // El guard propio se comprueba ANTES que @Public(): un endpoint del portal lleva las dos
+      // cosas —es publico para el JWT del ERP y esta protegido por PortalJwtGuard— y describirlo
+      // como PUBLICO a secas pierde justo el dato que importa.
+      if (guardPropioClase || GUARD_PROPIO.test(bloque)) clase = 'GUARD-PROPIO';
+      else if (publico) clase = 'PUBLICO';
       else if (EXENTOS.some((e) => rel.endsWith(e.fichero) && e.rutas.includes(ruta))) clase = 'EXENTO';
       else if (fantasmas.length && fantasmas.length === roles.length) clase = 'ROL-FANTASMA';
       else if (permiso) clase = 'PERMISO';

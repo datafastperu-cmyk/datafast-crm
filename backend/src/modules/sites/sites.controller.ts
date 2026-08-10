@@ -6,6 +6,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { SitesService } from './sites.service';
 import { CreateSiteDto, UpdateSiteDto } from './dto/site.dto';
+import { RequirePermission } from '../../common/decorators/roles.decorator';
 
 @ApiTags('Sites')
 @Controller('sites')
@@ -28,12 +29,14 @@ export class SitesController {
   }
 
   @Post()
+  @RequirePermission('redes:manage')
   @ApiOperation({ summary: 'Crear Site' })
   async crear(@Body() dto: CreateSiteDto, @CurrentUser() user: JwtPayload) {
     return this.service.crear(user.empresaId, dto);
   }
 
   @Patch(':siteId')
+  @RequirePermission('redes:manage')
   @ApiOperation({ summary: 'Actualizar Site' })
   async actualizar(
     @Param('siteId', ParseUUIDPipe) siteId: string,
@@ -44,6 +47,7 @@ export class SitesController {
   }
 
   @Delete(':siteId')
+  @RequirePermission('redes:manage')
   @ApiOperation({ summary: 'Eliminar Site (soft delete)' })
   async eliminar(
     @Param('siteId', ParseUUIDPipe) siteId: string,

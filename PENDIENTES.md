@@ -237,7 +237,7 @@ worker con `RUN_CRONS=true`, y `GET /admin/sistema/watchers` con latidos.
 
 Estas tres tienen barrera en la suite: **no pueden empeorar**, y bajan al tocar cada módulo.
 
-### 22. B-3 — 102 endpoints mutantes sin autorización alguna
+### ~~22~~. B-3 — endpoints mutantes sin autorización — **CERRADO 2026-08-10**
 **Por qué importa:** `RolesGuard` deja pasar a cualquier usuario autenticado cuando el
 endpoint no declara ni `@Roles` ni `@RequirePermission`. No es «protegido por rol al módulo»
 —como decía la ficha— es **no protegido**.
@@ -252,7 +252,35 @@ controlador), que es el momento natural para decidir quién puede provisionar.
 **Por qué no se arreglan de golpe:** añadir `@Roles` a un endpoint cuyo permiso no esté
 concedido al rol produce un **403 en producción**.
 
-**Cómo se comprueba:** `npm run autorizacion:check`. Barrera: `autorizacion-endpoints.spec.ts`.
+**Cerrado el 2026-08-10: los 317 endpoints mutantes tienen autorización.**
+
+**Y 3 de los 102 nunca fueron un agujero.** El analizador buscaba el PRIMER `export class` del
+fichero para delimitar la cabecera de la clase; en los controladores que declaran sus DTO arriba
+—`portal.controller.ts` tiene cinco— la cabecera quedaba vacía y se perdían todos los decoradores
+de clase. Los tres endpoints de autenticación del portal figuraban como desprotegidos con el
+controlador entero marcado `@Public()`. Un informe de seguridad que exagera es tan inútil como uno
+que calla: el que lo lee deja de creerle. Corregido, y de paso `GUARD-PROPIO` vuelve a distinguirse
+de `PUBLICO`.
+
+**Lo difícil no era el volumen: era no producir un 403.** Se resolvió mirando **qué roles tienen**
+cada permiso antes de elegirlo, no cuál suena mejor:
+
+| Controlador | | Permiso | Por qué |
+|---|---|---|---|
+| `olt-nativo` | 79 | `onu:provision` | `servicios:manage` encajaba igual de bien pero **solo lo tienen Operador NOC y Super Administrador**: un Administrador se habría quedado fuera de su propia OLT |
+| `planta-externa` | 13 | `onu:provision` | Mismo dominio FTTH |
+| `sites` | 3 | `redes:manage` | Infraestructura de red |
+| `crm-nativo` | 4 | `tickets:edit` / `tickets:manage` | Separados: enviar un mensaje es de Atención al Cliente; vincular la cuenta de WhatsApp es administración |
+
+**No se usó decorador de clase**, que habría sido más corto: también alcanzaría a los GET y dejaría
+a Invitado sin poder **ver** ONUs, que es un permiso que hoy tiene.
+
+**Comprobado contra producción antes de desplegar**: el administrador conserva los cuatro permisos;
+Atención al Cliente mantiene el envío de mensajes y pierde aprovisionar ONUs y tocar la red — que
+es el objetivo, no un daño colateral.
+
+**Cómo se comprueba:** `npm run autorizacion:check`. Barrera: `autorizacion-endpoints.spec.ts`,
+con el techo bajado de 102 a **0**.
 
 ### 23. PA-12 — 15 tablas con más de un módulo escritor
 **Por qué importa:** `contratos` la escriben **diez módulos**; `clientes`, cinco. Dos escritores

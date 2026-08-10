@@ -20,18 +20,19 @@ describe('Autorización en endpoints mutantes (B-3 · PS-05)', () => {
   const por = (c: string) => hallazgos.filter((h: EndpointMutante) => h.clase === c);
 
   /**
-   * Techo congelado el 2026-08-08. **Puede bajar, nunca subir.**
+   * **Cerrado a CERO el 2026-08-10.** Los 317 endpoints mutantes tienen autorizacion.
    *
-   * Se congela en vez de exigir cero porque 102 endpoints es un trabajo de semanas y una
-   * barrera que se estrena en rojo es lo primero que alguien desactiva. Y hay una razón de
-   * fondo para no hacerlo de golpe: añadir `@Roles` a un endpoint cuyo permiso no esté
-   * concedido al rol produce un **403 en producción** — el operador se queda sin poder
-   * trabajar y sin entender por qué.
+   * El techo estuvo congelado en 102 desde el 08/08 porque cerrarlos parecia un trabajo de
+   * semanas y una barrera que se estrena en rojo es lo primero que alguien desactiva. Al
+   * medirlo de verdad resulto que 3 de esos 102 NO eran agujeros —el analizador buscaba el
+   * primer  del fichero para delimitar la cabecera, y en los controladores que
+   * declaran sus DTO arriba perdia todos los decoradores de clase—, y que los 99 restantes se
+   * cerraban eligiendo bien el permiso, no escribiendo codigo.
    *
-   * 79 de los 102 están en `olt-nativo.controller.ts`. Bajará de golpe cuando se aborde R9
-   * (partir ese controlador), que es el momento natural para decidir quién puede provisionar.
+   * Lo dificil no era el volumen: era no producir un 403 en produccion. Se resolvio mirando
+   * QUE ROLES tienen cada permiso antes de elegirlo, no cual suena mejor.
    */
-  const TECHO_ABIERTOS = 102;
+  const TECHO_ABIERTOS = 0;
 
   it('ningún endpoint mutante nuevo se queda sin autorización', () => {
     const abiertos = por('ABIERTO');

@@ -76,6 +76,7 @@ import {
   UpsertProveedorOltDto,
 } from './dto/olt-nativo-ops.dto';
 import { CreateOltDispositivoDto, UpdateOltDispositivoDto, Tr069ProfileDto } from './dto/olt-dispositivo.dto';
+import { RequirePermission } from '../../common/decorators/roles.decorator';
 
 @ApiTags('OLT Nativo')
 @Controller('olt-nativo')
@@ -141,6 +142,7 @@ export class OltNativoController {
 
   // ── Detección de modelo/firmware con credenciales crudas (wizard) ──
   @Post('wizard/detect-version')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Wizard: detectar modelo y firmware reales de la OLT y evaluar compatibilidad' })
   async wizardDetectVersion(
@@ -158,6 +160,7 @@ export class OltNativoController {
   }
 
   @Post('baselines')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Crear baseline declarativo (nombre existente → versión nueva, inmutable)' })
   async crearBaseline(
     @Body() dto: CrearBaselineDto,
@@ -167,6 +170,7 @@ export class OltNativoController {
   }
 
   @Delete('baselines/:id')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar una versión de baseline (409 si alguna OLT la tiene asignada)' })
   @ApiParam({ name: 'id' })
@@ -178,6 +182,7 @@ export class OltNativoController {
   }
 
   @Post('baselines/estandar')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Generar el Baseline Datafast Estándar (configuración canónica del ERP) para un uplink dado' })
   async generarBaselineEstandar(
     @Body() body: { uplinkPort: string },
@@ -187,6 +192,7 @@ export class OltNativoController {
   }
 
   @Patch(':oltId/baseline')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Asignar (o quitar con null) un baseline a la OLT' })
   @ApiParam({ name: 'oltId' })
   async asignarBaseline(
@@ -199,6 +205,7 @@ export class OltNativoController {
 
   // ── Tipos de ONU (ont-srvprofile) — excepción gestionable ─────
   @Post(':oltId/srvprofiles')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crear un tipo de ONU (ont-srvprofile) en la OLT — sello DATAFAST automático' })
   @ApiParam({ name: 'oltId' })
@@ -211,6 +218,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId/srvprofiles/:profileId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar un tipo de ONU del ERP (guards: ownership + sin ONUs usándolo)' })
   @ApiParam({ name: 'oltId' })
@@ -224,6 +232,7 @@ export class OltNativoController {
 
   // ── Line-profiles GPON (canónicos DATAFAST) — excepción gestionable ──
   @Post(':oltId/lineprofiles')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crear un line-profile GPON canónico (mapping priority + TR-069 + DBA propio) — sello DATAFAST automático' })
   @ApiParam({ name: 'oltId' })
@@ -236,6 +245,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId/lineprofiles/:profileId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar un line-profile del ERP (guards: ownership + sin ONUs usándolo)' })
   @ApiParam({ name: 'oltId' })
@@ -259,6 +269,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/baseline/aplicar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Ejecutar el plan aprobado (requiere planHash del dry-run; 409 si el estado cambió)' })
   @ApiParam({ name: 'oltId' })
@@ -292,6 +303,7 @@ export class OltNativoController {
   }
 
   @Post()
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Registrar nueva OLT' })
   @ApiResponse({ status: 201, description: 'OLT creada' })
   async crear(
@@ -303,6 +315,7 @@ export class OltNativoController {
 
   // ── POST /olt-nativo/integraciones/smartolt ───────────────────
   @Post('integraciones/smartolt')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Crear OLT vía SmartOLT (crea dispositivo + config de proveedor en una transacción)' })
   async crearSmartolt(
     @Body() dto: CrearOltIntegracionDto,
@@ -313,6 +326,7 @@ export class OltNativoController {
 
   // ── POST /olt-nativo/integraciones/adminolt ───────────────────
   @Post('integraciones/adminolt')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Crear OLT vía AdminOLT (crea dispositivo + config de proveedor en una transacción)' })
   async crearAdminolt(
     @Body() dto: CrearOltIntegracionDto,
@@ -322,6 +336,7 @@ export class OltNativoController {
   }
 
   @Put(':oltId')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Actualizar OLT' })
   @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
   async actualizar(
@@ -333,6 +348,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar OLT (soft delete)' })
   @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
@@ -355,6 +371,7 @@ export class OltNativoController {
   }
 
   @Put(':oltId/tr069-profile')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Configurar el perfil TR-069 de la OLT' })
   @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
@@ -375,6 +392,7 @@ export class OltNativoController {
   //   NATIVO_SSH   → Python microservice (SSH directo vía VPN)
   // ────────────────────────────────────────────────────────────
   @Post(':oltId/provision')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Aprovisionar ONU en OLT nativa (SSH directo o SmartOLT API)' })
   @ApiParam({ name: 'oltId', description: 'UUID de la OltDispositivo' })
@@ -471,6 +489,7 @@ export class OltNativoController {
   // Prueba SSH con credenciales del formulario (antes de guardar)
   // ────────────────────────────────────────────────────────────
   @Post('test-conexion-directa')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Probar conexión SSH a la OLT con credenciales en crudo (pre-guardado)' })
   async testConexionDirecta(
@@ -485,6 +504,7 @@ export class OltNativoController {
   // Obtener topología completa de la OLT con credenciales en crudo
   // ────────────────────────────────────────────────────────────
   @Post('wizard/topology')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Wizard OLT: obtener topología completa (boards, VLANs, perfiles, traffic tables)' })
   async wizardTopologia(
@@ -500,6 +520,7 @@ export class OltNativoController {
   // VLANs y traffic tables en una sola llamada
   // ────────────────────────────────────────────────────────────
   @Post('wizard/commit')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Wizard OLT: commit atómico — crea OLT nativa + proveedor SSH + topología inicial' })
   async wizardCommit(
@@ -537,6 +558,7 @@ export class OltNativoController {
   // Prueba SSH con credenciales almacenadas en BD
   // ────────────────────────────────────────────────────────────
   @Post(':oltId/test-conexion')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Probar conexión SSH a una OLT guardada (usa credenciales en BD)' })
   @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
@@ -604,6 +626,7 @@ export class OltNativoController {
   }
 
   @Post('proveedores/:configId/test')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Probar conectividad de una config de proveedor específica' })
   @ApiParam({ name: 'configId', description: 'UUID de OltProveedorConfig' })
@@ -645,6 +668,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/proveedores')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crear o actualizar proveedor de una OLT (upsert por tipo)' })
   @ApiParam({ name: 'oltId' })
@@ -657,6 +681,7 @@ export class OltNativoController {
   }
 
   @Post('proveedores/:configId/reset-circuit')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Resetear circuit breaker de un proveedor a estado CLOSED' })
   @ApiParam({ name: 'configId', description: 'UUID de OltProveedorConfig' })
@@ -682,6 +707,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/ont-reset')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reiniciar una ONU en la OLT Huawei MA5800 (ont reset)' })
   @ApiParam({ name: 'oltId' })
@@ -795,6 +821,7 @@ export class OltNativoController {
   // y dispara job en Python vía BackgroundTasks.
   // ────────────────────────────────────────────────────────────
   @Post(':oltId/firmware/iniciar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.ACCEPTED)
   @UseInterceptors(FileInterceptor('firmware', {
     storage:    memoryStorage(),
@@ -888,6 +915,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/service-port-pool/configurar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Configurar rango de Service Port IDs para el pool de una OLT' })
   @ApiParam({ name: 'oltId' })
@@ -907,6 +935,7 @@ export class OltNativoController {
    * ya asignado.
    */
   @Post(':oltId/service-port-pool/reconciliar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reconciliar el pool de Service Ports contra el estado real de la OLT (protege contra colisión con SmartOLT/AdminOLT)' })
   @ApiParam({ name: 'oltId' })
@@ -918,6 +947,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId/service-port-pool/libres')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Eliminar entradas libres del pool (para reconfigurar rango)' })
   @ApiParam({ name: 'oltId' })
@@ -940,6 +970,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/mgmt-port-pool/configurar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Configurar rango de service-ports del pool de gestión de una OLT' })
   @ApiParam({ name: 'oltId' })
@@ -952,6 +983,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId/mgmt-port-pool/libres')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Eliminar entradas libres del pool de gestión (reconfigurar rango)' })
   @ApiParam({ name: 'oltId' })
@@ -977,6 +1009,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/mgmt-ip-pool/configurar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Configurar rango de IPs estáticas para el pool de gestión de una OLT' })
   @ApiParam({ name: 'oltId' })
@@ -1007,6 +1040,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/mgmt-ip-pool/retirar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Retirar del pool un tramo de IPs de gestión (solo las libres)' })
   @ApiParam({ name: 'oltId' })
@@ -1021,6 +1055,7 @@ export class OltNativoController {
   // ── FTTH Two-Phase Provisioning ───────────────────────────────
 
   @Post(':oltId/ftth/provision')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Aprovisionar ONU FTTH — Fase 1 (GPON) + poll + Fase 2 (WAN PPPoE)' })
   @ApiParam({ name: 'oltId' })
@@ -1033,6 +1068,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/ftth/bootstrap-tr069')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Carril bootstrap TR-069 (ZTP): mgmt WAN DHCP + Option 43 → ONU aparece en GenieACS' })
   @ApiParam({ name: 'oltId' })
@@ -1045,6 +1081,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/ftth/reinject-wan')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Re-inyectar config WAN PPPoE en ONU FTTH ya registrada en GPON' })
   @ApiParam({ name: 'oltId' })
@@ -1060,6 +1097,7 @@ export class OltNativoController {
   // Pipeline capability-based: contrato_onu_config → ExecutionPlan → NBI. Guard:
   // solo aplica si provisioning_enabled=true. La ONU debe estar informando a GenieACS.
   @Post('ztp/provision/:contratoId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ZTP: aplicar config de servicio (WiFi/PPPoE) por TR-069 al contrato' })
   @ApiParam({ name: 'contratoId' })
@@ -1074,6 +1112,7 @@ export class OltNativoController {
   // Re-aplica los contratos con drift (deseada > aplicada) de la empresa. Mismo
   // barrido que el cron nocturno, disparable manualmente desde la UI/soporte.
   @Post('ztp/reconcile')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ZTP: reconciliar (re-aplicar) los contratos con drift de la empresa' })
   async ztpReconcile(@CurrentUser() user: JwtPayload) {
@@ -1091,6 +1130,7 @@ export class OltNativoController {
   }
 
   @Post('onu/:sn/tr069/refresh')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ONU: ConnectionRequest + refresh del árbol y re-lectura' })
   async onuTr069Refresh(@Param('sn') sn: string) {
@@ -1098,6 +1138,7 @@ export class OltNativoController {
   }
 
   @Post('onu/:sn/tr069/reboot')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ONU: reboot por TR-069' })
   async onuTr069Reboot(@Param('sn') sn: string) {
@@ -1105,6 +1146,7 @@ export class OltNativoController {
   }
 
   @Post('onu/:sn/tr069/factory-reset')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ONU: reset de fábrica por TR-069' })
   async onuTr069FactoryReset(@Param('sn') sn: string) {
@@ -1112,6 +1154,7 @@ export class OltNativoController {
   }
 
   @Put('onu/:sn/tr069/wifi')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ONU: editar WiFi (2.4/5G) en vivo por TR-069' })
   async onuTr069SetWifi(@Param('sn') sn: string, @Body() dto: SetWifiLiveDto) {
@@ -1119,6 +1162,7 @@ export class OltNativoController {
   }
 
   @Put('onu/:sn/tr069/pppoe')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ONU: editar credenciales PPPoE en vivo por TR-069' })
   async onuTr069SetPppoe(@Param('sn') sn: string, @Body() dto: SetPppoeLiveDto) {
@@ -1126,6 +1170,7 @@ export class OltNativoController {
   }
 
   @Put('onu/:sn/tr069/acceso-web')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ONU: editar credenciales de acceso web (admin/usuario) por TR-069' })
   async onuTr069SetAccesoWeb(@Param('sn') sn: string, @Body() dto: SetAccesoWebDto) {
@@ -1143,6 +1188,7 @@ export class OltNativoController {
   }
 
   @Put('ztp/config/:contratoId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ZTP: crear/actualizar la config de servicio (WiFi/VoIP) de la ONU' })
   async ztpUpsertConfig(
@@ -1154,6 +1200,7 @@ export class OltNativoController {
   }
 
   @Post('ztp/config/:contratoId/generate-wifi')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ZTP: generar SSID + clave WiFi fuerte (devuelve la clave en claro una vez)' })
   async ztpGenerateWifi(
@@ -1178,6 +1225,7 @@ export class OltNativoController {
   }
 
   @Post('ztp/config/:contratoId/provisioning')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ZTP: activar/desactivar el aprovisionamiento TR-069 del contrato' })
   async ztpSetProvisioning(
@@ -1200,6 +1248,7 @@ export class OltNativoController {
   }
 
   @Put(':oltId/onu-preset')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crear/actualizar el preset de auto-config de la OLT' })
   @ApiParam({ name: 'oltId' })
@@ -1212,6 +1261,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/ftth/desaprovisionar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Desaprovisionar ONU FTTH — rollback GPON + liberar pools + soft-delete registro' })
   @ApiParam({ name: 'oltId' })
@@ -1225,6 +1275,7 @@ export class OltNativoController {
 
   // Rollback de aprovisionamiento por contrato (resuelve la OLT del registro).
   @Post('ftth/desaprovisionar-contrato/:contratoId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Desaprovisionar ONU FTTH por contrato (rollback canónico)' })
   @ApiParam({ name: 'contratoId' })
@@ -1237,6 +1288,7 @@ export class OltNativoController {
   }
 
   @Post('ftth/actualizar-wan/:contratoId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Actualizar la WAN PPPoE de la ONU con las credenciales actuales del contrato' })
   @ApiParam({ name: 'contratoId' })
@@ -1248,6 +1300,7 @@ export class OltNativoController {
   }
 
   @Post('ftth/cancelar/:contratoId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancelar aprovisionamiento FTTH en curso — limpia todo (OLT + BD)' })
   @ApiParam({ name: 'contratoId' })
@@ -1266,6 +1319,7 @@ export class OltNativoController {
   // ────────────────────────────────────────────────────────────
   // ── Carril TR-069 bajo demanda (toggle) ─────────────────────
   @Post('onu/:contratoId/tr069/activar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Activar el carril de gestión TR-069 de la ONU (bajo demanda)' })
   @ApiParam({ name: 'contratoId' })
@@ -1277,6 +1331,7 @@ export class OltNativoController {
   }
 
   @Post('onu/:contratoId/tr069/desactivar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Desactivar el carril TR-069 (quita interface, preserva datos ACS)' })
   @ApiParam({ name: 'contratoId' })
@@ -1289,6 +1344,7 @@ export class OltNativoController {
 
   // Sella "uso" del carril (el operador abrió el modal Ver ONU). Suprime el barrido TTL.
   @Post('onu/:contratoId/tr069/uso')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Marcar uso del carril TR-069 (suprime el barrido por inactividad)' })
   @ApiParam({ name: 'contratoId' })
@@ -1319,6 +1375,7 @@ export class OltNativoController {
   }
 
   @Post('wizard/abrir')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Abrir un procedimiento operativo sobre un recurso (contrato)' })
   async abrirWizard(
@@ -1330,6 +1387,7 @@ export class OltNativoController {
   }
 
   @Post('wizard/:id/heartbeat')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Señal de vida del wizard — renueva el TTL, nunca el techo absoluto' })
   @ApiParam({ name: 'id' })
@@ -1340,6 +1398,7 @@ export class OltNativoController {
   }
 
   @Post('wizard/:id/confirmar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Confirmar el procedimiento — su trabajo deja de ser anulable por cierre' })
   @ApiParam({ name: 'id' })
@@ -1351,6 +1410,7 @@ export class OltNativoController {
   }
 
   @Post('wizard/:id/cerrar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cerrar sin confirmar — el trabajo no confirmado queda para anulación' })
   @ApiParam({ name: 'id' })
@@ -1363,6 +1423,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/ftth/cambiar-velocidad')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cambiar velocidad ONU en caliente — actualiza traffic-table del service-port' })
   @ApiParam({ name: 'oltId' })
@@ -1400,6 +1461,7 @@ export class OltNativoController {
    * Complemento de poolReconciliar (service-ports).
    */
   @Post(':oltId/onu-id-pool/reconciliar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reconciliar el pool de ONU-IDs de todos los puertos contra el inventario sincronizado' })
   @ApiParam({ name: 'oltId' })
@@ -1431,6 +1493,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/wizard/inicializar')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Wizard OLT: importa perfiles + traffic tables desde la OLT al ERP' })
   @ApiParam({ name: 'oltId' })
@@ -1479,6 +1542,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/vlans')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Agregar VLAN a una OLT (solo BD, para imports masivos)' })
   @ApiParam({ name: 'oltId' })
   async agregarVlan(
@@ -1490,6 +1554,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/vlans/con-cli')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Agregar VLAN con push a CLI (atómico: BD syncing → OLT → BD active)' })
   @ApiParam({ name: 'oltId' })
@@ -1502,6 +1567,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId/vlans/:vlanId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar VLAN de una OLT (solo BD)' })
   @ApiParam({ name: 'oltId' })
@@ -1515,6 +1581,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId/vlans/:vlanId/con-cli')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar VLAN con guard de integridad + CLI (guarded + atómico)' })
   @ApiParam({ name: 'oltId' })
@@ -1528,6 +1595,7 @@ export class OltNativoController {
   }
 
   @Patch(':oltId/vlans/:vlanId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Editar nombre de una VLAN (BD only)' })
   @ApiParam({ name: 'oltId' })
@@ -1542,6 +1610,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/vlans/pull-desde-olt')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Pull de VLANs desde hardware OLT → BD (sincronización bidireccional)' })
   @ApiParam({ name: 'oltId' })
@@ -1553,6 +1622,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/vlans/sincronizar')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Sincronizar VLANs desde array de configuración' })
   @ApiParam({ name: 'oltId' })
   async sincronizarVlans(
@@ -1577,6 +1647,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/traffic-tables')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crear traffic table con push a CLI Huawei (atómico: CLI → BD)' })
   @ApiParam({ name: 'oltId' })
@@ -1589,6 +1660,7 @@ export class OltNativoController {
   }
 
   @Patch(':oltId/traffic-tables/:trafficId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Editar traffic table con guard + CLI (guarded + atómico)' })
   @ApiParam({ name: 'oltId' })
@@ -1603,6 +1675,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/traffic-tables/sincronizar')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Sincronizar traffic tables desde OLT (usa endpoint de perfiles)' })
   @ApiParam({ name: 'oltId' })
   async sincronizarTrafficTables(
@@ -1618,6 +1691,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId/traffic-tables/:trafficId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar traffic table de una OLT (solo BD)' })
   @ApiParam({ name: 'oltId' })
@@ -1631,6 +1705,7 @@ export class OltNativoController {
   }
 
   @Delete(':oltId/traffic-tables/:trafficId/con-cli')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar traffic table con guard de integridad + CLI (guarded + atómico)' })
   @ApiParam({ name: 'oltId' })
@@ -1649,6 +1724,7 @@ export class OltNativoController {
 
   /** PATCH parcial — formulario de edición de la página de detalle */
   @Patch(':oltId')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Actualización parcial de OLT (PATCH)' })
   @ApiParam({ name: 'oltId' })
   async patchOlt(
@@ -1737,6 +1813,7 @@ export class OltNativoController {
 
   /** Iniciar sincronización asíncrona OLT → ERP */
   @Post(':oltId/sync')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Iniciar sincronización OLT → ERP (asíncrona, responde con jobId)' })
   @ApiParam({ name: 'oltId' })
@@ -1797,6 +1874,7 @@ export class OltNativoController {
    * y nunca asume éxito.
    */
   @Put(':oltId/config/ntp')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Converge los servidores NTP de la OLT hacia la lista deseada' })
   @ApiParam({ name: 'oltId' })
   async aplicarNtpServers(
@@ -1831,6 +1909,7 @@ export class OltNativoController {
 
   /** Re-aplicar (push ERP→OLT) una ONU en drift: encola REAPROVISIONAR_ONU vía outbox */
   @Post(':oltId/drift/reaplicar/:contratoId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Encolar re-aprovisionamiento de una ONU (push ERP→OLT resiliente)' })
   @ApiParam({ name: 'oltId' })
@@ -1846,6 +1925,7 @@ export class OltNativoController {
 
   /** Re-sincronizar el estado ONU con el del contrato (divergencia suspendido/activo cruzados) */
   @Post(':oltId/drift/resincronizar-estado/:contratoId')
+  @RequirePermission('onu:provision')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Encolar SUSPENDER_ONU/REACTIVAR_ONU según el estado del contrato (repara divergencia)' })
   @ApiParam({ name: 'oltId' })

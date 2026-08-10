@@ -135,6 +135,7 @@ export class PlantaExternaController {
   }
 
   @Post('mufas')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Crear mufa de empalme' })
   async crearMufa(@Body() dto: CrearMufaDto, @CurrentUser() user: JwtPayload) {
     const mufa = await this.ds.getRepository(PeMufa).save(
@@ -160,6 +161,7 @@ export class PlantaExternaController {
   }
 
   @Post('mufas/:mufaId/fusiones')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Fusionar dos hilos dentro de la mufa' })
   async crearFusion(
     @Param('mufaId', ParseUUIDPipe) mufaId: string,
@@ -177,6 +179,7 @@ export class PlantaExternaController {
   }
 
   @Delete('fusiones/:fusionId')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Deshacer una fusión y liberar sus hilos' })
   async eliminarFusion(
     @Param('fusionId', ParseUUIDPipe) fusionId: string,
@@ -192,6 +195,7 @@ export class PlantaExternaController {
   }
 
   @Post('mufas/:mufaId/splitters')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Instalar un splitter dentro de la mufa' })
   async instalarSplitterMufa(
     @Param('mufaId', ParseUUIDPipe) mufaId: string,
@@ -221,6 +225,7 @@ export class PlantaExternaController {
   }
 
   @Post('segmentos')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Crear segmento de fibra (crea sus hilos en la misma transacción)' })
   async crearSegmento(@Body() dto: CrearSegmentoDto, @CurrentUser() user: JwtPayload) {
     const r = await this.service.crearSegmento(user.empresaId, dto);
@@ -258,6 +263,7 @@ export class PlantaExternaController {
   }
 
   @Post('naps')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Crear caja NAP (crea sus puertos físicos en no_habilitado)' })
   async crearNap(@Body() dto: CrearNapDto, @CurrentUser() user: JwtPayload) {
     const r = await this.service.crearNap(user.empresaId, dto);
@@ -275,6 +281,7 @@ export class PlantaExternaController {
   // ── Splitters ───────────────────────────────────────────────────
 
   @Post('naps/:napId/splitters')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Instalar splitter en una caja y habilitar sus puertos' })
   async instalarSplitter(
     @Param('napId', ParseUUIDPipe) napId: string,
@@ -293,6 +300,7 @@ export class PlantaExternaController {
   }
 
   @Post('splitters/:splitterId/retirar')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Retirar splitter (falla si alimenta puertos en uso)' })
   async retirarSplitter(
     @Param('splitterId', ParseUUIDPipe) splitterId: string,
@@ -310,6 +318,7 @@ export class PlantaExternaController {
   // ── Puertos y acometidas ────────────────────────────────────────
 
   @Post('puertos/:puertoId/reservar')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Reservar un puerto durante un wizard de alta (TTL corto)' })
   async reservar(
     @Param('puertoId', ParseUUIDPipe) puertoId: string,
@@ -323,6 +332,7 @@ export class PlantaExternaController {
   }
 
   @Post('puertos/:puertoId/heartbeat')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Extender la reserva mientras el wizard sigue abierto (con techo absoluto)' })
   async heartbeat(
     @Param('puertoId', ParseUUIDPipe) puertoId: string,
@@ -336,6 +346,7 @@ export class PlantaExternaController {
   }
 
   @Post('puertos/:puertoId/asignar')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Asignar el puerto a un contrato (reclamo atómico)' })
   async asignar(
     @Param('puertoId', ParseUUIDPipe) puertoId: string,
@@ -357,6 +368,7 @@ export class PlantaExternaController {
   }
 
   @Post('puertos/:puertoId/liberar')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Liberar el puerto (baja de acometida o cancelación del wizard)' })
   async liberar(
     @Param('puertoId', ParseUUIDPipe) puertoId: string,
@@ -425,6 +437,7 @@ export class PlantaExternaController {
   // ── Transiciones de estado ──────────────────────────────────────
 
   @Post(':tipo/:id/transicion')
+  @RequirePermission('onu:provision')
   @ApiOperation({ summary: 'Aplicar una transición de la máquina de estados a un elemento' })
   async transicionar(
     @Param('tipo') tipo: 'mufa' | 'nap' | 'segmento' | 'splitter',
