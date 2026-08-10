@@ -802,22 +802,19 @@ export class CobranzaWorker {
     nuevaFechaVenc.setMonth(nuevaFechaVenc.getMonth() + meses);
     const nuevaFechaStr = nuevaFechaVenc.toISOString().split('T')[0];
 
-    // Verificar deuda real antes de reactivar. Protege contra jobs encolados
-    // cuando el pago era parcial o quedan otras facturas pendientes.
-    // Cubre facturas con contrato_id directo y las sin vínculo (por cliente_id).
+    // Deuda real antes de reactivar. Es la ÚLTIMA puerta: protege contra jobs encolados cuando
+    // el pago era parcial o quedaban otras facturas.
+    //
+    // H-7 (2026-08-09): medía `sqlDeudaExigible` SIN filtro de fecha, igual que los otros dos
+    // caminos de reactivación. Era el más grave de los tres porque decide al final — podía
+    // CANCELAR una reactivación que `pagos.service` ya había autorizado, dejando al abonado
+    // pagado y sin servicio. Ahora los tres preguntan lo mismo a la misma función.
     let deudaRestante  = 0;
     let mesesRestantes = 0;
     try {
-      const [deudaRow] = await this.ds.query(`
-        SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda,
-               COUNT(f.id)::INTEGER               AS meses
-        FROM facturas f
-        WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
-          AND ${sqlDeudaExigible('f')}
-          AND f.deleted_at IS NULL
-      `, [contratoId, clienteId]);
-      deudaRestante  = parseFloat(deudaRow?.deuda ?? '0');
-      mesesRestantes = parseInt(deudaRow?.meses  ?? '0', 10);
+      const vencida  = await this.deudaSvc.vencidaQueBloquea(contratoId, clienteId);
+      deudaRestante  = vencida.monto;
+      mesesRestantes = vencida.comprobantes;
     } catch (e: any) {
       this.logger.warn(`[REACTIVAR] No se pudo calcular deuda para ${contratoId}: ${e.message} — procediendo`);
     }

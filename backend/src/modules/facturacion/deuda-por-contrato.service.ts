@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { sqlDeudaExigible } from './domain/estados-con-saldo';
+import { SQL_COMPROBANTE_VENCIDO } from './domain/mora';
 
 /**
  * Imputa a cada contrato la parte de deuda que le corresponde.
@@ -30,6 +31,72 @@ export class DeudaPorContratoService {
   private readonly logger = new Logger(DeudaPorContratoService.name);
 
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
+
+  /**
+   * Deuda **VENCIDA** que hoy impide devolverle el servicio a un contrato.
+   *
+   * H-7 (2026-08-09). Había **TRES** caminos de reactivación, cada uno midiendo esto por su
+   * cuenta, y los tres medían mal:
+   *
+   *   · `pagos.service` — sumaba `sqlDeudaExigible` **sin filtro de fecha**.
+   *   · la guarda de cambio manual de estado — leía `contratos.deuda_total`, la proyección total.
+   *   · `cobranza.worker.handleReactivarContrato` — otra vez `sqlDeudaExigible` sin fecha, y es el
+   *     que decide AL FINAL: podía cancelar una reactivación que `pagos.service` ya había
+   *     autorizado, dejando al abonado pagado y sin servicio.
+   *
+   * Los tres exigían **deuda total cero**. El tercero solo apareció al implementar la corrección;
+   * el hallazgo hablaba de dos.
+   *
+   * La diferencia no era teórica: con H-6 corregido, a un suspendido se le emite su comprobante
+   * del ciclo. El abonado paga lo que realmente debe, le queda una factura **emitida y todavía no
+   * vencida**, y no se reactivaría. Sería exigirle pago adelantado para devolverle el servicio.
+   *
+   * El alcance es el del comprobante consolidado: cuenta lo atado a este contrato **y** lo que el
+   * cliente deba sin imputar (`contrato_id IS NULL`). Es deliberado — si el abonado tiene un
+   * comprobante consolidado vencido, no se le devuelve ninguno de sus servicios.
+   */
+  async vencidaQueBloquea(
+    contratoId: string,
+    clienteId: string,
+    manager?: EntityManager,
+  ): Promise<{ monto: number; comprobantes: number }> {
+    const ejecutor = manager ?? this.ds;
+    const [fila] = await ejecutor.query<Array<{ deuda: string; comprobantes: number }>>(
+      `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda,
+              COUNT(f.id)::INTEGER               AS comprobantes
+         FROM facturas f
+        WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
+          AND f.deleted_at IS NULL
+          AND ${SQL_COMPROBANTE_VENCIDO('f')}`,
+      [contratoId, clienteId],
+    );
+    return {
+      monto:        parseFloat(fila?.deuda ?? '0'),
+      comprobantes: Number(fila?.comprobantes ?? 0),
+    };
+  }
+  /**
+   * Igual que `vencidaQueBloquea` pero para TODO el cliente, sin atarlo a un contrato.
+   *
+   * La usa la ruta del comprobante consolidado: cuando el pago salda una factura sin
+   * `contrato_id`, la pregunta previa es si al abonado le queda algo vencido antes de recorrer
+   * sus contratos uno a uno.
+   *
+   * Son dos métodos y **un solo criterio**: los dos salen de `SQL_COMPROBANTE_VENCIDO`. Lo que
+   * H-7 destapó no fue un criterio equivocado, sino cinco copias del criterio divergiendo.
+   */
+  async vencidaDelCliente(clienteId: string, manager?: EntityManager): Promise<number> {
+    const ejecutor = manager ?? this.ds;
+    const [fila] = await ejecutor.query<Array<{ deuda: string }>>(
+      `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
+         FROM facturas f
+        WHERE f.cliente_id = $1
+          AND f.deleted_at IS NULL
+          AND ${SQL_COMPROBANTE_VENCIDO('f')}`,
+      [clienteId],
+    );
+    return parseFloat(fila?.deuda ?? '0');
+  }
 
   /**
    * Recalcula `deuda_total` y `meses_deuda` de todos los contratos de un cliente.

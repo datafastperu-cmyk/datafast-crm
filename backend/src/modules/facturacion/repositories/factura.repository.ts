@@ -269,6 +269,7 @@ export class FacturaRepository {
     anio: number,
     soloContratoId?: string,
     soloDia?: number,
+    desdeActividad?: string,
   ): Promise<any[]> {
     let query = `
       SELECT
@@ -281,6 +282,9 @@ export class FacturaRepository {
         CAST(co.descuento_pct AS FLOAT) AS descuento_pct,
         co.dia_facturacion,
         co.cliente_id,
+        -- H-6: el estado decide en prepago (¿sigue en pie el servicio?) y el historial
+        -- decide en postpago (¿cuántos días se entregaron?).
+        co.estado,
         co.empresa_id,
 
         pl.nombre               AS plan_nombre,
@@ -308,18 +312,31 @@ export class FacturaRepository {
       JOIN planes   pl ON pl.id = co.plan_id
       JOIN empresas em ON em.id = co.empresa_id
       WHERE co.empresa_id = $1
-        -- Solo 'activo'. El estado 'prorroga' NO existe en el enum estado_contrato: una
-        -- prórroga mantiene el contrato en 'activo' con en_prorroga = true (ver
-        -- cobranza.worker: "la prórroga ya no cambia estado"). El literal quedó huérfano
-        -- cuando se unificaron los estados y Postgres rechaza la consulta ENTERA con
-        -- "invalid input value for enum estado_contrato", así que no se emitía ni una
-        -- factura. Estuvo latente mientras la generación corría una vez al mes; al pasar a
-        -- evaluarse a diario (05/08) empezó a fallar cada madrugada.
-        AND co.estado = 'activo'
+        -- HISTORIA, para que no se reintroduzca: aquí hubo un "estado IN ('activo', 'prorroga')".
+        -- 'prorroga' NO existe en el enum estado_contrato —una prórroga mantiene el contrato en
+        -- 'activo' con en_prorroga = true—, y Postgres no devuelve menos filas: rechaza la consulta
+        -- ENTERA. No se emitía ni una factura. Estuvo latente mientras la generación corría una vez
+        -- al mes; al pasar a evaluarse a diario (05/08) empezó a fallar cada madrugada. Lo cubre
+        -- "estados-sql-validos.spec.ts".
+        -- H-6 (2026-08-09): ya NO se filtra por "estado = 'activo'".
+        --
+        -- Filtrar por el estado de HOY dejaba fuera a los suspendidos, y con ellos el tramo del
+        -- ciclo que SÍ se les entregó antes del corte: ocho días de servicio real que no se
+        -- cobraban nunca, porque el comprobante siguiente ya cubría el mes siguiente. Lo que
+        -- decide ahora es el TIEMPO ENTREGADO, y eso se calcula fuera de esta consulta.
+        --
+        -- Se sigue acotando para no arrastrar contratos inertes: quien no está activo hoy solo
+        -- entra si su estado cambió dentro de la ventana que puede solapar el ciclo. Un contrato
+        -- suspendido desde hace meses tiene cero días entregados, y no hace falta traerlo para
+        -- descubrirlo. "fecha_estado" puede ser nula en filas antiguas, de ahí el COALESCE.
+        AND (co.estado = 'activo'
+             OR ($2 IS NULL OR COALESCE(co.fecha_estado, co.created_at) >= $2::date))
         AND co.deleted_at IS NULL
         AND cl.deleted_at IS NULL
     `;
-    const params: any[] = [empresaId];
+    // $2 va SIEMPRE, aunque sea null: los filtros opcionales de abajo se numeran con
+    // params.length y desplazarlos según haya o no ventana sería una fuente de bugs.
+    const params: any[] = [empresaId, desdeActividad ?? null];
 
     if (soloContratoId) {
       query += ` AND co.id = $${params.length + 1}`;
@@ -411,5 +428,33 @@ export class FacturaRepository {
   // ── Soft delete ───────────────────────────────────────────
   async softDelete(id: string): Promise<void> {
     await this.repo.update({ id }, { deletedAt: new Date() });
+  }
+  /**
+   * Historial de estados necesario para saber cuántos días de un ciclo estuvo cada contrato
+   * activo (H-6). Devuelve, por contrato, todas las transiciones hasta `fin` inclusive; el
+   * consumidor separa la última anterior al ciclo —que da el estado de partida— de las de dentro.
+   *
+   * **La fecha se resuelve en la zona horaria del operador, no en la de la sesión de Postgres.**
+   * Un corte a las 20:00 en Lima es el 8 en UTC y el 7 en Lima; sin `AT TIME ZONE` el día
+   * facturado dependería de cómo estuviera configurada la conexión, que es exactamente la clase
+   * de dependencia ambiental que no debe decidir dinero.
+   */
+  async historialParaCiclo(
+    contratoIds: string[],
+    fin: string,
+  ): Promise<Array<{ contrato_id: string; estado_nuevo: string; fecha: string }>> {
+    if (!contratoIds.length) return [];
+    return this.ds.query(
+      `SELECT ch.contrato_id,
+              ch.estado_nuevo,
+              TO_CHAR((ch.created_at AT TIME ZONE em.zona_horaria)::date, 'YYYY-MM-DD') AS fecha
+         FROM contratos_historial ch
+         JOIN contratos co ON co.id = ch.contrato_id
+         JOIN empresas   em ON em.id = co.empresa_id
+        WHERE ch.contrato_id = ANY($1)
+          AND (ch.created_at AT TIME ZONE em.zona_horaria)::date <= $2::date
+        ORDER BY ch.contrato_id, ch.created_at`,
+      [contratoIds, fin],
+    );
   }
 }

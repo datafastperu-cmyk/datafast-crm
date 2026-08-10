@@ -57,15 +57,31 @@ const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
 
 // Guardas de negocio por transición — condición que debe cumplirse además de la transición válida.
 // Se evalúan solo cuando !automatico && !adminOverride.
-type GuardaFn = (c: Contrato) => string | null; // null = pasa, string = mensaje de error
+//
+// H-7 (2026-08-09): las dos guardas de reactivación leían `c.deudaTotal` —la deuda TOTAL— y por
+// tanto un comprobante emitido y aún sin vencer impedía devolver el servicio a un abonado que
+// acababa de pagar todo lo que debía. Ahora reciben la deuda **vencida**, con la única definición
+// que hay (`DeudaPorContratoService.vencidaQueBloquea`), la misma que usa la reactivación
+// automática al registrar un pago. Antes eran dos criterios distintos para la misma pregunta, y
+// los dos estaban mal.
+interface ContextoGuarda {
+  contrato: Contrato;
+  /** Deuda VENCIDA e impaga. No es `contrato.deudaTotal`, que incluye lo aún no vencido. */
+  deudaVencida: number;
+}
+
+type GuardaFn = (ctx: ContextoGuarda) => string | null; // null = pasa, string = mensaje de error
+
+const bloqueaReactivacion = ({ deudaVencida }: ContextoGuarda): string | null =>
+  deudaVencida > 0
+    ? `Deuda vencida S/ ${deudaVencida.toFixed(2)} — use adminOverride para forzar`
+    : null;
 
 const GUARDAS: Partial<Record<string, GuardaFn>> = {
-  [`${EstadoContrato.SUSPENDIDO}->${EstadoContrato.ACTIVO}`]:
-    (c) => c.deudaTotal > 0 ? `Deuda pendiente S/ ${Number(c.deudaTotal).toFixed(2)} — use adminOverride para forzar` : null,
-  [`${EstadoContrato.CORTADO}->${EstadoContrato.ACTIVO}`]:
-    (c) => c.deudaTotal > 0 ? `Deuda pendiente S/ ${Number(c.deudaTotal).toFixed(2)} — use adminOverride para forzar` : null,
+  [`${EstadoContrato.SUSPENDIDO}->${EstadoContrato.ACTIVO}`]: bloqueaReactivacion,
+  [`${EstadoContrato.CORTADO}->${EstadoContrato.ACTIVO}`]:    bloqueaReactivacion,
   [`${EstadoContrato.ACTIVO}->${EstadoContrato.SUSPENDIDO}`]:
-    (c) => (c.enProrroga && c.prorrogaHasta && new Date(c.prorrogaHasta) > new Date())
+    ({ contrato: c }) => (c.enProrroga && c.prorrogaHasta && new Date(c.prorrogaHasta) > new Date())
       ? `Prórroga activa hasta ${c.prorrogaHasta} — use adminOverride para suspender antes` : null,
 };
 
@@ -722,7 +738,8 @@ export class ContratosService {
         const guardaKey = `${contrato.estado}->${dto.estado}`;
         const guarda = GUARDAS[guardaKey];
         if (guarda) {
-          const error = guarda(contrato);
+          const { monto: deudaVencida } = await this.deudaSvc.vencidaQueBloquea(contrato.id, contrato.clienteId);
+          const error = guarda({ contrato, deudaVencida });
           if (error) throw new BadRequestException(error);
         }
       }

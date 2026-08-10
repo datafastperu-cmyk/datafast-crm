@@ -23,6 +23,22 @@ export interface ItemFacturaExtendido {
   // null = heredar carga fiscal del comprobante padre
   // true/false = override explícito (mora siempre false, reconexión siempre true)
   aplicaIgvOverride?: boolean | null;
+
+  // PD-14 — la base con la que se prorrateó, CONGELADA en el ítem.
+  //
+  // Aunque hoy haya una sola política, un comprobante de hace dos años tiene que seguir
+  // siendo reconstruible: sin esto, cambiarla algún día reescribiría retroactivamente la
+  // aritmética de facturas ya emitidas y conciliar el histórico sería arqueología.
+  //
+  // `tarifaDiaria` es INFORMATIVA — existe para que el recibo se explique («21 días ×
+  // S/ 2,6667») y nunca para recalcular `subtotal`: recalcular desde seis decimales
+  // desplaza el céntimo y deja dos cifras sin saber cuál manda.
+  prorrateo?: {
+    base:         string;   // ACTUAL_360
+    denominador:  number;   // 30
+    dias:         number;
+    tarifaDiaria: number;
+  } | null;
 }
 
 // ─── Tipo de comprobante configurado por empresa ──────────────

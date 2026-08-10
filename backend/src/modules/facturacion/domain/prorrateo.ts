@@ -115,3 +115,81 @@ export const cargoDelPeriodo = (
     dias:    diasEntregados,
   };
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DÍAS ENTREGADOS — H-6 y H-8 (2026-08-09)
+//
+// La generación mensual decidía con **el estado de hoy** lo que debía decidir con **el
+// tiempo entregado**: filtraba `estado = 'activo'`, así que un contrato suspendido no
+// entraba. En postpago eso dejaba sin cobrar el tramo previo al corte —ocho días de
+// servicio real que no se recuperaban nunca, porque el siguiente comprobante ya cubría el
+// mes siguiente—. En prepago dejaba sin emitir el ciclo posterior a la reactivación.
+//
+// Aquí vive la otra mitad de la respuesta: cuántos días de un ciclo estuvo el servicio
+// realmente activo. El importe lo pone `cargoDelPeriodo`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface TransicionEstado {
+  /** Día en que el contrato pasó a `estadoNuevo`, en la zona horaria del operador. */
+  fecha: Date;
+  estadoNuevo: string;
+}
+
+const ESTADO_CON_SERVICIO = 'activo';
+
+const mismoDia = (a: Date, b: Date): boolean =>
+  a.getUTCFullYear() === b.getUTCFullYear() &&
+  a.getUTCMonth()    === b.getUTCMonth() &&
+  a.getUTCDate()     === b.getUTCDate();
+
+/**
+ * Días del ciclo en que el servicio estuvo activo.
+ *
+ * **Un día con servicio es un día facturable** (PD-14): si el contrato estuvo activo en
+ * algún momento del día, ese día cuenta entero. Por eso cuenta el día del corte —hubo
+ * servicio hasta que se cortó— y el de la reactivación.
+ *
+ * Se recorre día a día en vez de restar fechas. Son 31 iteraciones como mucho, y a cambio
+ * el caso de varias transiciones en el mismo día —suspender y reactivar la misma tarde—
+ * sale bien sin aritmética de intervalos que revisar.
+ *
+ * **El último estado conocido se extiende hasta el final del ciclo**, y eso es deliberado:
+ * el postpago se emite unos días ANTES de que el ciclo termine (`diasAntesEmision`), así
+ * que hay que facturar suponiendo que no habrá más cambios. Si los hay, el ciclo siguiente
+ * los recoge. Sin esto, a un abonado activo se le facturarían solo los días transcurridos.
+ *
+ * @param estadoAlInicio estado vigente el primer día del ciclo
+ * @param transiciones   cambios de estado DENTRO del ciclo, en orden cronológico
+ */
+export const diasEntregados = (
+  estadoAlInicio: string,
+  transiciones: TransicionEstado[],
+  inicio: Date,
+  fin: Date,
+): number => {
+  let estado = estadoAlInicio;
+  let pendientes = 0;
+  let dias = 0;
+
+  const cursor = new Date(Date.UTC(
+    inicio.getUTCFullYear(), inicio.getUTCMonth(), inicio.getUTCDate(),
+  ));
+  const ultimo = new Date(Date.UTC(fin.getUTCFullYear(), fin.getUTCMonth(), fin.getUTCDate()));
+
+  while (cursor <= ultimo) {
+    // Hubo servicio si ya estaba activo al empezar el día...
+    let conServicio = estado === ESTADO_CON_SERVICIO;
+
+    // ...o si alguna transición de ESE día lo puso activo, aunque después volviera a salir.
+    while (pendientes < transiciones.length && mismoDia(transiciones[pendientes].fecha, cursor)) {
+      estado = transiciones[pendientes].estadoNuevo;
+      if (estado === ESTADO_CON_SERVICIO) conServicio = true;
+      pendientes++;
+    }
+
+    if (conServicio) dias++;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return dias;
+};

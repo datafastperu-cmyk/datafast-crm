@@ -180,6 +180,10 @@ describe('PagosService', () => {
         { provide: DeudaPorContratoService, useValue: {
           recalcularPorCliente: jest.fn(),
           calcular: jest.fn().mockResolvedValue(new Map()),
+          // H-7: las cuatro puertas de reactivación de este servicio preguntan aquí. El doble
+          // devuelve cero —nada vencido— porque estos tests cubren el camino feliz.
+          vencidaQueBloquea: jest.fn().mockResolvedValue({ monto: 0, comprobantes: 0 }),
+          vencidaDelCliente: jest.fn().mockResolvedValue(0),
         } },
         { provide: ContratosService,    useValue: mockContratosSvc },
         { provide: AuditoriaService,    useValue: mockAuditoria },

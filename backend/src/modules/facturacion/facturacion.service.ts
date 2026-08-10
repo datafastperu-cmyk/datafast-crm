@@ -28,6 +28,8 @@ import {
   ResumenFinancieroDto, UpdateFacturaDto,
 } from './dto/factura.dto';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
+import { cargoDelPeriodo, diasEntregados, diasFacturables, CargoDelPeriodo } from './domain/prorrateo';
+import type { PoliticaFacturacion } from './politica-facturacion.service';
 
 export interface ResultadoGeneracion {
   total:    number;
@@ -139,6 +141,60 @@ export class FacturacionService {
     return saved;
   }
 
+  /**
+   * Cargo que le toca a un contrato en su ciclo, o `null` si no se le factura nada.
+   *
+   * **H-6 (2026-08-09).** Antes esto no existía: la generación filtraba `estado = 'activo'` y a
+   * cada contrato que pasara el filtro se le cobraba el precio entero. Un suspendido no entraba,
+   * y con él se perdía el tramo del ciclo que SÍ se le había entregado antes del corte — ocho
+   * días de servicio real que no se cobraban nunca, porque el comprobante siguiente ya cubría el
+   * mes siguiente.
+   *
+   * Las dos modalidades no se tratan igual, y no es una excepción sino su definición:
+   *
+   * · **Postpago** cobra por detrás, así que el ciclo ya transcurrió y se puede contar lo
+   *   entregado. Cero días entregados → no se emite nada.
+   * · **Prepago** cobra por delante: el ciclo está en el futuro y **no hay días que contar**. Se
+   *   emite si el servicio está en pie hoy; si está suspendido no se le cobra por adelantado un
+   *   mes que no va a recibir, y al reactivar se le emite lo que falte (H-8).
+   */
+  private cargoDelContratoEnCiclo(
+    contrato: { contrato_id: string; precio: string | number; estado: string },
+    politica: PoliticaFacturacion,
+    periodo: { inicio: string; fin: string },
+    historial: Map<string, Array<{ estado_nuevo: string; fecha: string }>>,
+  ): CargoDelPeriodo | null {
+    const precio    = parseFloat(String(contrato.precio ?? '0'));
+    const inicio    = new Date(`${periodo.inicio}T00:00:00.000Z`);
+    const fin       = new Date(`${periodo.fin}T00:00:00.000Z`);
+    const diasCiclo = diasFacturables(inicio, fin);
+
+    if (politica.tipo === 'prepago') {
+      return contrato.estado === 'activo'
+        ? cargoDelPeriodo(precio, diasCiclo, diasCiclo)
+        : null;
+    }
+
+    // Las fechas son ISO `YYYY-MM-DD`, así que comparar como texto ordena igual que como fecha.
+    const transiciones = historial.get(contrato.contrato_id) ?? [];
+    const previas      = transiciones.filter((t) => t.fecha <  periodo.inicio);
+    const dentro       = transiciones.filter((t) => t.fecha >= periodo.inicio && t.fecha <= periodo.fin);
+
+    // Sin historial previo el contrato aún no había nacido al empezar el ciclo: parte de un
+    // estado sin servicio y solo suma si dentro del ciclo llegó a activarse.
+    const estadoAlInicio = previas.length
+      ? previas[previas.length - 1].estado_nuevo
+      : 'pendiente_activacion';
+
+    const dias = diasEntregados(
+      estadoAlInicio,
+      dentro.map((t) => ({ fecha: new Date(`${t.fecha}T00:00:00.000Z`), estadoNuevo: t.estado_nuevo })),
+      inicio, fin,
+    );
+
+    return dias === 0 ? null : cargoDelPeriodo(precio, diasCiclo, dias);
+  }
+
   // ────────────────────────────────────────────────────────────
   // GENERACIÓN MASIVA MENSUAL
   // Idempotente: omite clientes ya facturados en el periodo.
@@ -197,7 +253,15 @@ export class FacturacionService {
     this.logger.log(`Generación mensual: ${anio}/${mes} | empresa: ${user.empresaId}`);
 
     const configGlobal = await this.comprobantesSvc.getConfiguracion(user.empresaId);
-    const contratos    = await this.facturaRepo.findContratosParaFacturar(user.empresaId, mes, anio, dto.contratoId);
+    // H-6: se traen también los NO activos cuyo estado cambió dentro de la ventana que puede
+    // solapar el ciclo — su tramo entregado antes del corte también se factura. Un contrato
+    // suspendido desde antes tiene cero días y ni siquiera hace falta traerlo.
+    const desdeActividad = mes === 1
+      ? `${anio - 1}-12-01`
+      : `${anio}-${String(mes - 1).padStart(2, '0')}-01`;
+    const contratos    = await this.facturaRepo.findContratosParaFacturar(
+      user.empresaId, mes, anio, dto.contratoId, undefined, desdeActividad,
+    );
 
     if (!contratos.length) {
       return { total: 0, exitosas: 0, omitidas: 0, errores: 0, detalles: [] };
@@ -240,6 +304,21 @@ export class FacturacionService {
       [...porCliente.keys()], user.empresaId,
     );
 
+    // Historial de estados de TODO el lote en una consulta, por la misma razón. Se pide con
+    // holgura —hasta el final del mes siguiente— porque el ciclo de cada abonado termina en su
+    // propio día de pago; el recorte exacto se hace después, ya con el periodo de cada uno.
+    const finHistorial = mes === 12
+      ? this.ultimoDiaMes(anio + 1, 1)
+      : this.ultimoDiaMes(anio, mes + 1);
+    const historialPorContrato = new Map<string, Array<{ estado_nuevo: string; fecha: string }>>();
+    for (const fila of await this.facturaRepo.historialParaCiclo(
+      contratos.map((c) => c.contrato_id), finHistorial,
+    )) {
+      const previas = historialPorContrato.get(fila.contrato_id) ?? [];
+      previas.push({ estado_nuevo: fila.estado_nuevo, fecha: fila.fecha });
+      historialPorContrato.set(fila.contrato_id, previas);
+    }
+
     for (const [clienteId, grupo] of porCliente) {
       const primer = grupo[0];
       try {
@@ -281,30 +360,38 @@ export class FacturacionService {
         const items: ItemFactura[] = [];
 
         for (const contrato of grupo) {
-          const precioBase = parseFloat(contrato.precio || '0');
-          // IGV leído de configGlobal, no del primer contrato del lote
-          // El IGV es propiedad del DOCUMENTO, no del producto: lo decide la carga fiscal
-          // del comprobante, no una bandera del plan. Antes se exigían ambas y bastaba con
-          // que el plan tuviera `aplica_igv = false` para emitir una factura fiscal sin
-          // IGV — o al revés, según qué plan hubiera contratado el cliente.
+          // Lo que se cobra ya no es el precio del plan sin más: es lo ENTREGADO en este ciclo.
+          const cargo = this.cargoDelContratoEnCiclo(contrato, politica, periodo, historialPorContrato);
+          if (!cargo) continue; // cero días entregados, o prepago sin servicio en pie
+
+          // El IGV es propiedad del DOCUMENTO, no del producto: lo decide la carga fiscal del
+          // comprobante, no una bandera del plan. Antes se exigían ambas y bastaba con que el plan
+          // tuviera aplica_igv = false para emitir una factura fiscal sin IGV.
           const contratoAplicaIgv = comprobante.tieneCargaFiscal;
 
           const { subtotal: sub, igv: igvItem, total: tot } =
-            this.calcularMontosDesdeBase(precioBase, 0, contratoAplicaIgv, igvRate);
+            this.calcularMontosDesdeBase(cargo.importe, 0, contratoAplicaIgv, igvRate);
 
           items.push({
-            // Con el comprobante consolidado, la línea es lo único que ata un importe a
-            // un servicio concreto: sin el número de contrato el cliente no puede
-            // reconocer cuál de sus servicios está pagando.
-            descripcion:    this.descripcionItem(contrato, mes, anio),
+            // Con el comprobante consolidado, la línea es lo único que ata un importe a un
+            // servicio concreto. Y si el tramo es parcial hay que decirlo, o el abonado ve un
+            // importe que no cuadra con su mensualidad y reclama con razón.
+            descripcion:    cargo.tipo === 'prorrateado'
+              ? `${this.descripcionItem(contrato, mes, anio)} · ${cargo.dias} días`
+              : this.descripcionItem(contrato, mes, anio),
             cantidad:       1,
             precioUnitario: sub,
             descuento:      0,
             subtotal:       sub,
             tipoItem:       'servicio',
-            // La descripción es para el cliente; esto es para el sistema. Sin el id, la
-            // deuda de un consolidado no se puede imputar a ningún servicio.
+            // La descripción es para el cliente; esto es para el sistema. Sin el id, la deuda de
+            // un consolidado no se puede imputar a ningún servicio.
             contratoId:     contrato.contrato_id,
+            // PD-14: la base viaja con el cargo. Solo en los parciales — en un ciclo completo no
+            // hubo prorrateo que explicar, y guardarlo insinuaría que sí.
+            prorrateo:      cargo.tipo === 'prorrateado'
+              ? { base: cargo.base, denominador: cargo.denominador, dias: cargo.dias, tarifaDiaria: cargo.tarifaDiaria }
+              : null,
           });
           totalSubtotal += sub;
           totalIgv      += igvItem;
@@ -318,6 +405,23 @@ export class FacturacionService {
           totalSubtotal += cargo.subtotal;
           totalIgv      += cargo.igvItem ?? 0;
           totalTotal    += cargo.total;
+        }
+
+        // Nadie entregó nada en este ciclo y no hay cargos que arrastrar: no hay comprobante.
+        // Antes no podía ocurrir —todo contrato que pasaba el filtro cobraba el mes entero—; que
+        // ahora un abonado suspendido todo el ciclo no reciba factura es la otra mitad de H-6:
+        // no se cobra lo que no se entregó.
+        //
+        // Va DESPUÉS de los cargos pendientes a propósito: un abonado sin servicio pero con una
+        // reconexión pendiente sí debe recibir su comprobante. `consumirCargosPendientes` no
+        // marca nada hasta que la factura se guarda, así que salir aquí no los pierde.
+        if (!items.length) {
+          resultado.omitidas++;
+          grupo.forEach((c) => resultado.detalles.push({
+            contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
+            resultado:  'omitida — sin días entregados en el ciclo',
+          }));
+          continue;
         }
 
         totalSubtotal = Math.round(totalSubtotal * 100) / 100;
@@ -419,8 +523,13 @@ export class FacturacionService {
     const mes  = hoy.getUTCMonth() + 1;
     const anio = hoy.getUTCFullYear();
 
+    // H-6: entran también los no activos con actividad reciente — su tramo entregado antes del
+    // corte se factura igual.
+    const desdeActividad = mes === 1
+      ? `${anio - 1}-12-01`
+      : `${anio}-${String(mes - 1).padStart(2, '0')}-01`;
     const contratos = await this.facturaRepo.findContratosParaFacturar(
-      empresaId, mes, anio,
+      empresaId, mes, anio, undefined, undefined, desdeActividad,
     );
     if (!contratos.length) {
       return { total: 0, exitosas: 0, omitidas: 0, errores: 0, detalles: [] };
@@ -444,7 +553,16 @@ export class FacturacionService {
       const emite    = politica && vence && this.politicaSvc.fechaEmision(politica, vence);
       // Sin fecha de emisión la factura se crea a mano: no es un error, es la opción
       // "Desactivado" de `crearFactura`.
-      if (!emite || this.politicaSvc.aIso(emite) !== hoyIso) porCliente.delete(clienteId);
+      // `<=`, no `===`. H-8 (2026-08-09): con igualdad estricta, el ciclo de un abonado que no
+      // estaba activo el día de su emisión NO lo emitía nadie nunca más. Un prepago suspendido el
+      // 07/09 y reactivado el 25/09 se quedaba sin comprobante del ciclo que sí iba a recibir —un
+      // mes entero gratis— porque su día de emisión, el 23, ya había pasado.
+      //
+      // Con `<=` el generador se auto-repara: cualquier ciclo cuya emisión ya venció y que aún no
+      // tenga comprobante se emite en la siguiente pasada. La deduplicación por periodo
+      // (`existeFacturaClientePeriodo`, abajo) es lo que lo hace seguro — y de paso cubre el día
+      // en que el cron no llegó a correr.
+      if (!emite || this.politicaSvc.aIso(emite) > hoyIso) porCliente.delete(clienteId);
     }
 
     if (!porCliente.size) {
@@ -454,6 +572,18 @@ export class FacturacionService {
     const resultado: ResultadoGeneracion = {
       total: porCliente.size, exitosas: 0, omitidas: 0, errores: 0, detalles: [],
     };
+
+    // Historial de estados del lote en una consulta (H-6). Se pide con holgura hasta el final
+    // del mes siguiente; el recorte al ciclo de cada abonado se hace después.
+    const historialDiario = new Map<string, Array<{ estado_nuevo: string; fecha: string }>>();
+    for (const fila of await this.facturaRepo.historialParaCiclo(
+      contratos.map((c) => c.contrato_id),
+      mes === 12 ? this.ultimoDiaMes(anio + 1, 1) : this.ultimoDiaMes(anio, mes + 1),
+    )) {
+      const previas = historialDiario.get(fila.contrato_id) ?? [];
+      previas.push({ estado_nuevo: fila.estado_nuevo, fecha: fila.fecha });
+      historialDiario.set(fila.contrato_id, previas);
+    }
 
     for (const [clienteId, grupo] of porCliente) {
       const primer = grupo[0];
@@ -482,20 +612,26 @@ export class FacturacionService {
         const items: ItemFactura[] = [];
 
         for (const contrato of grupo) {
-          const precioBase = parseFloat(contrato.precio || '0');
-          // El IGV es propiedad del DOCUMENTO, no del producto: lo decide la carga fiscal
-          // del comprobante, no una bandera del plan. Antes se exigían ambas y bastaba con
-          // que el plan tuviera `aplica_igv = false` para emitir una factura fiscal sin
-          // IGV — o al revés, según qué plan hubiera contratado el cliente.
+          // Se cobra lo ENTREGADO en el ciclo, no el precio del plan sin más (H-6).
+          const cargo = this.cargoDelContratoEnCiclo(contrato, politica, periodo, historialDiario);
+          if (!cargo) continue;
+
+          // El IGV es propiedad del DOCUMENTO, no del producto: lo decide la carga fiscal del
+          // comprobante, no una bandera del plan.
           const contratoAplicaIgv = comprobante.tieneCargaFiscal;
 
           const { subtotal: sub, igv: igvItem, total: tot } =
-            this.calcularMontosDesdeBase(precioBase, 0, contratoAplicaIgv, igvRate);
+            this.calcularMontosDesdeBase(cargo.importe, 0, contratoAplicaIgv, igvRate);
 
           items.push({
-            descripcion: this.descripcionItem(contrato, periodo.mes, periodo.anio),
+            descripcion: cargo.tipo === 'prorrateado'
+              ? `${this.descripcionItem(contrato, periodo.mes, periodo.anio)} · ${cargo.dias} días`
+              : this.descripcionItem(contrato, periodo.mes, periodo.anio),
             cantidad: 1, precioUnitario: sub, descuento: 0, subtotal: sub, tipoItem: 'servicio',
             contratoId: contrato.contrato_id,
+            prorrateo: cargo.tipo === 'prorrateado'
+              ? { base: cargo.base, denominador: cargo.denominador, dias: cargo.dias, tarifaDiaria: cargo.tarifaDiaria }
+              : null,
           });
           totalSubtotal += sub; totalIgv += igvItem; totalTotal += tot;
         }
@@ -506,6 +642,16 @@ export class FacturacionService {
           totalSubtotal += cargo.subtotal;
           totalIgv      += cargo.igvItem ?? 0;
           totalTotal    += cargo.total;
+        }
+
+        // Cero días entregados y sin cargos que arrastrar: no hay comprobante que emitir.
+        if (!items.length) {
+          resultado.omitidas++;
+          grupo.forEach((c) => resultado.detalles.push({
+            contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
+            resultado:  'omitida — sin días entregados en el ciclo',
+          }));
+          continue;
         }
 
         totalSubtotal = Math.round(totalSubtotal * 100) / 100;

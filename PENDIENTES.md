@@ -426,7 +426,7 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
-### 30. Los hallazgos de facturación (H-3 cerrado; H-6, H-7 y H-8 abiertos)
+### ~~30~~. Los hallazgos de facturación — **los cuatro CERRADOS** (H-3, H-6, H-7, H-8)
 
 **Por qué importa:** son defectos de dinero verificados leyendo el código. Los dos que quedan
 **están enlazados**: corregir uno sin el otro deja a los abonados que sí pagan sin poder reactivarse.
@@ -448,61 +448,55 @@ Al corregirlo aparecieron dos cosas que el hallazgo no podía ver, y que son el 
 12 tests en `contratos/comprobante-de-alta.spec.ts`, incluida la barrera de que el navegador no
 vuelva a emitir pegado al alta.
 
-#### H-6 · El tramo entregado hasta el corte no se factura nunca
+#### ~~H-6, H-7 y H-8~~ · **CERRADOS el 2026-08-09**, en un solo despliegue
 
-`findContratosParaFacturar` filtra `AND co.estado = 'activo'`, así que **un contrato suspendido no
-entra en la generación**. Con corte el 07/09 y ciclo `[31/08 → 30/09]`, el abonado tuvo servicio
-ocho días **que no se cobran nunca** — el siguiente comprobante ya cubre octubre.
+Fueron juntos porque están enlazados: corregir H-6 sin H-7 dejaba a los abonados que **sí pagan**
+sin poder reactivarse.
 
-Se corrige **prorrateando el borde**: la factura que provocó el corte se debe entera, el tramo del
-ciclo en curso hasta el corte se prorratea, y durante la suspensión no se factura.
+**Lo construido.** `facturacion/domain/prorrateo.ts` gana `diasEntregados`, que recorre
+`contratos_historial` día a día. La generación dejó de preguntar «¿está activo hoy?» y pregunta
+«¿cuántos días de este ciclo estuvo activo?». Una sola regla cubre el mes del corte, los meses
+suspendidos (cero días → no se emite nada) y el de la reactivación.
 
-#### H-7 · La reactivación exige deuda TOTAL cero, no vencida
+**Tres cosas aparecieron al implementarlo, y ninguna estaba en los hallazgos:**
 
-`pagos.service` comprueba `SUM(f.saldo) <= 0` sobre `sqlDeudaExigible`, **sin filtrar por fecha de
-vencimiento**. Hoy no se nota porque H-6 lo tapa: como no se factura a los suspendidos, nunca hay
-una factura nueva que estorbe.
+**1. H-7 no eran dos puertas. Eran CINCO.** Y las tres que faltaban son las peligrosas:
 
-**Al corregir H-6 aparece:** el abonado paga lo que debe, le queda una factura emitida y aún no
-vencida, y **no se reactiva**. Es exigirle pago adelantado para devolverle el servicio.
+| Puerta | Qué medía |
+|---|---|
+| `pagos.service`, al registrar el pago | `sqlDeudaExigible` sin fecha |
+| Guarda del cambio manual de estado | `contratos.deuda_total` |
+| **`cobranza.worker`** | Decide **al final**: podía CANCELAR una reactivación ya autorizada — abonado pagado y sin servicio |
+| **`verificarYReactivarContrato`** | Deuda **imputada total**; y reactiva con `automatico = true`, que **se salta las guardas** |
+| **Ruta del comprobante consolidado** | `SUM` a nivel de cliente, sin fecha |
 
-**Cómo se comprueba:** el escenario del 07/09 — suspender, dejar correr la emisión, pagar la factura
-vencida, y verificar que el servicio vuelve.
+No era un criterio equivocado: era **el mismo criterio copiado cinco veces**. Corregir dos habría
+dejado tres decidiendo con la deuda total, y el fallo habría seguido en pie con los tests en verde.
+Hoy las cinco preguntan a `vencidaQueBloquea` / `vencidaDelCliente`, y una barrera falla si alguien
+vuelve a escribir un `SUM(f.saldo)` en cualquiera de los tres ficheros.
 
-#### H-8 · Prepago: el ciclo de la reactivación no lo emite nadie
+**2. Hay DOS generadores, y el de producción no era el que se estaba corrigiendo.**
+`generarMensual` lo llama el controlador; el que corre a diario es `generarFacturasDelDia`. La
+primera pasada de H-6 tocó solo el primero. Una barrera cuenta ahora que `cargoDelContratoEnCiclo`
+se invoque **dos** veces.
 
-Apareció **diseñando la corrección de H-6**, no analizándolo. Es su mitad simétrica, y es peor en
-importe: H-6 se fuga días, H-8 se fuga un ciclo entero.
+**3. H-8 no necesitó mecanismo nuevo.** El generador diario emitía solo si la fecha de emisión era
+**exactamente** hoy, así que un ciclo perdido no se recuperaba jamás. Cambiar `===` por `<=` lo
+vuelve **auto-reparable**: emite cualquier ciclo cuya emisión ya venció y que aún no tenga
+comprobante. Lo seguro es la deduplicación por periodo, que ya existía. De regalo cubre el día en
+que el cron no llegó a correr.
 
-En prepago el tramo previo al corte ya está facturado. La fuga está al volver: la generación del
-23/09 no emite el ciclo `[30/09 → 31/10]` porque el contrato está suspendido; el abonado paga el
-25/09, se reactiva, **y ese ciclo no tiene comprobante**. La siguiente generación ya cubre el
-posterior.
+**Y la liquidación final del tramo salió gratis.** Se había aparcado para una segunda tanda; como
+la regla mira el tiempo entregado y no el estado de hoy, un contrato que pasa a baja definitiva a
+mitad de ciclo factura sus días sin código aparte. Lo que sigue pendiente es la liquidación de un
+contrato dado de baja **fuera** del ciclo en curso.
 
-Misma raíz que H-6: la generación decide con **el estado de hoy** lo que debería decidir con **el
-tiempo entregado**. Se corrige emitiendo al reactivar lo que falte del ciclo en curso, prorrateado
-desde la fecha de reactivación — la misma cuenta de días, aplicada en el otro extremo.
+**Decisiones aplicadas:** día del corte incluido, reactivación con cero vencidos, base
+`ACTUAL_360` (PD-14). El importe del escenario del propietario —8 días de un ciclo de 31 con
+mensualidad S/ 64— es **S/ 17,07**, donde antes eran S/ 0.
 
-#### Diseño acordado (2026-08-09) — las tres decisiones ya están tomadas
-
-> **Un abonado tiene comprobante por todo el tiempo en que tuvo servicio, y por ninguno en que no
-> lo tuvo.**
-
-1. **El día del corte SÍ se cuenta.** El ciclo es un intervalo cerrado, como ya lo define
-   `periodoServicio`: `días = fin − inicio + 1`. Se propuso primero media abierta citando ISDA;
-   estaba mal por coherencia interna —ISDA describe periodos donde el fin de uno es el inicio del
-   siguiente, y el nuestro abre al día después—. Prueba de que la convención es la buena: los
-   tramos parciales **suman el ciclo entero**.
-2. **Reactivar exige cero comprobantes vencidos**, no bajar del umbral de corte. Con H-6 corregido
-   la deuda no crece durante la suspensión, así que no hay trampa de pagar y seguir cortado.
-3. **Liquidación final al dar de baja**, como el sector — segunda tanda, no bloquea.
-
-Un ciclo entregado completo se cobra íntegro **sin pasar por la división**, o aparecen céntimos de
-redondeo en la factura de todos los abonados por un caso de borde de unos pocos.
-
-Y H-7 son **dos** sitios, no uno: la reactivación automática de `pagos.service` y la guarda de
-cambio manual de estado en `contratos.service`, que lee `c.deudaTotal`. Corregir solo el primero
-deja al operador chocando contra la deuda total.
+**Cobertura:** `domain/dias-entregados.spec.ts` (12) y `reactivacion-deuda-vencida.spec.ts` (11).
+Suite completa del backend en verde: 81 suites, 714 tests.
 
 **Detalle y trazabilidad:** `docs/estudio/facturacion-cobranza-benchmark.md` §5.2, §5.2-bis y §6.1.
 

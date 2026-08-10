@@ -381,14 +381,14 @@ export class PagosService {
             `queda en ${contrato?.estado ?? 'n/a'} por decisión del operador`,
           );
         } else if (contrato && estadosReactivables.includes(contrato.estado)) {
-          const [deudaRow] = await manager.query<{ deuda: string }[]>(`
-            SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
-            FROM facturas f
-            WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
-              AND ${sqlDeudaExigible('f')}
-              AND f.deleted_at IS NULL
-          `, [contrato.id, factura.clienteId]);
-          if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
+          // H-7 (2026-08-09): la reactivación mira la deuda VENCIDA, no la total. Antes esta
+          // consulta sumaba `sqlDeudaExigible` sin filtro de fecha, así que una factura emitida y
+          // aún no vencida impedía devolver el servicio a quien acababa de pagar lo que debía.
+          // No se notaba porque H-6 lo tapaba: a un suspendido no se le facturaba nada.
+          const { monto: deudaVencida } = await this.deudaSvc.vencidaQueBloquea(
+            contrato.id, factura.clienteId, manager,
+          );
+          if (deudaVencida <= 0) {
             if (factura.contratoId) {
               // Factura vinculada a un contrato específico → solo ese
               contratosParaReactivar.push(contrato);
@@ -406,14 +406,13 @@ export class PagosService {
         } else if (contrato && contrato.estado === EstadoContrato.ACTIVO && contrato.enProrroga) {
           // Contrato activo en prórroga: si la deuda queda en cero al pagar, marcar promesa cumplida
           // y limpiar address-list prorroga en MikroTik. No reprovisionamos porque el servicio ya está activo.
-          const [deudaRow] = await manager.query<{ deuda: string }[]>(`
-            SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
-            FROM facturas f
-            WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
-              AND ${sqlDeudaExigible('f')}
-              AND f.deleted_at IS NULL
-          `, [contrato.id, factura.clienteId]);
-          if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
+          // H-7: la promesa se cumple saldando lo VENCIDO. Medirlo con la deuda total dejaba
+          // la promesa sin cumplir —y el address-list de prórroga puesto— por un comprobante
+          // que todavía no había vencido.
+          const prorrogaSaldada = await this.deudaSvc.vencidaQueBloquea(
+            contrato.id, factura.clienteId, manager,
+          );
+          if (prorrogaSaldada.monto <= 0) {
             if (factura.contratoId) {
               contratosEnProrroga.push(contrato.id);
             } else {
@@ -955,15 +954,9 @@ export class PagosService {
       } else if (pago.clienteId) {
         // Factura unificada (contrato_id null): verificar deuda total del cliente
         // y reactivar TODOS los contratos suspendidos si quedaron en cero
-        const [deudaRow] = await this.ds.query(
-          `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
-           FROM facturas f
-           WHERE f.cliente_id = $1
-             AND ${sqlDeudaExigible('f')}
-             AND f.deleted_at IS NULL`,
-          [pago.clienteId],
-        );
-        if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
+        // H-7: vencida, no total. Esta puerta decide si merece la pena recorrer los contratos
+        // del abonado; con el criterio viejo, un comprobante emitido y sin vencer la cerraba.
+        if (await this.deudaSvc.vencidaDelCliente(pago.clienteId) <= 0) {
           // Incluir contratos suspendidos/morosos/cortados (reactivación) Y contratos
           // activos con prorroga vigente (cumplimiento de promesa sin cambio de estado).
           const afectados: { id: string }[] = await this.ds.query(
@@ -1156,11 +1149,17 @@ export class PagosService {
 
     await this.deudaSvc.recalcularPorCliente(contrato.clienteId, empresaId);
 
-    const imputada = await this.deudaSvc.calcular(contrato.clienteId, empresaId);
-    const deuda = imputada.get(contratoId)?.monto ?? 0;
+    // La proyección se refresca con la definición canónica (imputación del consolidado), pero
+    // QUIEN DECIDE es la deuda vencida: H-7. `calcular` devuelve la deuda TOTAL imputada, así
+    // que un comprobante emitido y aún sin vencer bloqueaba la reactivación de alguien que
+    // acababa de pagar todo lo exigible. Esta puerta es de las peligrosas: reactiva con
+    // `automatico = true`, que se salta las guardas de `cambiarEstado`.
+    const imputada      = await this.deudaSvc.calcular(contrato.clienteId, empresaId);
+    const deudaImputada = imputada.get(contratoId)?.monto ?? 0;
+    const deuda         = (await this.deudaSvc.vencidaQueBloquea(contratoId, contrato.clienteId)).monto;
 
     this.logger.debug(
-      `Contrato ${contratoId}: deuda recalculada = S/ ${deuda}`,
+      `Contrato ${contratoId}: vencida = S/ ${deuda} | imputada total = S/ ${deudaImputada}`,
     );
 
     // Si la deuda quedó en cero, verificar si el contrato está suspendido
