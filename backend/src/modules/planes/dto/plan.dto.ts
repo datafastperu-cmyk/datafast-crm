@@ -1,7 +1,7 @@
 import { IsString,IsNumber,IsEnum,IsBoolean,IsOptional,IsNotEmpty,Min,Max,MaxLength,IsInt,IsArray,ValidateIf } from 'class-validator';
 import { ApiProperty,ApiPropertyOptional,PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { TipoPlan,TipoQueue,AccionAlLimite } from '../entities/plan.entity';
+import { TipoPlan,TipoQueue,AccionAlLimite,TipoProducto } from '../entities/plan.entity';
 import { PaginationDto } from '../../../common/dto/response.dto';
 
 export class CreatePlanDto {
@@ -9,8 +9,12 @@ export class CreatePlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) descripcion?: string;
   @ApiPropertyOptional({ enum:TipoPlan }) @IsOptional() @IsEnum(TipoPlan) tipo?: TipoPlan;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) colorUi?: string;
-  @ApiProperty({ example:20480 }) @IsInt() @Min(0) @Max(1000000) @Type(()=>Number) velocidadBajada: number;
-  @ApiProperty({ example:10240 }) @IsInt() @Min(0) @Max(1000000) @Type(()=>Number) velocidadSubida: number;
+  // Obligatorias solo para `producto = internet`; lo comprueba el servicio, que es donde se
+  // conoce el producto. Aquí son opcionales o no habría forma de crear un plan de cable.
+  @ApiPropertyOptional({ example:20480 }) @IsOptional() @IsInt() @Min(0) @Max(1000000) @Type(()=>Number) velocidadBajada?: number;
+  @ApiPropertyOptional({ example:10240 }) @IsOptional() @IsInt() @Min(0) @Max(1000000) @Type(()=>Number) velocidadSubida?: number;
+  @ApiPropertyOptional({ enum: TipoProducto, default: TipoProducto.INTERNET })
+  @IsOptional() @IsEnum(TipoProducto) producto?: TipoProducto;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(1000000) @Type(()=>Number) burstBajada?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(1000000) @Type(()=>Number) burstSubida?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(100) @Type(()=>Number) burstUmbral?: number;

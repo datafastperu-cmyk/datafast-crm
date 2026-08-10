@@ -1,6 +1,20 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
 
+/**
+ * Qué contrata el abonado. Es un eje DISTINTO de `TipoPlan` —que es el segmento comercial— y
+ * de `tipoServicio` —que es la tecnología de acceso—. Se separaron el 2026-08-09 (fase 2)
+ * porque el catálogo solo sabía describir conexiones de internet y con eso un plan de cable
+ * coaxial era inexpresable: había que inventarle una velocidad.
+ */
+export enum TipoProducto {
+  INTERNET       = 'internet',
+  CABLE_IPTV     = 'cable_iptv',
+  CABLE_COAXIAL  = 'cable_coaxial',
+  STREAMING      = 'streaming',
+}
+
+/** Segmento comercial del plan. NO es lo que se contrata: eso es `TipoProducto`. */
 export enum TipoPlan { RESIDENCIAL='residencial', EMPRESARIAL='empresarial', DEDICADO='dedicado', PREPAGO='prepago' }
 export enum TipoQueue { SIMPLE_QUEUE='simple_queue', QUEUE_TREE='queue_tree', PCQ='pcq', SIN_LIMITE='sin_limite' }
 export enum AccionAlLimite { REDUCIR_VELOCIDAD='reducir_velocidad', BLOQUEAR='bloquear', NOTIFICAR='notificar', SIN_ACCION='sin_accion' }
@@ -13,9 +27,10 @@ export class Plan extends BaseModel {
   @Column({ length:100 }) nombre: string;
   @Column({ type:'text', nullable:true }) descripcion: string;
   @Column({ type:'enum', enum:TipoPlan, default:TipoPlan.RESIDENCIAL }) tipo: TipoPlan;
+  @Column({ type:'enum', enum:TipoProducto, default:TipoProducto.INTERNET }) producto: TipoProducto;
   @Column({ name:'color_ui', length:20, default:'#3B82F6' }) colorUi: string;
-  @Column({ name:'velocidad_bajada', type:'int' }) velocidadBajada: number;
-  @Column({ name:'velocidad_subida', type:'int' }) velocidadSubida: number;
+  @Column({ name:'velocidad_bajada', type:'int', nullable:true }) velocidadBajada: number | null;
+  @Column({ name:'velocidad_subida', type:'int', nullable:true }) velocidadSubida: number | null;
   @Column({ name:'burst_bajada', type:'int', nullable:true }) burstBajada: number;
   @Column({ name:'burst_subida', type:'int', nullable:true }) burstSubida: number;
   @Column({ name:'burst_umbral', type:'smallint', default:0 }) burstUmbral: number;
@@ -34,7 +49,7 @@ export class Plan extends BaseModel {
   @Column({ name:'rate_limit', length:50, nullable:true }) rateLimit: string;
   @Column({ name:'pool_ip', length:100, nullable:true }) poolIp: string;
   @Column({ name:'vlan_id', type:'smallint', nullable:true }) vlanId: number;
-  @Column({ name:'tipo_servicio', length:20, default:'ftth' }) tipoServicio: string;
+  @Column({ name:'tipo_servicio', type:'varchar', length:20, nullable:true, default:'ftth' }) tipoServicio: string | null;
   @Column({ name:'ciclo_facturacion', length:20, default:'mensual' }) cicloFacturacion: string;
   @Column({ name:'dias_contrato_minimo', type:'int', default:0 }) diasContratoMinimo: number;
   @Column({ name:'tiene_limite_datos', default:false }) tieneLimiteDatos: boolean;

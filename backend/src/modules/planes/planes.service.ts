@@ -3,7 +3,7 @@ import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
-import { Plan } from './entities/plan.entity';
+import { Plan , TipoProducto } from './entities/plan.entity';
 import { CreatePlanDto, UpdatePlanDto, FilterPlanDto } from './dto/plan.dto';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 
@@ -30,7 +30,34 @@ export class PlanesService {
     ]).catch(() => void 0);
   }
 
+  /**
+   * Un plan describe UN producto, y la velocidad solo tiene sentido en uno de ellos.
+   *
+   * Se valida en los dos sitios a propósito: aquí, para poder decirle al operador qué le falta,
+   * y en la base con un CHECK (`planes_velocidad_solo_internet`), porque un catálogo incoherente
+   * no debe poder entrar por ninguna puerta — ni por una importación ni por un script.
+   */
+  private validarCoherenciaDelProducto(dto: { producto?: TipoProducto; velocidadBajada?: number | null; velocidadSubida?: number | null }): void {
+    const producto = dto.producto ?? TipoProducto.INTERNET;
+    const tieneVelocidad = dto.velocidadBajada != null || dto.velocidadSubida != null;
+
+    if (producto === TipoProducto.INTERNET) {
+      if (dto.velocidadBajada == null || dto.velocidadSubida == null) {
+        throw new BadRequestException('Un plan de internet necesita velocidad de bajada y de subida');
+      }
+      return;
+    }
+
+    if (tieneVelocidad) {
+      throw new BadRequestException(
+        `Un plan de ${producto} no tiene velocidad: es cable o streaming, no un enlace. ` +
+        'Inventarle una la dejaría escrita en el catálogo como si fuera cierta.',
+      );
+    }
+  }
+
   async create(dto: CreatePlanDto, user: JwtPayload): Promise<Plan> {
+    this.validarCoherenciaDelProducto(dto);
     const existe = await this.repo.findOne({ where:{ nombre:dto.nombre, empresaId:user.empresaId, deletedAt:null as any } });
     if (existe) throw new ConflictException(`Plan "${dto.nombre}" ya existe`);
     const plan = this.repo.create({ ...dto, empresaId:user.empresaId });
@@ -90,6 +117,15 @@ export class PlanesService {
 
   async update(id: string, dto: UpdatePlanDto, user: JwtPayload): Promise<Plan> {
     const plan = await this.findOne(id, user.empresaId);
+
+    // La coherencia se comprueba sobre el RESULTADO, no sobre el parche. Un update parcial que
+    // solo cambia `producto` dejaría las velocidades viejas dentro: validar el dto suelto diría
+    // que todo está bien y la base lo rechazaría después con un error que no explica nada.
+    this.validarCoherenciaDelProducto({
+      producto:        dto.producto        ?? plan.producto,
+      velocidadBajada: dto.velocidadBajada ?? plan.velocidadBajada,
+      velocidadSubida: dto.velocidadSubida ?? plan.velocidadSubida,
+    });
 
     if (dto.version !== undefined && plan.version !== dto.version) {
       throw new ConflictException({
