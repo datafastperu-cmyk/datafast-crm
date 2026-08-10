@@ -132,9 +132,13 @@ export class FacturacionScheduler implements OnModuleInit {
     // un cliente configurado para vencer el 28 se facturaba igual el día 1»— y se quedó
     // sin retirar. Esto no elige entre dos diseños: termina una migración a medias.
     //
-    // Consecuencia: `servicios.dia_facturacion` queda INERTE. Nadie lo lee para decidir
-    // cuándo facturar. Los dos servicios vivos lo tienen en 1 mientras su día de pago es
-    // 28, así que ya mentía antes de esto.
+    // Consecuencia sobre `servicios.dia_facturacion`: deja de DISPARAR la generación. No
+    // queda inerte —eso se escribió aquí y era falso—: `PoliticaFacturacionService.resolver`
+    // lo sigue usando como RESPALDO del día de pago cuando el abonado no tiene configuración
+    // propia. Son dos papeles distintos y solo se retira el primero.
+    //
+    // Los dos servicios vivos lo tienen en 1 mientras su día de pago configurado es 28, así
+    // que hoy no lo usa nadie: el respaldo solo entra si `facturacion_config` está vacía.
   }
 
   // ─── Trigger manual desde controller ─────────────────────

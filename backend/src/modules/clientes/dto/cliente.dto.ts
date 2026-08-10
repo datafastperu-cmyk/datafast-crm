@@ -364,7 +364,7 @@ export class OnboardingContratoDto {
   @IsOptional() @IsString() usuarioPppoe?: string;
   @IsOptional() @IsString() passwordPppoePlain?: string;
   @IsOptional() @IsDateString() fechaInicio?: string;
-  @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number) diaFacturacion?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(31) @Type(() => Number) diaFacturacion?: number;
   @IsOptional() @IsNumber() @Min(0) @Max(100) @Type(() => Number) descuentoPct?: number;
   @IsOptional()
   @Matches(/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/, { message: 'MAC address inválida (formato: AA:BB:CC:DD:EE:FF)' })

@@ -103,8 +103,11 @@ export class CreateContratoDto {
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number)
   costoInstalacion?: number;
 
-  @ApiPropertyOptional({ description: 'Día 1-28 para facturar este contrato' })
-  @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number)
+  // Respaldo del día de pago cuando el abonado no tiene configuración propia. Va hasta 31
+  // desde 29-ter: el anclaje recorta a fin de mes, así que un 31 vence el 28 de febrero y
+  // vuelve al 31 en marzo. El tope en 28 era el atajo que esa decisión descartó.
+  @ApiPropertyOptional({ description: 'Día 1-31 de respaldo para el ciclo de este servicio' })
+  @IsOptional() @IsInt() @Min(1) @Max(31) @Type(() => Number)
   diaFacturacion?: number;
 
   @ApiPropertyOptional({ enum: TipoPago, description: 'Modalidad de cobro: prepago o postpago' })

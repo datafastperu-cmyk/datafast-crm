@@ -481,8 +481,16 @@ existe — *«con el disparo por `dia_facturacion`, un cliente configurado para 
 facturaba igual el día 1»*. El camino nuevo se escribió PORQUE el viejo estaba mal, y el viejo
 nunca se retiró. Esto no eligió entre dos diseños: terminó una migración a medias.
 
-**Consecuencia anotada:** `servicios.dia_facturacion` queda **inerte**. Ya mentía — los dos
-servicios vivos lo tienen en 1 mientras su día de pago es 28.
+**Consecuencia anotada, corregida el mismo día:** `servicios.dia_facturacion` deja de **disparar
+la generación**. **NO queda inerte** —eso se escribió primero y era falso—: `PoliticaFacturacionService.resolver`
+lo sigue usando como **respaldo del día de pago** cuando el abonado no tiene configuración propia.
+Son dos papeles y solo se retiró el primero.
+
+Y al comprobarlo apareció una cola suelta del anclaje 1-31: la base tenía
+`CHECK (dia_facturacion BETWEEN 1 AND 28)` y los DTO un `@Max(28)`, restos de cuando el día de
+pago no admitía 29-31. El modelo sabía manejar un abonado anclado en 31 —vence el 28 de febrero y
+vuelve al 31 en marzo— pero no se le podía escribir ese 31 en el campo que se lo iba a dar. La
+mitad de una decisión. Corregido a 1-31 en la base y en los dos DTO.
 
 **Barrera:** `facturacion/una-sola-autoridad.spec.ts` (4). Falla si alguien vuelve a enumerar
 candidatos a facturar fuera del módulo, si inserta comprobantes desde otro sitio, si el worker

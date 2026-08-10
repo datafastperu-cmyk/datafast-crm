@@ -75,8 +75,9 @@ describe('H-10 · Una sola autoridad decide qué se factura', () => {
   });
 
   it('`servicios.dia_facturacion` ya no decide cuándo facturar', () => {
-    // Queda inerte tras H-10. Los dos servicios vivos lo tienen en 1 mientras su día de pago
-    // es 28: ya mentía. Si alguien vuelve a colgar de él una decisión, este test lo dice.
+    // Tras H-10 deja de disparar la generación. NO queda inerte: sigue siendo el respaldo del
+    // día de pago en `PoliticaFacturacionService.resolver` cuando el abonado no tiene
+    // configuración propia. Lo que este test impide es que vuelva a decidir CUÁNDO facturar.
     const infractores = ficheros
       .filter((f) => {
         const s = sinComentarios(fs.readFileSync(f, 'utf8'));
