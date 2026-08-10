@@ -426,6 +426,45 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
+### 32. H-10 · Hay DOS generadores de facturas vivos, y las correcciones fueron a uno
+
+**Encontrado el 2026-08-09 cableando la fase 4.2a.** Es el hallazgo con más alcance de la sesión y
+**bloquea la fase 4.2b**.
+
+| | Generador | Cómo decide |
+|---|---|---|
+| **1** | `FacturacionService.generarFacturasDelDia` | Política del abonado, días entregados (H-6), auto-reparable (H-8) |
+| **2** | `workers/facturacion.worker.processGenerarFacturasEmpresa` | **Consulta propia**, cron 05:00, filtra `estado = 'activo'`, periodo = **mes de calendario** |
+
+El segundo tiene su propio SQL —no usa `findContratosParaFacturar`— así que **ninguna corrección
+del dinero de esta sesión llegó a él**: ni el prorrateo por días entregados, ni el ciclo del
+abonado, ni la auto-reparación.
+
+**Y estuvo a punto de duplicar un comprobante.** Su deduplicación comparaba `periodo_inicio` y
+`periodo_fin` por **igualdad**. El generador nuevo produce el ciclo del abonado —`30/08 → 30/09`—
+y este el mes de calendario —`01/09 → 30/09`—: no coinciden nunca, así que no encontraba nada. Los
+dos servicios vivos tienen `dia_facturacion = 1`, de modo que **el 1 de septiembre el abonado
+activo habría recibido dos facturas por el mismo mes**, la suya del día 23 y otra el día 1.
+
+**Mitigado, no resuelto.** La deduplicación pasa a comparar por **solape**, que es la intervención
+que no puede hacer daño: solo puede omitir de más, nunca emitir de más. Eso quita el riesgo
+inmediato y **no decide cuál de los dos generadores es el bueno**.
+
+#### La decisión que hace falta
+
+Es una violación de «reutilizar antes de construir» que lleva tiempo ahí: dos caminos al mismo
+resultado que ya han divergido. Hay que quedarse con uno.
+
+**Recomendación: el generador de `FacturacionService`**, y retirar el del worker. Es el que tiene
+la política del abonado, el prorrateo y las barreras; el del worker es el que quedó atrás dos veces
+—primero con el tipo de comprobante (incidente 2026-08-04) y ahora con todo el bloque del dinero—.
+
+**Por qué bloquea 4.2b:** esa fase mueve la configuración de facturación al contrato y hace que la
+generación agrupe **por contrato**. Aplicarlo a un solo generador dejaría al otro emitiendo por
+cliente con la configuración vieja; aplicarlo a los dos es escribir dos veces la misma regla, que
+es cómo se llegó aquí.
+
+
 ### ~~31~~. H-9 · El tramo del alta en PREPAGO — **CERRADO 2026-08-09**
 
 **Apareció al cerrar H-6**, verificando qué eventos de prorrateo quedaban cableados. No es teoría:

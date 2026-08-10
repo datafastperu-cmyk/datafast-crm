@@ -895,7 +895,9 @@ tres tablas del dinero siguen aplazadas.
 | Paso | Qué hace |
 |---|---|
 | **4.1** | `facturas.contrato_id` → `servicio_id` y barrido (21 sitios). Se deja el nombre libre para que un descuido falle a gritos, igual que en 3a. De paso, `servicios_historial.contrato_id` → `servicio_id`: hoy ese nombre miente |
-| **4.2** | `facturas.contrato_id` nuevo → el acuerdo. La configuración de facturación baja de `clientes.facturacion_config` al contrato, la política se resuelve por contrato y la generación agrupa por contrato |
+| **4.2a** | ✅ `facturas.contrato_id` nuevo → el acuerdo, poblado en los cuatro caminos de emisión. Aditivo: aún no lo lee nadie |
+| **4.2b** | **BLOQUEADA por H-10.** La configuración baja al contrato, la política se resuelve por contrato y la generación agrupa por contrato — pero hay DOS generadores vivos y hay que quedarse con uno antes. Detalle en la entrada 32 de `PENDIENTES.md` |
+| ~~**4.2**~~ | ~~`facturas.contrato_id` nuevo → el acuerdo.~~ La configuración de facturación baja de `clientes.facturacion_config` al contrato, la política se resuelve por contrato y la generación agrupa por contrato |
 
 
 El ciclo y el tipo de comprobante salen de `clientes.facturacion_config` y pasan a la cuenta.
