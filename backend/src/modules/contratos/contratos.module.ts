@@ -15,10 +15,14 @@ import { SagasModule } from '../sagas/sagas.module';
 import { OutboxRedModule }    from '../outbox-red/outbox-red.module';
 import { PromesasPagoModule } from '../promesas-pago/promesas-pago.module';
 import { DeudaPorContratoModule } from '../facturacion/deuda-por-contrato.module';
+// El primer comprobante del alta se emite aquí, no en el navegador (H-3). Facturación no
+// importa contratos, así que la dependencia va en un solo sentido y no hace falta forwardRef.
+import { FacturacionModule } from '../facturacion/facturacion.module';
 
 @Module({
   imports: [
     DeudaPorContratoModule,
+    FacturacionModule,
     TypeOrmModule.forFeature([Contrato, ContratoHistorial, SegmentoIpv4, IpAsignada]),
     PlanesModule,
     AuthModule,

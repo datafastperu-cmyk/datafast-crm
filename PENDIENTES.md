@@ -426,24 +426,27 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
-### 30. Los tres hallazgos de facturación que siguen abiertos
+### 30. Los hallazgos de facturación (H-3 cerrado; H-6 y H-7 abiertos)
 
-**Por qué importa:** son defectos de dinero verificados leyendo el código, y **dos están enlazados** —
-corregir uno sin el otro deja a los abonados que sí pagan sin poder reactivarse.
+**Por qué importa:** son defectos de dinero verificados leyendo el código. Los dos que quedan
+**están enlazados**: corregir uno sin el otro deja a los abonados que sí pagan sin poder reactivarse.
 
-#### H-3 · El primer comprobante del prepago lo emite el navegador
+#### ~~H-3~~ · El primer comprobante del prepago lo emitía el navegador — **CERRADO 09/08**
 
-`ClienteWizard.tsx:423` y `ClienteDetalle.tsx:1957`. **Cinco defectos en uno:**
+Movido a `ContratosService.emitirComprobanteDeAlta`, dentro de la creación del contrato. Eran
+**cuatro** defectos, no cinco: el vencimiento en `hoy + dias_gracia` ya lo había cerrado H-4.
 
-- Vive en el **frontend** — pestaña cerrada, red caída o alta por API, y no hay comprobante.
-- El error se traga en un **`catch` vacío** mientras el toast dice «registrado correctamente».
-- El **periodo** se calcula a mano (`hoy → hoy+1 mes`) en vez de con `periodoServicio()`.
-- El **vencimiento** cae en `hoy + empresas.dias_gracia`, **reintroduciendo el incidente del 05/08**.
-- No se envía **`contratoId`**, así que con el segundo servicio la deuda no se imputa a ningún
-  contrato.
+Al corregirlo aparecieron dos cosas que el hallazgo no podía ver, y que son el mismo patrón —
+**mover código de sitio no conserva sus precondiciones**:
 
-**Se corrige moviendo la emisión al backend**, dentro de la creación del contrato: los cinco de
-golpe, y sin tocar ninguna fecha de corte.
+- `onboarding` guardaba la configuración de facturación **después** de crear el contrato. Daba
+  igual mientras la emisión estaba en el navegador; adentro, habría facturado como postpago a
+  **todo abonado prepago**, en silencio y con fechas plausibles.
+- El registro del fallo se encadenaba con `.catch()`: el manejador que existe para que el alta no
+  se caiga podía ser el que la tirara.
+
+12 tests en `contratos/comprobante-de-alta.spec.ts`, incluida la barrera de que el navegador no
+vuelva a emitir pegado al alta.
 
 #### H-6 · El tramo entregado hasta el corte no se factura nunca
 

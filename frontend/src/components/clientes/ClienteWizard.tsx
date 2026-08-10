@@ -381,6 +381,9 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
             longitudInstalacion,
             tipoAuth:            data.tipoControl             || undefined,
             tipoServicio:        data.tipoServicio            || 'wisp',
+            // El cobro de instalación viaja con el alta. Quien emite el comprobante es el
+            // backend, dentro de la creación del contrato — aquí sólo se declara el monto.
+            costoInstalacion:    data._costoInstalacion ? (data._montoCostoInstalacion ?? 0) : undefined,
           },
         }),
         ...(s2 && { facturacion: s2.facturacion, notificaciones: s2.notificaciones }),
@@ -420,39 +423,10 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
       }
     }
 
-    // Factura inicial (prepago o costo de instalación)
-    const esPrepago      = s2?.facturacion?.tipo === 'prepago';
-    const conInstalacion = data._costoInstalacion && (data._montoCostoInstalacion ?? 0) > 0;
-    if (contrato && (esPrepago || conInstalacion)) {
-      try {
-        const hoy    = new Date();
-        const fin    = new Date(hoy);
-        fin.setMonth(fin.getMonth() + 1);
-        const inicio = hoy.toISOString().split('T')[0];
-        const finStr = fin.toISOString().split('T')[0];
-        const items: { descripcion: string; cantidad: number; precioUnitario: number }[] = [];
-        if (esPrepago) {
-          items.push({
-            descripcion:    data.descripcion || 'Servicio de internet',
-            cantidad:       1,
-            precioUnitario: data.costo ?? 0,
-          });
-        }
-        if (conInstalacion) {
-          items.push({
-            descripcion:    'Costo de instalación',
-            cantidad:       1,
-            precioUnitario: data._montoCostoInstalacion!,
-          });
-        }
-        await facturacionApi.create({
-          clienteId:     cliente.id,
-          periodoInicio: inicio,
-          periodoFin:    finStr,
-          items,
-        });
-      } catch { /* no bloquea el flujo principal */ }
-    }
+    // El primer comprobante ya NO se emite aquí. Lo emite el backend dentro de la creación
+    // del contrato (`ContratosService.emitirComprobanteDeAlta`, 2026-08-09): un alta por API
+    // o una pestaña cerrada dejaban al abonado sin comprobante, y el fallo se perdía en un
+    // `catch {}` vacío mientras este mismo toast decía que todo había ido bien.
     toast('Abonado registrado correctamente', { type: 'success' });
     setResultado({ clienteId: cliente.id, contratoId: contrato?.id, clienteNombre: cliente.nombreCompleto });
   };

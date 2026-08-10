@@ -1949,40 +1949,14 @@ function ServicioPanel({
         payload.usuarioPppoe  = data.usuarioPppoe   || undefined;
         payload.passwordPppoe = data.passwordPppoe  || undefined;
         if (data.precioMensual) payload.precioMensual = parseFloat(data.precioMensual);
+        // El cobro de instalación viaja con el alta; el comprobante lo emite el backend.
+        if (costoInstalacion && montoCostoInstalacion > 0) payload.costoInstalacion = montoCostoInstalacion;
         const creado: any = await contratosApi.create(payload);
         // Mismo criterio que el wizard: el puerto se reclama tras crear el contrato, y un
         // fallo no tumba el alta — se avisa y se corrige desde aquí mismo.
         const idCreado = creado?.id ?? creado?.data?.id;
         if (idCreado) await sincronizarAcometida(idCreado, data.puertoNap ?? '');
-        try {
-          const factuConfig = await clientesApi.getFacturacionConfig(clienteId);
-          const esPrepago   = (factuConfig?.facturacion as any)?.tipo === 'prepago';
-          const hoy         = new Date();
-          const fin         = new Date(hoy);
-          fin.setMonth(fin.getMonth() + 1);
-          const periodoInicio = hoy.toISOString().split('T')[0];
-          const periodoFin    = fin.toISOString().split('T')[0];
-          const conInstalacion = costoInstalacion && montoCostoInstalacion > 0;
-
-          if (esPrepago) {
-            const items: { descripcion: string; cantidad: number; precioUnitario: number }[] = [
-              {
-                descripcion:    planSel?.descripcion ?? planSel?.nombre ?? 'Servicio de internet',
-                cantidad:       1,
-                precioUnitario: Number(planSel?.precio ?? 0),
-              },
-            ];
-            if (conInstalacion) {
-              items.push({ descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: montoCostoInstalacion });
-            }
-            await facturacionApi.create({ clienteId, periodoInicio, periodoFin, items });
-          } else if (conInstalacion) {
-            await facturacionApi.create({
-              clienteId, periodoInicio, periodoFin,
-              items: [{ descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: montoCostoInstalacion }],
-            });
-          }
-        } catch { /* la factura no bloquea el flujo principal */ }
+        // El primer comprobante lo emite el backend al crear el contrato (H-3, 2026-08-09).
         toast('Servicio creado correctamente', { type: 'success' });
       }
       onSaved();

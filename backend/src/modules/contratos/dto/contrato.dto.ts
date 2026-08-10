@@ -96,6 +96,13 @@ export class CreateContratoDto {
   @IsOptional() @IsString() @MaxLength(200)
   descuentoMotivo?: string;
 
+  // Cobro único del alta. No se guarda en el contrato: es un cargo de una sola vez que
+  // viaja hasta el primer comprobante y ahí muere. Antes vivía solo en el navegador
+  // (`_costoInstalacion`), que es por lo que se perdía si el alta se hacía por API.
+  @ApiPropertyOptional({ description: 'Costo de instalación a cobrar en el primer comprobante' })
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number)
+  costoInstalacion?: number;
+
   @ApiPropertyOptional({ description: 'Día 1-28 para facturar este contrato' })
   @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number)
   diaFacturacion?: number;

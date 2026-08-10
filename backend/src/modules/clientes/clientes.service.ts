@@ -727,6 +727,21 @@ export class ClientesService {
   async onboarding(dto: OnboardingDto, user: JwtPayload, req?: any) {
     const cliente = await this.create(dto.cliente, user, req);
 
+    // La configuración de facturación se guarda ANTES del contrato, y el orden es una
+    // precondición, no una preferencia: crear el contrato emite su primer comprobante, y
+    // para eso hace falta saber ya si el abonado es prepago y cuál es su día de pago.
+    //
+    // Estaba después (hasta 2026-08-09). Con la emisión en el navegador daba igual, porque
+    // ocurría en una tercera llamada posterior a las dos. Al traerla al backend —donde
+    // debía estar— ese orden pasó a resolver la política con los valores por defecto de la
+    // empresa: todo abonado prepago se habría facturado como postpago.
+    if (dto.facturacion || dto.notificaciones) {
+      await this.saveFacturacionConfig(
+        cliente.id, user.empresaId,
+        dto.facturacion ?? {}, dto.notificaciones ?? {},
+      ).catch((err) => this.logger.error(`onboarding: facturacion config save failed for ${cliente.id}: ${err?.message}`));
+    }
+
     let contrato: any = null;
     if (dto.contrato?.planId) {
       try {
@@ -779,13 +794,6 @@ export class ClientesService {
         }
         throw err;
       }
-    }
-
-    if (dto.facturacion || dto.notificaciones) {
-      await this.saveFacturacionConfig(
-        cliente.id, user.empresaId,
-        dto.facturacion ?? {}, dto.notificaciones ?? {},
-      ).catch((err) => this.logger.error(`onboarding: facturacion config save failed for ${cliente.id}: ${err?.message}`));
     }
 
     // Sincronizar tipo_servicio del cliente según el contrato recién creado

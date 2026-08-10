@@ -21,6 +21,8 @@ import { SagaLogService } from '../sagas/saga-log.service';
 import { OutboxRedService } from '../outbox-red/outbox-red.service';
 import { PromesasPagoService } from '../promesas-pago/promesas-pago.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
+import { FacturacionService } from '../facturacion/facturacion.service';
+import { PoliticaFacturacionService } from '../facturacion/politica-facturacion.service';
 
 const mockUser = { sub:'u-001', email:'admin@test.pe', empresaId:'emp-001', roles:['Administrador'], permisos:[], nombreCompleto:'Admin', tema:'dark' };
 const mockPlan = { id:'plan-001', empresaId:'emp-001', nombre:'Plan 30 Mbps', activo:true, precio:85.00, tipoQueue:TipoQueue.SIMPLE_QUEUE };
@@ -120,6 +122,14 @@ describe('ContratosService', () => {
           // Desde ADR-019 la reactivación manual no pone la deuda a cero: la recalcula
           // desde las facturas, con la única definición que hay.
           DeudaPorContratoService,
+
+          // El primer comprobante del alta se emite aqui desde el 2026-08-09 (H-3). Su
+
+          // comportamiento se cubre en comprobante-de-alta.spec.ts; aqui solo hace falta
+
+          // que el grafo de dependencias resuelva.
+
+          FacturacionService, PoliticaFacturacionService,
         ].map((token) => ({ provide: token, useValue: dobleInerte() })),
         { provide: getDataSourceToken(), useValue: mockDs },
         { provide: EventEmitter2,        useValue: { emit: jest.fn(), emitAsync: jest.fn().mockResolvedValue([]) } },

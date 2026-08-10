@@ -29,6 +29,8 @@ import { SagaTipo } from '../sagas/entities/saga-log.entity';
 import { OutboxRedService }    from '../outbox-red/outbox-red.service';
 import { PromesasPagoService } from '../promesas-pago/promesas-pago.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
+import { FacturacionService } from '../facturacion/facturacion.service';
+import { PoliticaFacturacionService } from '../facturacion/politica-facturacion.service';
 
 export interface ActivarResultado {
   contrato:     Contrato;
@@ -90,6 +92,8 @@ export class ContratosService {
     private readonly events: EventEmitter2,
     private readonly promesasSvc: PromesasPagoService,
     private readonly deudaSvc: DeudaPorContratoService,
+    private readonly facturacionSvc: FacturacionService,
+    private readonly politicaSvc: PoliticaFacturacionService,
   ) {}
 
   async create(dto: CreateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
@@ -301,6 +305,8 @@ export class ContratosService {
       this.logger.log(`Cliente ${dto.clienteId} readmitido (baja_definitiva → pendiente_activacion) por contrato ${saved.numeroContrato}`);
     }
 
+    await this.emitirComprobanteDeAlta(saved, plan, dto, user, req);
+
     // Alta automática de line IPTV si el plan lo trae habilitado — no bloquea
     // ni revierte la creación del contrato si XUI falla (módulo degradable).
     if (plan?.cuentaIptv) {
@@ -311,6 +317,110 @@ export class ContratosService {
     }
 
     return saved;
+  }
+
+  /**
+   * Primer comprobante del alta: la mensualidad adelantada del prepago y/o el cobro único
+   * de instalación.
+   *
+   * **Esto vivía en el navegador** —`ClienteWizard.tsx` y `ClienteDetalle.tsx`, hasta el
+   * 2026-08-09— con cuatro defectos encadenados que este método cierra de una vez:
+   *
+   * - Un alta por API, una pestaña cerrada o la red caída entre las dos llamadas dejaban al
+   *   abonado **sin comprobante**. Emitirlo es parte del alta, no un efecto secundario de la
+   *   pantalla que la dispara.
+   * - El fallo caía en un `catch {}` vacío mientras el toast decía «registrado
+   *   correctamente». El operador se enteraba semanas después, al no ver el cobro.
+   * - El periodo se calculaba a mano (`hoy` → `hoy + 1 mes`) en vez de con el ciclo real del
+   *   abonado, así que el comprobante declaraba un periodo que no era el que amparaba.
+   * - No se enviaba `contratoId`: la deuda del segundo servicio de un cliente no se imputaba
+   *   a ningún contrato.
+   *
+   * El vencimiento **no se pasa a propósito**: lo fija `FacturacionService.create` desde el
+   * día de pago del abonado y rechaza cualquier otro.
+   *
+   * **No cubre el prorrateo** del tramo entre la instalación y el cierre del ciclo en curso.
+   * Eso es H-6 y va como cargo al siguiente comprobante, no aquí.
+   */
+  private async emitirComprobanteDeAlta(
+    saved: Contrato,
+    plan: any,
+    dto: CreateContratoDto,
+    user: JwtPayload,
+    req?: any,
+  ): Promise<void> {
+    const montoInstalacion = Number(dto.costoInstalacion ?? 0);
+
+    try {
+      const politica  = await this.politicaSvc.resolver(dto.clienteId, user.empresaId);
+      const esPrepago = politica.tipo === 'prepago';
+
+      // Postpago sin instalación no emite nada al alta: su primer comprobante sale del ciclo
+      // mensual, por detrás del servicio ya consumido. Es la definición de postpago.
+      if (!esPrepago && montoInstalacion <= 0) return;
+
+      const vencimiento = this.politicaSvc.proximoVencimiento(politica, new Date());
+      const periodo     = this.politicaSvc.periodoServicio(politica, vencimiento);
+
+      const items: { descripcion: string; cantidad: number; precioUnitario: number }[] = [];
+
+      if (esPrepago) {
+        // El precio sale del CONTRATO, no del plan: es donde vive el precio efectivo una vez
+        // aplicado el descuento pactado con este abonado.
+        items.push({
+          descripcion:    plan?.nombre ?? 'Servicio de internet',
+          cantidad:       1,
+          precioUnitario: saved.precioConDescuento,
+        });
+      }
+
+      if (montoInstalacion > 0) {
+        items.push({ descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: montoInstalacion });
+      }
+
+      const factura = await this.facturacionSvc.create(
+        {
+          clienteId:     dto.clienteId,
+          contratoId:    saved.id,
+          periodoInicio: periodo.inicio,
+          periodoFin:    periodo.fin,
+          items,
+        },
+        user,
+        req,
+      );
+
+      this.logger.log(
+        `Alta ${saved.numeroContrato}: ${factura.serie}-${factura.correlativo} · ` +
+        `${periodo.inicio}→${periodo.fin} · vence ${factura.fechaVencimiento} · total ${factura.total}`,
+      );
+    } catch (e: any) {
+      // NO se relanza. El contrato ya está comprometido en la base: tumbar el alta entera
+      // porque falló un correlativo dejaría al abonado sin servicio para arreglar un
+      // problema de papeleo, y el operador ya no tiene los datos en pantalla.
+      //
+      // Pero tampoco se calla, que es exactamente lo que hacía el `catch {}` del navegador.
+      // Queda en auditoría —durable y consultable desde el ERP— con lo que hay que hacer.
+      this.logger.error(
+        `Alta ${saved.numeroContrato}: no se pudo emitir el primer comprobante — ${e?.message}`,
+      );
+      // El registro del fallo va en su propio try. Un manejador de errores que puede
+      // lanzar no es un manejador: haría fallar el alta por la vía que existe justamente
+      // para no hacerla fallar. Lo destapó el spec de contratos, cuyo doble de auditoría
+      // no devuelve promesa — y en producción basta con que la tabla esté bloqueada.
+      try {
+        await this.auditoria.logCreate({
+          empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+          modulo: 'facturacion', entidadId: saved.id,
+          descripcion:
+            `FALLÓ el primer comprobante del contrato ${saved.numeroContrato}: ${e?.message}. ` +
+            `Emitirlo a mano desde Facturación.`,
+          req,
+        });
+      } catch (err: any) {
+        this.logger.error(`auditoría del fallo de emisión: ${err?.message}`);
+      }
+    }
   }
 
   // ── Actualizar servicio con re-provisión MikroTik ───────────

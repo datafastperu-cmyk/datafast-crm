@@ -385,6 +385,9 @@ export class OnboardingContratoDto {
   @IsOptional() @IsUUID() antenaApId?: string;
   @IsOptional() @IsString() @MaxLength(20) tipoAuth?: string;
   @IsOptional() @IsString() tipoServicio?: string;
+  // Cobro único del alta — lo consume `ContratosService.create` al emitir el primer
+  // comprobante. Tiene que estar declarado aquí: `whitelist: true` borra lo que no figure.
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) costoInstalacion?: number;
 }
 
 export class OnboardingDto {

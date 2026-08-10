@@ -168,6 +168,8 @@ export const clientesApi = {
       notasTecnicas?: string;
       tipoAuth?: string;
       tipoServicio?: 'wisp' | 'ftth';
+      /** Cobro único de instalación — se cobra en el primer comprobante, que emite el backend. */
+      costoInstalacion?: number;
     };
     facturacion?: Record<string, any>;
     notificaciones?: Record<string, any>;

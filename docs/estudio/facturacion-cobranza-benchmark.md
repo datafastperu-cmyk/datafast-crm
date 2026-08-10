@@ -421,7 +421,7 @@ No ha dado la cara porque nadie asigna el estado — el mismo patrón que la not
 defecto que espera al primer uso. Si un operador marca `moroso` a mano (la transición está
 permitida), el reconciliador le corta el tráfico en MikroTik.
 
-#### H-3 · El primer comprobante del prepago SÍ se emite — pero lo emite el navegador
+#### H-3 · El primer comprobante del prepago SÍ se emite — pero lo emite el navegador — **CORREGIDO**
 
 > **Corregido el 2026-08-08 tras una indicación del propietario:** *«la configuración de facturación
 > se da por cliente, no por contrato; un contrato nuevo dentro del cliente nace con la configuración
@@ -472,6 +472,48 @@ contrato.
 facturación; solo el portal, para decidir si permite bajar de plan con deuda. Puede contradecir la
 configuración del cliente sin que nada lo impida — no es «dos fuentes compitiendo por facturar»,
 como escribí, sino **un campo que decide otra cosa a partir de una verdad que puede estar caducada**.
+
+> **CORREGIDO el 2026-08-09.** La emisión se movió a `ContratosService.emitirComprobanteDeAlta`,
+> dentro de la creación del contrato. Cubierto por `contratos/comprobante-de-alta.spec.ts` (12).
+
+**Eran CUATRO defectos, no cinco.** El (d) —el vencimiento en `hoy + dias_gracia`— ya estaba
+corregido cuando se fue a corregir: cayó con H-4, y `facturacion.service.create` lo materializa
+ahora desde el día de pago del abonado y **rechaza** cualquier otro que se le mande. El apartado se
+deja escrito arriba porque describe bien el defecto, pero no había nada que hacer con él. Es la
+misma lección del §3.4: lo que un documento afirma envejece; antes de corregir, se mira el código.
+
+**Cómo quedó.** El primer comprobante del prepago cubre **el ciclo prepagado completo** al precio
+del contrato —no el del plan, para que respete el descuento pactado con ese abonado— y el cobro de
+instalación viaja como un ítem más del mismo comprobante. El vencimiento no se pasa: lo pone la
+política. Los días sueltos entre la instalación y el cierre del ciclo en curso **no entran aquí**:
+son el prorrateo, y van al siguiente comprobante.
+
+**El fallo ya no se pierde, pero tampoco tumba el alta.** El contrato está comprometido en la base
+antes de emitir; hacerlo fallar por un correlativo dejaría al abonado sin servicio para arreglar un
+problema de papeleo, y el operador ya no tiene los datos en pantalla. Queda en auditoría, con el
+número de contrato y el motivo.
+
+**Dos cosas que sólo aparecieron al corregirlo, y ninguna se veía desde el hallazgo:**
+
+**1. El orden dentro de `onboarding` era una precondición, no un detalle.**
+`saveFacturacionConfig` corría **después** de crear el contrato. Mientras la emisión vivía en el
+navegador —en una tercera llamada, posterior a las dos— daba exactamente igual. Al traerla adentro,
+ese orden habría hecho que la política se resolviera con los valores por defecto de la empresa:
+**todo abonado prepago se habría facturado como postpago**, en silencio y con fechas plausibles.
+Un fallo que ninguna prueba de tipos detecta y que en producción se ve semanas después, al no
+aparecer el cobro. Hoy la configuración se guarda primero, y un test fija el orden.
+
+**2. El manejador de errores podía lanzar.** El registro en auditoría se encadenaba con `.catch()`,
+que revienta si la llamada no devuelve una promesa. Es decir: la vía que existe para que el alta
+**no** se caiga podía ser justamente la que la tirara. Lo destapó el spec de contratos, cuyo doble
+de auditoría no devuelve promesa; en producción bastaba con la tabla bloqueada. Va en su propio
+`try`, con un test que lo ejercita.
+
+Las dos son el mismo patrón, y merece la pena nombrarlo: **mover código de sitio no conserva sus
+precondiciones**. Lo que era irrelevante en el navegador —el orden de dos llamadas, la forma del
+valor de retorno de un doble— pasa a ser determinante dentro del servicio. Ninguna de las dos
+estaba en el hallazgo, porque el hallazgo describía el defecto, no su corrección.
+
 
 #### H-4 · El periodo del comprobante era el mes de calendario, no el ciclo del abonado — **CORREGIDO**
 
@@ -611,7 +653,7 @@ resuelta; lo que cambiará es la forma de la serie y las reglas de anulación.
 | | Hallazgo | Estado |
 |---|---|---|
 | **H-1** | El corte no contaba «N vencidos + N días desde el último» | ✅ **CORREGIDO 2026-08-08.** `MAX` en vez de `MIN`; barrera de 8 tests |
-| **H-3** | El primer comprobante del prepago lo emite el **navegador**, con `catch` vacío, sin el vencimiento de la política y sin `contratoId` | **Siguiente.** Mover la emisión al backend resuelve los cinco defectos de golpe y no cambia ninguna fecha de corte |
+| **H-3** | El primer comprobante del prepago lo emitía el **navegador**, con `catch` vacío, sin el ciclo del abonado y sin `contratoId` | **CORREGIDO 09/08.** Emisión dentro de la creación del contrato. Eran cuatro defectos: el vencimiento ya lo había cerrado H-4 |
 | **H-6** | **El tramo entregado hasta el corte no se factura nunca** — la generación excluye a los suspendidos | **ABIERTO.** Se corrige prorrateando el borde |
 | **H-7** | **La reactivación exige deuda TOTAL cero**, no vencida — quien paga lo que debe no se reactiva si tiene una factura emitida sin vencer | **ABIERTO, y enlazado a H-6:** no se pueden desplegar por separado |
 | **H-2** | `moroso` no lo escribe nadie | ✅ **RESUELTO 2026-08-08, y no como se planteó**: la mora pasa a ser una **etiqueta derivada**, no un estado. Ver §6.2 |
