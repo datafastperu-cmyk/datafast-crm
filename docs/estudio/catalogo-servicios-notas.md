@@ -713,14 +713,9 @@ equipos** — que es la parte que necesita el almacén que todavía no existe (�
 
 ## 8. Lo que queda abierto
 
-1. **¿Prorratea la suspensión voluntaria?** Lo demás del prorrateo está cerrado (§7-ter).
-   **La suspensión por mora nunca prorratea** — eso no está en duda, y hoy el riesgo existe porque
-   comparte estado con la voluntaria. Para la voluntaria, la regla de los tres meses (§5-bis) acota
-   la objeción del inventario, pero no la otra: quien suspenda el día 5 de cada ciclo y reactive
-   pagaría cinco días al mes. Si prorratea, con un límite de veces al año.
-2. **Programador de tareas** y **notificaciones al vencer una tarea** (§5-bis). La segunda depende
+1. **Programador de tareas** y **notificaciones al vencer una tarea** (§5-bis). La segunda depende
    del gateway de mensajería, que hoy no envía nada.
-3. **Inventario de almacén** — no existe; sin él, «queda el inventario libre» no ocurre dentro del
+2. **Inventario de almacén** — no existe; sin él, «queda el inventario libre» no ocurre dentro del
    ERP (§5-bis).
 
 ### Cerrados el 2026-08-09
@@ -732,6 +727,7 @@ equipos** — que es la parte que necesita el almacén que todavía no existe (�
 | ~~Cambio de plan~~ | **Sí prorratea** (§7-ter) |
 | ~~Desde qué fecha cuenta el alta~~ | **La activación en `contratos_historial`**, no la firma ni la orden de trabajo (§7-ter) |
 | ~~Las credenciales de streaming~~ | **Solo el identificador, en claro.** No están cableadas: la cuenta sirve para recordar cuál le tocó a quién (§3) |
+| ~~La suspensión a petición del abonado~~ | **No se ofrece en autoservicio** — la ejecuta siempre el operador, así que no hay vector de abuso y no hace falta límite. Se registra con  para poder informar, no para bloquear |
 | ~~Suspensión, corte y baja~~ | **Tres estados para todo** —`activo`, `suspendido`, `baja_definitiva`—; `cortado` se retira. La evidencia del corte físico vive en **la tarea**, no en un estado (§7-quater) |
 | ~~Las dos columnas de precio~~ | **No eran dos verdades:** `precio_final` es GENERADA. Lo que hacía falta era otra cosa — un booleano `sigue_precio_del_plan` (§7-bis) |
 
