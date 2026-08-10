@@ -52,7 +52,10 @@ export const PROPIEDAD_TABLAS: Record<string, PropiedadTabla> = {
   empresas: { dueno: 'sistema',     infractores: ['backup'] },
 
   clientes_historial_estados: { dueno: 'clientes',  infractores: ['contratos', 'promesas-pago', 'workers'] },
-  contratos_historial:        { dueno: 'contratos', infractores: ['promesas-pago', 'workers'] },
+  // 'outbox-red' entra el 2026-08-09 (fase 1): es quien aplica el corte por prórroga vencida en
+  // el MikroTik, así que es el único que sabe cuándo el contrato se quedó sin servicio de verdad.
+  // Escribir ahí la transición con su `origen` es lo que sustituye al estado `cortado` retirado.
+  contratos_historial:        { dueno: 'contratos', infractores: ['promesas-pago', 'workers', 'outbox-red'] },
   promesas_pago:              { dueno: 'promesas-pago', infractores: ['outbox-red'] },
   tickets:                    { dueno: 'tickets',   infractores: ['portal', 'clientes'] },
 

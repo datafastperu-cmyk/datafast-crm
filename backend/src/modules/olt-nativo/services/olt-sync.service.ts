@@ -400,7 +400,7 @@ export class OltSyncService implements OnModuleInit {
            LEFT JOIN clientes cl ON cl.id = c.cliente_id
           WHERE r.deleted_at IS NULL AND r.olt_id = $1 AND r.empresa_id = $2
             AND ((r.estado = 'suspendido' AND c.estado = 'activo')
-              OR (r.estado = 'activo'     AND c.estado IN ('suspendido','cortado')))`,
+              OR (r.estado = 'activo'     AND c.estado = 'suspendido'))`,
         [oltId, empresaId],
       );
     const estadoDivergente = cruzados.map(r => ({

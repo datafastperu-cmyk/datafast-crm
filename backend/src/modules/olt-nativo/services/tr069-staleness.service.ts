@@ -87,7 +87,7 @@ export class Tr069StalenessService {
         AND  r.estado       = 'activo'
         AND  r.carril_estado = 'activo'
         AND  c.deleted_at IS NULL
-        AND  c.estado NOT IN ('baja_definitiva', 'suspendido', 'cortado')
+        AND  c.estado NOT IN ('baja_definitiva', 'suspendido')
     `);
 
     if (candidatos.length === 0) {

@@ -492,10 +492,7 @@ export class ClientesService {
     const contratos = await this.contratosSvc.findByCliente(clienteId, user.empresaId);
     if (!contratos.length) return;
 
-    const estadosReactivables = new Set<EstadoContrato>([
-      EstadoContrato.SUSPENDIDO,
-      EstadoContrato.CORTADO,
-    ]);
+    const estadosReactivables = new Set<EstadoContrato>([EstadoContrato.SUSPENDIDO]);
     const motivoReactivacion = `Reactivación de cliente${motivo ? `: ${motivo}` : ''}`;
 
     for (const contrato of contratos) {

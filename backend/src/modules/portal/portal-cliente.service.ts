@@ -279,7 +279,7 @@ export class PortalClienteService {
     // El corte administrativo manda sobre la lectura del hardware: una ONU suspendida
     // puede seguir figurando `online` en la OLT, y decirle "encendido" a quien no tiene
     // servicio por falta de pago es la contradicción que genera la llamada a soporte.
-    if (fila.contrato_estado === 'suspendido' || fila.contrato_estado === 'cortado') {
+    if (fila.contrato_estado === 'suspendido') {
       return {
         estado:      'suspendido',
         detalle:     'Tu servicio está suspendido. Regulariza tu pago para reactivarlo.',

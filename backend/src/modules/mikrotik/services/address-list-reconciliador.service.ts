@@ -52,7 +52,7 @@ const LISTAS_DEL_ERP = [ADDRESS_LIST_MOROSOS, ADDRESS_LIST_PRORROGA, 'prorroga']
  * transición que debe sacar una IP a la lista.
  *
  */
-const ESTADOS_CORTADOS = ['suspendido', 'cortado'];
+const ESTADOS_SIN_SERVICIO = ['suspendido'];
 
 export interface EntradaSobrante {
   routerId:   string;
@@ -238,7 +238,7 @@ export class AddressListReconciliadorService {
     }
 
     if (lista === ADDRESS_LIST_MOROSOS) {
-      return ESTADOS_CORTADOS.includes(contrato.estado)
+      return ESTADOS_SIN_SERVICIO.includes(contrato.estado)
         ? null
         : `el contrato está "${contrato.estado}", no cortado: la IP no debería estar bloqueada`;
     }

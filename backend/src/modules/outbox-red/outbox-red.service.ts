@@ -586,8 +586,9 @@ export class OutboxRedService {
           p.ipAsignada,
           `Promesa: ${p.nombreCliente ?? p.promesaId} | ${new Date().toLocaleDateString('es-PE')}`,
         );
-        // Si el contrato estaba cortado, re-habilitar el secret PPPoE
-        if (p.usuarioPppoe && p.contratoEstadoPrevio === 'cortado') {
+        // Si el contrato estaba sin servicio, re-habilitar el secret PPPoE. El snapshot del
+        // estado previo decía 'cortado' hasta la fase 1; hoy esa situación es 'suspendido'.
+        if (p.usuarioPppoe && p.contratoEstadoPrevio === 'suspendido') {
           await this.pppoeSvc.setEstado(creds, p.usuarioPppoe, false);
         }
         // Marcar mikrotik_aplicado en la promesa
@@ -609,15 +610,28 @@ export class OutboxRedService {
           await this.pppoeSvc.desconectarSesion(creds, p.usuarioPppoe);
           await this.pppoeSvc.setEstado(creds, p.usuarioPppoe, true);
         }
-        // Marcar promesa como VENCIDA y contrato como CORTADO
+        // Marcar promesa como VENCIDA y el contrato como SUSPENDIDO.
+        //
+        // Escribía 'cortado' (retirado el 2026-08-09, fase 1). No era un estado distinto del
+        // servicio —el abonado está sin él en los dos— sino la CAUSA de haber llegado ahí, y su
+        // sitio es el historial. Ahora la causa viaja en 'origen'.
         await this.ds.query(
           `UPDATE promesas_pago SET estado = 'vencida', mikrotik_aplicado = TRUE, mikrotik_aplicado_en = NOW()
            WHERE id = $1`,
           [p.promesaId],
         ).catch(() => {});
         await this.ds.query(
-          `UPDATE contratos SET estado = 'cortado', en_prorroga = FALSE, prorroga_hasta = NULL, fecha_estado = NOW()
+          `UPDATE contratos SET estado = 'suspendido', en_prorroga = FALSE, prorroga_hasta = NULL,
+                  fecha_estado = NOW(), motivo_estado = 'Corte por prórroga incumplida'
            WHERE id = $1`,
+          [cmd.contrato_id],
+        ).catch(() => {});
+        await this.ds.query(
+          `INSERT INTO contratos_historial
+             (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
+           SELECT id, empresa_id, 'activo', 'suspendido',
+                  'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida'
+             FROM contratos WHERE id = $1`,
           [cmd.contrato_id],
         ).catch(() => {});
 

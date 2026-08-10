@@ -136,16 +136,18 @@ describe('El estado `moroso` no existe en el código', () => {
     expect(infractores).toEqual([]);
   });
 
-  it('un abonado en mora conserva el servicio: ESTADOS_CORTADOS son dos', () => {
+  it('un abonado en mora conserva el servicio: el unico estado sin servicio es suspendido', () => {
     const reconciliador = readFileSync(
       join(SRC, 'modules', 'mikrotik', 'services', 'address-list-reconciliador.service.ts'),
       'utf8',
     );
     const linea = sinComentarios(reconciliador)
-      .split('\n').find((l) => l.includes('const ESTADOS_CORTADOS')) ?? '';
+      .split('\n').find((l) => l.includes('const ESTADOS_SIN_SERVICIO')) ?? '';
 
     expect(linea).toContain("'suspendido'");
-    expect(linea).toContain("'cortado'");
+    // 'cortado' se retiró el 2026-08-09 (fase 1): describía la CAUSA de una suspensión,
+    // no un estado distinto del servicio. Esa causa vive ahora en contratos_historial.origen.
+    expect(linea).not.toContain("'cortado'");
     // El error que estuvo latente durante meses: contarlo entre los que NO tienen servicio.
     expect(linea).not.toContain("'moroso'");
   });

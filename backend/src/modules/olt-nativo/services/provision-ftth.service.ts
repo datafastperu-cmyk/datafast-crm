@@ -2037,7 +2037,7 @@ export class ProvisionFtthService {
        JOIN   contratos c ON c.id = r.contrato_id
        WHERE  r.estado = 'activo' AND r.wan_mode = 'routing' AND r.deleted_at IS NULL
          AND  c.usuario_pppoe IS NOT NULL AND c.deleted_at IS NULL
-         AND  c.estado NOT IN ('suspendido', 'cortado', 'baja_definitiva')`,
+         AND  c.estado NOT IN ('suspendido', 'baja_definitiva')`,
     );
 
     let ok = 0, reparadas = 0, fallidas = 0;

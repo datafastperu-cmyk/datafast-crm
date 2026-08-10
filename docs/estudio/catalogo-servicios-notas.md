@@ -799,6 +799,78 @@ clave hay que generarla.
 
 ---
 
+## 10. Plan de implementación por fases
+
+*(2026-08-09. El diseño está cerrado; esto ordena su construcción.)*
+
+**El criterio del orden:** primero lo que cambia la FORMA de los datos, después lo que los MUEVE.
+Y el eje del dinero —`facturas`, `pagos`, `cargos_pendientes`, `promesas_pago`— se migra **una sola
+vez**, porque es la parte con riesgo.
+
+| Fase | Qué entrega | Toca el dinero |
+|---|---|---|
+| **1** | Tres estados de verdad | No |
+| **2** | El catálogo se abre — se puede vender cable | No |
+| **3** | El nivel de contrato | **Sí, y solo aquí** |
+| **4** | La cuenta de facturación sobre el contrato | Sí |
+| **5** | Cambio de plan con prorrateo | Sí |
+
+### Fase 1 — Tres estados de verdad
+
+Retirar `cortado` (48 referencias en 12 archivos, incluidos caminos de OLT y MikroTik) y añadir
+`contratos_historial.origen` (`mora | voluntaria | prorroga_incumplida | administrativa`).
+
+**Va primero** porque es la máquina de estados sobre la que se apoya todo lo demás: cuantos menos
+estados haya cuando se muevan las tablas, menos casos hay que migrar. Y porque cada transición
+pasa a decir **por qué** ocurrió, que es lo que hace falta para el barrido de retiro de equipos.
+
+Incluye el resto de las prórrogas: `promesas-pago.service` escribe `cortado` al vencer una, y pasa
+a escribir `suspendido` con el motivo en `motivo_estado`.
+
+### Fase 2 — El catálogo se abre
+
+`planes` tiene 41 columnas, **19 obligatorias**, y ocho de ellas describen una conexión de
+internet: `velocidad_bajada`, `velocidad_subida`, `tipo_queue`, `tipo_servicio`,
+`tiene_limite_datos`, `prioridad`, `burst_umbral`, `crear_reglas_en_router`. Con eso **no se puede
+expresar un plan de cable**, y por tanto no se puede vender.
+
+`planes.tipo` no sirve: es `residencial | empresarial | dedicado | prepago`, un **segmento
+comercial**, no un tipo de producto.
+
+Hace falta una dimensión de producto (`internet | cable_iptv | cable_coaxial | streaming`) y que
+las ocho columnas de conexión dejen de ser obligatorias para quien no es una conexión.
+
+**Va antes que el renombrado** porque entrega valor de negocio sin tocar el eje del dinero, y
+porque los planes nuevos no encarecen la migración posterior: con 7 planes y 2 contratos vivos, el
+volumen es el mismo.
+
+### Fase 3 — El nivel de contrato
+
+**La fase con riesgo.** Medido en producción: **26 tablas** tienen `contrato_id`.
+
+| Destino | Tablas | Qué implica |
+|---|---|---|
+| **Servicio** (renombrado) | ~22 — red, OLT, FTTH, consumo, acometida, historial | Mecánico: el valor ya apunta a la fila correcta, solo cambia el nombre |
+| **Contrato** (nuevo) | `facturas`, `pagos`, `cargos_pendientes`, `promesas_pago` | Migración real: hay que crear el contrato y re-apuntar |
+
+`ALTER TABLE contratos RENAME TO servicios` es una sentencia; el coste está en el barrido de
+código y la UI.
+
+### Fase 4 — La cuenta de facturación sobre el contrato
+
+El ciclo y el tipo de comprobante salen de `clientes.facturacion_config` y pasan a la cuenta.
+**Corrige el §6 del ADR-035**, que la situaba «una por cliente»: eso se escribió antes de decidir
+que el contrato agrupa varios servicios, y construirlo así obligaría a migrar el dinero dos veces.
+
+Lo que se queda en el cliente: los datos de contacto y las preferencias de aviso.
+
+### Fase 5 — Cambio de plan con prorrateo
+
+Último evento de prorrateo sin cablear. **Bloqueado por una decisión**: el sector lo resuelve con
+dos apuntes de signo contrario —crédito del plan viejo, cargo del nuevo— y los ítems del
+comprobante no admiten importe negativo.
+
+
 ## 9. Fuentes
 
 - [TMF637 Product Inventory Management v4.0.0](https://github.com/tmforum-apis/TMF637_ProductInventory) — definiciones de `Product`, `isBundle`, `ProductRelationship`

@@ -64,7 +64,7 @@ export class ReconciliadorService {
     const errores: string[] = [];
 
     try {
-      // Tomamos hasta 20 contratos activos/suspendidos/morosos/cortados cuya
+      // Tomamos hasta 20 contratos activos o suspendidos cuya
       // verificación sea antigua (>30 min) o nunca hecha, con SKIP LOCKED para
       // no bloquear operaciones concurrentes.
       const contratos = await this.ds.query<ContratoRow[]>(`
@@ -89,7 +89,7 @@ export class ReconciliadorService {
         LEFT JOIN onus    on_ ON on_.id = co.onu_id
         LEFT JOIN olts    ol  ON ol.id  = on_.olt_id
         WHERE co.deleted_at IS NULL
-          AND co.estado IN ('activo','suspendido','cortado')
+          AND co.estado IN ('activo','suspendido')
           AND (
                 co.hardware_verificado_en IS NULL
              OR co.hardware_verificado_en < NOW() - INTERVAL '30 minutes'
@@ -145,9 +145,19 @@ export class ReconciliadorService {
           const debeExistir = c.estado === 'activo';
           if (!existe && debeExistir) {
             problemas.push(`PPPoE secret "${c.usuario_pppoe}" ausente en router (estado: ${c.estado})`);
-          } else if (existe && c.estado === 'cortado') {
-            // CORTADO: el secret debe estar deshabilitado o eliminado
-            problemas.push(`PPPoE secret "${c.usuario_pppoe}" activo en router pese a estado CORTADO`);
+          } else if (existe && c.estado === 'suspendido') {
+            // Suspendido: el secret puede seguir existiendo, pero tiene que estar DESHABILITADO.
+            //
+            // Antes esta rama miraba `estado === 'cortado'` y solo comprobaba que el secret
+            // existiera. Al retirar 'cortado' (fase 1) no se podía ampliar tal cual: un secret
+            // deshabilitado también existe, así que habría marcado como problema a todos los
+            // suspendidos —que es el estado corriente— cada vez que corre el reconciliador.
+            // Se corrige la pregunta en vez de heredarla: lo que delata una inconsistencia es un
+            // secret HABILITADO en un contrato sin servicio.
+            const habilitado = secrets.some((s: any) => String(s?.disabled ?? 'false') !== 'true');
+            if (habilitado) {
+              problemas.push(`PPPoE secret "${c.usuario_pppoe}" habilitado en router pese a contrato suspendido`);
+            }
           }
         } catch (e: any) {
           // Router inalcanzable — no es inconsistencia del contrato, es del router

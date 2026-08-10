@@ -51,8 +51,11 @@ const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_ACTIVACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.CORTADO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.CORTADO]:              [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
+  // CORTADO se queda sin orígenes y sin destinos: retirado el 2026-08-09 (fase 1). Sin ninguna
+  // transición que lleve a él, el estado es inalcanzable aunque el valor siga vivo en el enum
+  // de PostgreSQL — el mismo trato que recibió MOROSO.
+  [EstadoContrato.CORTADO]:              [],
   [EstadoContrato.BAJA_DEFINITIVA]:      [],
 };
 
@@ -80,7 +83,6 @@ const bloqueaReactivacion = ({ deudaVencida }: ContextoGuarda): string | null =>
 
 const GUARDAS: Partial<Record<string, GuardaFn>> = {
   [`${EstadoContrato.SUSPENDIDO}->${EstadoContrato.ACTIVO}`]: bloqueaReactivacion,
-  [`${EstadoContrato.CORTADO}->${EstadoContrato.ACTIVO}`]:    bloqueaReactivacion,
   [`${EstadoContrato.ACTIVO}->${EstadoContrato.SUSPENDIDO}`]:
     ({ contrato: c }) => (c.enProrroga && c.prorrogaHasta && new Date(c.prorrogaHasta) > new Date())
       ? `Prórroga activa hasta ${c.prorrogaHasta} — use adminOverride para suspender antes` : null,
@@ -746,7 +748,7 @@ export class ContratosService {
       }
     }
     const upd: Partial<Contrato> = { estado:dto.estado, fechaEstado:new Date(), motivoEstado:dto.motivo, updatedBy:user.sub };
-    if (dto.estado === EstadoContrato.ACTIVO && [EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)) {
+    if (dto.estado === EstadoContrato.ACTIVO && [EstadoContrato.SUSPENDIDO].includes(anterior as EstadoContrato)) {
       // ── Revertir suspensión en MikroTik (quitar de address-list + habilitar PPPoE) ──
       // Requiere solo routerId: el firewall necesita ipAsignada pero el secret PPPoE no.
       if (contrato.routerId && (contrato.ipAsignada || contrato.usuarioPppoe)) {
@@ -944,7 +946,7 @@ export class ContratosService {
     // NO le queda ningún contrato dando servicio. Con dos servicios y uno cortado, el
     // cliente sigue activo — que es la verdad.
     if (
-      [EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO]
+      [EstadoContrato.SUSPENDIDO]
         .includes(dto.estado as EstadoContrato)
     ) {
       const [clienteBloqueado] = filasUpdateReturning<{ id: string }>(await this.dataSource.query(`
@@ -979,7 +981,7 @@ export class ContratosService {
     // Solo pone 'activo' si el cliente no tiene otros contratos suspendidos.
     if (
       dto.estado === EstadoContrato.ACTIVO &&
-      [EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)
+      [EstadoContrato.SUSPENDIDO].includes(anterior as EstadoContrato)
     ) {
       const [clienteActualizado] = filasUpdateReturning<{ id: string }>(await this.dataSource.query(`
         UPDATE clientes
@@ -989,7 +991,7 @@ export class ContratosService {
           AND NOT EXISTS (
             SELECT 1 FROM contratos
             WHERE cliente_id = $1
-              AND estado IN ('suspendido', 'cortado')
+              AND estado = 'suspendido'
               AND deleted_at IS NULL
               AND id != $2
           )

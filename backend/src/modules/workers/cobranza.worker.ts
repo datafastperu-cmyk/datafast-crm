@@ -864,7 +864,7 @@ export class CobranzaWorker {
         AND NOT EXISTS (
           SELECT 1 FROM contratos
           WHERE cliente_id = $1
-            AND estado IN ('suspendido', 'cortado')
+            AND estado = 'suspendido'
             AND deleted_at IS NULL
             AND id != $2
         )

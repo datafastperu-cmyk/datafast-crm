@@ -31,7 +31,15 @@ export enum EstadoContrato {
   PENDIENTE_ACTIVACION = 'pendiente_activacion',
   ACTIVO                = 'activo',
   SUSPENDIDO            = 'suspendido',
-  CORTADO               = 'cortado',   // sin servicio, deuda vencida (post-prorroga)
+  /**
+   * @deprecated RETIRADO el 2026-08-09 (fase 1, tres estados). No se escribe nunca y ninguna
+   * transición lleva a él. Describía la CAUSA de una suspensión —haber roto una prórroga—, no
+   * un estado distinto del servicio: el abonado está sin él en los dos. La causa vive ahora en
+   * `contratos_historial.origen`, donde además sirve para TODAS las suspensiones y no solo
+   * para ésta. El valor no se borra del enum de PostgreSQL: sería irreversible y no aporta
+   * nada, igual que con `MOROSO`.
+   */
+  CORTADO               = 'cortado',
   BAJA_DEFINITIVA       = 'baja_definitiva',
 }
 

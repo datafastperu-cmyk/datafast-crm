@@ -221,7 +221,7 @@ export class PagosService {
       if (!contrato && factura.clienteId) {
         // Prioridad a los que están sin servicio: es lo urgente.
         contrato = await manager.findOne(Contrato, {
-          where: [EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO]
+          where: [EstadoContrato.SUSPENDIDO]
             .map((estado) => ({ clienteId: factura.clienteId, empresaId, estado })),
           order: { fechaEstado: 'DESC' },
         });
@@ -371,10 +371,7 @@ export class PagosService {
         // `reactivarServicio: false` ("Solo registrar") se salta todo esto: es la baja
         // voluntaria que salda su último comprobante. Sin esta salida, saldar la deuda le
         // devolvía el servicio a un abonado que se está yendo.
-        const estadosReactivables = [
-          EstadoContrato.SUSPENDIDO,
-          EstadoContrato.CORTADO,
-        ];
+        const estadosReactivables = [EstadoContrato.SUSPENDIDO];
         if (dto.reactivarServicio === false) {
           this.logger.log(
             `[PAGO] Cobro sin reactivación (Solo registrar) — contrato ${contrato?.id ?? 'sin contrato'} ` +
@@ -397,7 +394,6 @@ export class PagosService {
               const todos = await manager.find(Contrato, {
                 where: [
                   { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.SUSPENDIDO },
-                  { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.CORTADO },
                 ],
               });
               contratosParaReactivar.push(...todos);
@@ -963,7 +959,7 @@ export class PagosService {
             `SELECT id FROM contratos
              WHERE cliente_id = $1 AND empresa_id = $2 AND deleted_at IS NULL
                AND (
-                 estado IN ('suspendido', 'cortado')
+                 estado = 'suspendido'
                  OR (estado = 'activo' AND en_prorroga = TRUE)
                )`,
             [pago.clienteId, empresaId],
@@ -1082,7 +1078,7 @@ export class PagosService {
     const cortadosSinDeuda = await this.ds.query<Array<{ id: string; empresa_id: string; numero: string }>>(
       `SELECT co.id, co.empresa_id, co.numero_contrato AS numero
          FROM contratos co
-        WHERE co.estado IN ('suspendido', 'cortado')
+        WHERE co.estado = 'suspendido'
           AND co.deleted_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM facturas f
@@ -1178,8 +1174,7 @@ export class PagosService {
         ),
       );
       const estadosReactivables = [
-        EstadoContrato.SUSPENDIDO,
-        EstadoContrato.CORTADO,  // post-prorroga: MikroTik ya cortó pero deuda saldada → reactivar
+        EstadoContrato.SUSPENDIDO,  // post-prorroga: MikroTik ya cortó pero deuda saldada → reactivar
       ];
       if (estadosReactivables.includes(contrato.estado)) {
         // ── REACTIVAR AUTOMÁTICAMENTE ─────────────────────

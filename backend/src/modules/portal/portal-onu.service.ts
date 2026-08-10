@@ -545,7 +545,7 @@ export class PortalOnuService implements OnModuleInit {
   // Escribir sobre un servicio cortado es prometerle al abonado un cambio que su equipo
   // probablemente no puede aplicar. Leer sí se permite.
   private motivoNoEditable(registro: FilaRegistro, vivo: boolean): string | null {
-    if (registro.contrato_estado === 'cortado' || registro.contrato_estado === 'suspendido') {
+    if (registro.contrato_estado === 'suspendido') {
       return 'Tu servicio está suspendido. Regulariza tu pago para poder cambiar la configuración de tu WiFi.';
     }
     if (this.carrilVisible(registro.carril_estado) !== 'conectado') {

@@ -159,8 +159,8 @@ describe('PortalOnuService — WiFi del abonado', () => {
   });
 
   describe('quién puede escribir', () => {
-    it('un servicio cortado puede LEER pero no escribir', async () => {
-      filaActual.contrato_estado = 'cortado';
+    it('un servicio suspendido puede LEER pero no escribir', async () => {
+      filaActual.contrato_estado = 'suspendido';
 
       await expect(
         svc.guardarWifi(CLIENTE, EMPRESA, CONTRATO, '2.4', { ssid: 'RED-NUEVA' }),
