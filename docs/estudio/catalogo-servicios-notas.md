@@ -887,6 +887,17 @@ algo las pida. Queda escrito como decisión, no como olvido.
 
 ### Fase 4 — La cuenta de facturación sobre el contrato
 
+**Dos pasos, y el primero es el trozo de 3c que esta fase reclama.** Se le habían dado dos
+nombres al mismo trabajo —«la parte de 3c» y «4a»—, lo que hacía parecer que 3c fuera un
+requisito previo. No lo es: re-apuntar `facturas` es el **primer paso de la fase 4**, y las otras
+tres tablas del dinero siguen aplazadas.
+
+| Paso | Qué hace |
+|---|---|
+| **4.1** | `facturas.contrato_id` → `servicio_id` y barrido (21 sitios). Se deja el nombre libre para que un descuido falle a gritos, igual que en 3a. De paso, `servicios_historial.contrato_id` → `servicio_id`: hoy ese nombre miente |
+| **4.2** | `facturas.contrato_id` nuevo → el acuerdo. La configuración de facturación baja de `clientes.facturacion_config` al contrato, la política se resuelve por contrato y la generación agrupa por contrato |
+
+
 El ciclo y el tipo de comprobante salen de `clientes.facturacion_config` y pasan a la cuenta.
 **Corrige el §6 del ADR-035**, que la situaba «una por cliente»: eso se escribió antes de decidir
 que el contrato agrupa varios servicios, y construirlo así obligaría a migrar el dinero dos veces.
