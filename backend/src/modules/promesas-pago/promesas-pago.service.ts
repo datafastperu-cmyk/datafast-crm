@@ -715,7 +715,7 @@ export class PromesasPagoService {
 
     await this.ds.query(`
       INSERT INTO servicios_historial
-        (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico)
+        (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
       VALUES ($1, $2, $3, 'suspendido', 'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida')
     `, [promesa.contratoId, promesa.empresaId, estadoAnterior]);
 
