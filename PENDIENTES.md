@@ -426,7 +426,7 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
-### 30. Los hallazgos de facturación (H-3 cerrado; H-6 y H-7 abiertos)
+### 30. Los hallazgos de facturación (H-3 cerrado; H-6, H-7 y H-8 abiertos)
 
 **Por qué importa:** son defectos de dinero verificados leyendo el código. Los dos que quedan
 **están enlazados**: corregir uno sin el otro deja a los abonados que sí pagan sin poder reactivarse.
@@ -469,7 +469,42 @@ vencida, y **no se reactiva**. Es exigirle pago adelantado para devolverle el se
 **Cómo se comprueba:** el escenario del 07/09 — suspender, dejar correr la emisión, pagar la factura
 vencida, y verificar que el servicio vuelve.
 
-**Detalle y trazabilidad:** `docs/estudio/facturacion-cobranza-benchmark.md` §5.2 y §6.1.
+#### H-8 · Prepago: el ciclo de la reactivación no lo emite nadie
+
+Apareció **diseñando la corrección de H-6**, no analizándolo. Es su mitad simétrica, y es peor en
+importe: H-6 se fuga días, H-8 se fuga un ciclo entero.
+
+En prepago el tramo previo al corte ya está facturado. La fuga está al volver: la generación del
+23/09 no emite el ciclo `[30/09 → 31/10]` porque el contrato está suspendido; el abonado paga el
+25/09, se reactiva, **y ese ciclo no tiene comprobante**. La siguiente generación ya cubre el
+posterior.
+
+Misma raíz que H-6: la generación decide con **el estado de hoy** lo que debería decidir con **el
+tiempo entregado**. Se corrige emitiendo al reactivar lo que falte del ciclo en curso, prorrateado
+desde la fecha de reactivación — la misma cuenta de días, aplicada en el otro extremo.
+
+#### Diseño acordado (2026-08-09) — las tres decisiones ya están tomadas
+
+> **Un abonado tiene comprobante por todo el tiempo en que tuvo servicio, y por ninguno en que no
+> lo tuvo.**
+
+1. **El día del corte SÍ se cuenta.** El ciclo es un intervalo cerrado, como ya lo define
+   `periodoServicio`: `días = fin − inicio + 1`. Se propuso primero media abierta citando ISDA;
+   estaba mal por coherencia interna —ISDA describe periodos donde el fin de uno es el inicio del
+   siguiente, y el nuestro abre al día después—. Prueba de que la convención es la buena: los
+   tramos parciales **suman el ciclo entero**.
+2. **Reactivar exige cero comprobantes vencidos**, no bajar del umbral de corte. Con H-6 corregido
+   la deuda no crece durante la suspensión, así que no hay trampa de pagar y seguir cortado.
+3. **Liquidación final al dar de baja**, como el sector — segunda tanda, no bloquea.
+
+Un ciclo entregado completo se cobra íntegro **sin pasar por la división**, o aparecen céntimos de
+redondeo en la factura de todos los abonados por un caso de borde de unos pocos.
+
+Y H-7 son **dos** sitios, no uno: la reactivación automática de `pagos.service` y la guarda de
+cambio manual de estado en `contratos.service`, que lee `c.deudaTotal`. Corregir solo el primero
+deja al operador chocando contra la deuda total.
+
+**Detalle y trazabilidad:** `docs/estudio/facturacion-cobranza-benchmark.md` §5.2, §5.2-bis y §6.1.
 
 
 ### ~~29-ter~~. Anclaje 1-31 con recorte a fin de mes — RESUELTO 2026-08-09

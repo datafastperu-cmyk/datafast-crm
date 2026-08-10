@@ -608,6 +608,81 @@ vencida**, no la total.
 > sin poder reactivarse. No se pueden desplegar por separado.
 
 
+#### H-8 · Prepago: el ciclo de la reactivación no lo emite nadie
+
+Apareció **diseñando la corrección de H-6**, no analizándolo. Es la otra mitad del mismo
+principio, y es peor en importe: H-6 se fuga días, H-8 se fuga un ciclo entero.
+
+El prepago cobra por delante, así que el tramo consumido antes del corte **ya está facturado**
+— ahí no hay fuga. La fuga está al volver:
+
+```
+23/09   generación del ciclo [30/09 → 31/10]  →  NO se emite: el contrato está suspendido
+25/09   el abonado paga lo vencido y se reactiva
+        ...tiene servicio, y ese ciclo no tiene comprobante
+23/10   la siguiente generación ya cubre [31/10 → 30/11]
+```
+
+**Un ciclo completo sin comprobante**, y esta vez no son ocho días: es el mes entero. La
+generación mensual es el único momento en que se emite, y el abonado no estaba activo cuando
+pasó. Al volver, nadie mira hacia atrás.
+
+Es simétrico de H-6 y no una casualidad: la generación decide con **el estado de hoy** lo que
+debería decidir con **el tiempo entregado**. En postpago eso deja sin cobrar el tramo previo al
+corte; en prepago deja sin cobrar el ciclo posterior a la reactivación.
+
+**Se corrige con la otra mitad de la misma regla:** al reactivar se emite lo que falte del ciclo
+en curso, prorrateado desde la fecha de reactivación. No es un mecanismo nuevo — es la misma
+cuenta de días entregados, aplicada en el otro extremo.
+
+---
+
+### 5.2-bis Diseño acordado para H-6, H-7 y H-8
+
+El principio, que es uno solo y cubre los tres:
+
+> **Un abonado tiene comprobante por todo el tiempo en que tuvo servicio, y por ninguno en que
+> no lo tuvo.**
+
+**Días entregados.** La generación deja de preguntar «¿está activo hoy?» y pregunta «¿cuántos
+días de este ciclo estuvo activo?», leyendo las transiciones de `contratos_historial`. Una sola
+definición, la misma que necesita el prorrateo del alta.
+
+**Convención de conteo — decidida el 2026-08-09.** El ciclo es un intervalo **cerrado**: es como
+ya lo define `periodoServicio` —`[31/08, 30/09]`, y el siguiente abre el 01/10—. Por tanto:
+
+```
+días del ciclo   = fin   − inicio + 1
+días entregados  = corte − inicio + 1     ← el día del corte SÍ se cuenta
+```
+
+Se propuso primero `[inicio, corte)`, media abierta, citando la convención Actual/Actual ISDA.
+Estaba mal, y el error era de coherencia interna, no de referencia: ISDA describe periodos de
+interés donde el fin de uno **es** el inicio del siguiente. Nuestro modelo es cerrado y el
+siguiente abre al día después. Mezclar las dos convenciones inventa un día que no pertenece a
+ningún ciclo. Stripe no zanja la duda porque no cuenta días —prorratea al segundo—, así que el
+día del corte entra en proporción: más cerca de contarlo que de descartarlo.
+
+La prueba de que la convención es la correcta: **los tramos parciales suman el ciclo entero.**
+Cortar el último día da el ciclo completo; cortar el primero da un día.
+
+**Ciclo completo sin división.** Si los días entregados son todo el ciclo, el importe es el precio
+íntegro, sin pasar por la proporción. Si no, aparecen céntimos de redondeo en la factura normal de
+todos los abonados para resolver un caso de borde de unos pocos.
+
+**Reactivación — decidida el 2026-08-09: cero comprobantes vencidos.** No «bajar del umbral de
+corte». Con H-6 corregido la deuda deja de crecer durante la suspensión, así que no existe la
+trampa de pagar y seguir cortado para siempre. Se consulta a través de `SQL_COMPROBANTE_VENCIDO`
+(`facturacion/domain/mora.ts`), que ya existe desde H-2, en **los dos** sitios que hoy miran la
+deuda total: la reactivación automática de `pagos.service` y la guarda de cambio manual de estado
+en `contratos.service`, que lee `c.deudaTotal`.
+
+**Liquidación final — decidida el 2026-08-09: como el sector.** Un contrato que pasa a baja
+definitiva con días entregados sin facturar recibe su comprobante de cierre. Es el *final bill*
+del sector y evita que dar de baja sea una forma de perder el último tramo. Va en una segunda
+tanda: no bloquea nada de lo anterior.
+
+
 ### 5.3 Reconocido por el propietario como pendiente de diseño
 
 No son defectos: son trabajo que él mismo señala.
@@ -656,6 +731,7 @@ resuelta; lo que cambiará es la forma de la serie y las reglas de anulación.
 | **H-3** | El primer comprobante del prepago lo emitía el **navegador**, con `catch` vacío, sin el ciclo del abonado y sin `contratoId` | **CORREGIDO 09/08.** Emisión dentro de la creación del contrato. Eran cuatro defectos: el vencimiento ya lo había cerrado H-4 |
 | **H-6** | **El tramo entregado hasta el corte no se factura nunca** — la generación excluye a los suspendidos | **ABIERTO.** Se corrige prorrateando el borde |
 | **H-7** | **La reactivación exige deuda TOTAL cero**, no vencida — quien paga lo que debe no se reactiva si tiene una factura emitida sin vencer | **ABIERTO, y enlazado a H-6:** no se pueden desplegar por separado |
+| **H-8** | Prepago: tras reactivar, **el ciclo en curso no lo emite nadie** — la generación ya pasó mientras estaba suspendido | **Abierto.** La otra mitad de H-6: emitir al reactivar lo que falte del ciclo, prorrateado. Un mes entero, no ocho días |
 | **H-2** | `moroso` no lo escribe nadie | ✅ **RESUELTO 2026-08-08, y no como se planteó**: la mora pasa a ser una **etiqueta derivada**, no un estado. Ver §6.2 |
 | **H-4** | El periodo del comprobante era el mes de calendario, no el ciclo del abonado | ✅ **CORREGIDO 2026-08-08.** Del día siguiente a una fecha de pago hasta la siguiente. La deduplicación pasa a ir por vencimiento |
 | **H-5** | El vencimiento se podía fijar por encima del día de pago — y **editar en una factura emitida** | ✅ **CORREGIDO 2026-08-08.** Derivado de la política, validado al crear, inmutable al editar |
