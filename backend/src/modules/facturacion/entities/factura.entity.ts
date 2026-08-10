@@ -21,7 +21,7 @@ export type ItemFactura = ItemFacturaExtendido;
 @Index(['empresaId', 'estado', 'fechaVencimiento'])
 @Index(['empresaId', 'clienteId', 'fechaEmision'])
 @Index(['empresaId', 'fechaEmision'])
-@Index(['contratoId'])
+@Index(['servicioId'])
 @Index(['comprobanteConfigId'])
 export class Factura extends BaseModel {
 
@@ -31,8 +31,11 @@ export class Factura extends BaseModel {
   @Column({ name: 'cliente_id' })
   clienteId: string;
 
-  @Column({ name: 'contrato_id', nullable: true })
-  contratoId: string;
+  // Servicio concreto que motivó el comprobante, o null si es consolidado. Se llamaba
+  // `contratoId` hasta la fase 4.1; el ACUERDO llega en 4.2, en una columna propia.
+  // `type` explícito porque es nullable: sin él SWC no resuelve el tipo y el backend crashea en frío.
+  @Column({ name: 'servicio_id', type: 'uuid', nullable: true })
+  servicioId: string | null;
 
   // ── Tipo de comprobante ────────────────────────────────────
   // FK al código del ComprobantesConfig activo al momento de emitir.

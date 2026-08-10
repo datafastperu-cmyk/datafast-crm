@@ -90,14 +90,14 @@ describe('PagosService — reconciliación del cobro', () => {
   });
 
   it('la deuda se juzga por factura del contrato Y por factura unificada del cliente', async () => {
-    // Una factura unificada tiene contrato_id NULL: mirar solo las del contrato daría
+    // Una factura unificada tiene servicio_id NULL: mirar solo las del contrato daría
     // "sin deuda" a un cliente que sí debe, y le reactivaríamos el servicio gratis.
     const { svc, queries } = hacer();
     await conCrons(() => svc.reconciliarPagosNoAplicados());
 
     const q = queries.find((s) => /FROM\s+servicios/i.test(s))!;
-    expect(q).toMatch(/f\.contrato_id\s*=\s*co\.id/i);
-    expect(q).toMatch(/f\.cliente_id\s*=\s*co\.cliente_id\s+AND\s+f\.contrato_id\s+IS\s+NULL/i);
+    expect(q).toMatch(/f\.servicio_id\s*=\s*co\.id/i);
+    expect(q).toMatch(/f\.cliente_id\s*=\s*co\.cliente_id\s+AND\s+f\.servicio_id\s+IS\s+NULL/i);
   });
 
   it('un pago que vuelve a fallar no detiene la reconciliación de los demás', async () => {

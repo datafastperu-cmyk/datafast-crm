@@ -37,7 +37,7 @@ const mockFactura: Partial<Factura> = {
   id:             'fac-001',
   empresaId:      'emp-001',
   clienteId:      'cli-001',
-  contratoId:     'cnt-001',
+  servicioId:     'cnt-001',
   tipoComprobante: TIPO_BOLETA,
   serie:          'B001',
   correlativo:    1,

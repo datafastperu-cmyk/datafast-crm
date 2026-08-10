@@ -628,7 +628,7 @@ export class OutboxRedService {
         ).catch(() => {});
         await this.ds.query(
           `INSERT INTO servicios_historial
-             (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
+             (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
            SELECT id, empresa_id, 'activo', 'suspendido',
                   'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida'
              FROM servicios WHERE id = $1`,

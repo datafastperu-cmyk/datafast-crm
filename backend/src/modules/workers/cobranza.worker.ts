@@ -596,7 +596,7 @@ export class CobranzaWorker {
 
     await this.ds.query(`
       INSERT INTO servicios_historial
-        (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+        (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
       VALUES ($1, $2, 'activo', 'suspendido', $3, NULL, true)
     `, [contratoId, empresaId, `Corte automático: deuda S/ ${deudaTotal}`]);
 
@@ -850,7 +850,7 @@ export class CobranzaWorker {
     if (contratoActualizado) {
       await this.ds.query(`
         INSERT INTO servicios_historial
-          (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+          (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
         VALUES ($1, $2, $3, 'activo', $4, NULL, true)
       `, [contratoId, empresaId, estadoAnterior, `Reactivación automática por pago | Nuevo vencimiento: ${nuevaFechaStr}`]);
     }

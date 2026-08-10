@@ -65,7 +65,7 @@ export class DeudaPorContratoService {
       `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda,
               COUNT(f.id)::INTEGER               AS comprobantes
          FROM facturas f
-        WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
+        WHERE (f.servicio_id = $1 OR (f.servicio_id IS NULL AND f.cliente_id = $2))
           AND f.deleted_at IS NULL
           AND ${SQL_COMPROBANTE_VENCIDO('f')}`,
       [contratoId, clienteId],
@@ -157,9 +157,9 @@ export class DeudaPorContratoService {
   ): Promise<Map<string, { monto: number; comprobantes: number }>> {
     const filas = await this.ds.query<Array<{
       id: string; total: string; saldo: string | null; monto_pagado: string;
-      contrato_id: string | null; items: unknown;
+      servicio_id: string | null; items: unknown;
     }>>(
-      `SELECT id, total, saldo, monto_pagado, contrato_id, items
+      `SELECT id, total, saldo, monto_pagado, servicio_id, items
          FROM facturas
         WHERE cliente_id = $1
           AND empresa_id = $2
@@ -194,8 +194,8 @@ export class DeudaPorContratoService {
       if (saldo <= 0) continue;
 
       // Factura atada a un contrato (emisión manual): sin reparto que hacer.
-      if (f.contrato_id) {
-        sumar(f.contrato_id, saldo);
+      if (f.servicio_id) {
+        sumar(f.servicio_id, saldo);
         continue;
       }
 

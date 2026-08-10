@@ -30,7 +30,7 @@ export class FacturaRepository {
 
   async findByContrato(contratoId: string, empresaId: string): Promise<Factura[]> {
     return this.repo.find({
-      where: { contratoId, empresaId, deletedAt: null as any },
+      where: { servicioId: contratoId, empresaId, deletedAt: null as any },
       order: { fechaEmision: 'DESC' },
     });
   }
@@ -86,7 +86,7 @@ export class FacturaRepository {
     }
     if (filters.contratoId) {
       params.push(filters.contratoId);
-      conds.push(`f.contrato_id = $${params.length}`);
+      conds.push(`f.servicio_id = $${params.length}`);
     }
     if (filters.tipoComprobante) {
       params.push(filters.tipoComprobante);
@@ -123,7 +123,7 @@ export class FacturaRepository {
         f.id,
         f.empresa_id               AS "empresaId",
         f.cliente_id               AS "clienteId",
-        f.contrato_id              AS "contratoId",
+        f.servicio_id              AS "servicioId",
         f.tipo_comprobante         AS "tipoComprobante",
         f.serie,
         f.correlativo,
@@ -172,7 +172,7 @@ export class FacturaRepository {
     if (f.estado)             qb.andWhere('f.estado = :estado', { estado: f.estado });
     if (f.estados?.length)    qb.andWhere('f.estado IN (:...estados)', { estados: f.estados });
     if (f.clienteId)          qb.andWhere('f.cliente_id = :clienteId', { clienteId: f.clienteId });
-    if (f.contratoId)         qb.andWhere('f.contrato_id = :contratoId', { contratoId: f.contratoId });
+    if (f.contratoId)         qb.andWhere('f.servicio_id = :servicioId', { servicioId: f.contratoId });
     if (f.tipoComprobante)    qb.andWhere('f.tipo_comprobante = :tc', { tc: f.tipoComprobante });
     if (f.serie)              qb.andWhere('f.serie = :serie', { serie: f.serie });
     if (f.fechaDesde)         qb.andWhere('f.fecha_emision >= :fd', { fd: f.fechaDesde });
@@ -204,7 +204,7 @@ export class FacturaRepository {
   ): Promise<boolean> {
     const count = await this.repo
       .createQueryBuilder('f')
-      .where('f.contrato_id = :contratoId', { contratoId })
+      .where('f.servicio_id = :servicioId', { servicioId: contratoId })
       .andWhere('f.periodo_inicio = :pi', { pi: periodoInicio })
       .andWhere('f.periodo_fin = :pf', { pf: periodoFin })
       .andWhere("f.estado != 'anulada'")
@@ -364,7 +364,7 @@ export class FacturaRepository {
   // ── Facturas pendientes de un contrato (para deuda) ───────
   async findPendientesPorContrato(contratoId: string): Promise<Factura[]> {
     return this.repo.createQueryBuilder('f')
-      .where('f.contrato_id = :contratoId', { contratoId })
+      .where('f.servicio_id = :servicioId', { servicioId: contratoId })
       .andWhere(sqlDeudaExigible('f'))
       .andWhere('f.deleted_at IS NULL')
       .orderBy('f.fecha_emision', 'ASC')
@@ -442,18 +442,18 @@ export class FacturaRepository {
   async historialParaCiclo(
     contratoIds: string[],
     fin: string,
-  ): Promise<Array<{ contrato_id: string; estado_nuevo: string; fecha: string }>> {
+  ): Promise<Array<{ servicio_id: string; estado_nuevo: string; fecha: string }>> {
     if (!contratoIds.length) return [];
     return this.ds.query(
-      `SELECT ch.contrato_id,
+      `SELECT ch.servicio_id,
               ch.estado_nuevo,
               TO_CHAR((ch.created_at AT TIME ZONE em.zona_horaria)::date, 'YYYY-MM-DD') AS fecha
          FROM servicios_historial ch
-         JOIN servicios co ON co.id = ch.contrato_id
+         JOIN servicios co ON co.id = ch.servicio_id
          JOIN empresas   em ON em.id = co.empresa_id
-        WHERE ch.contrato_id = ANY($1)
+        WHERE ch.servicio_id = ANY($1)
           AND (ch.created_at AT TIME ZONE em.zona_horaria)::date <= $2::date
-        ORDER BY ch.contrato_id, ch.created_at`,
+        ORDER BY ch.servicio_id, ch.created_at`,
       [contratoIds, fin],
     );
   }

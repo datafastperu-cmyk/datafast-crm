@@ -167,7 +167,7 @@ export class PromesasPagoService {
       const estadoNuevo = contrato.estado === 'suspendido' ? 'activo' : contrato.estado;
       await em.query(`
         INSERT INTO servicios_historial
-          (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+          (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
         VALUES ($1, $2, $3, $4, $5, $6, FALSE)
       `, [
         dto.contratoId,
@@ -342,7 +342,7 @@ export class PromesasPagoService {
 
     await this.ds.query(`
       INSERT INTO servicios_historial
-        (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+        (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
       VALUES ($1, $2, $3, $4, $5, $6, FALSE)
     `, [
       promesa.contratoId,
@@ -620,7 +620,7 @@ export class PromesasPagoService {
       `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
          FROM facturas f
          JOIN servicios c ON c.id = $1
-        WHERE (f.contrato_id = c.id OR (f.contrato_id IS NULL AND f.cliente_id = c.cliente_id))
+        WHERE (f.servicio_id = c.id OR (f.servicio_id IS NULL AND f.cliente_id = c.cliente_id))
           AND ${sqlDeudaExigible('f')}
           AND f.deleted_at IS NULL`,
       [promesa.contratoId],
@@ -715,7 +715,7 @@ export class PromesasPagoService {
 
     await this.ds.query(`
       INSERT INTO servicios_historial
-        (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
+        (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
       VALUES ($1, $2, $3, 'suspendido', 'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida')
     `, [promesa.contratoId, promesa.empresaId, estadoAnterior]);
 

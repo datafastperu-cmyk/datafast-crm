@@ -293,7 +293,7 @@ export class ContratoRepository {
   }
 
   async getHistorial(contratoId: string): Promise<ContratoHistorial[]> {
-    return this.histRepo.find({ where:{ contratoId }, order:{ createdAt:'DESC' }, take:50 });
+    return this.histRepo.find({ where:{ servicioId: contratoId }, order:{ createdAt:'DESC' }, take:50 });
   }
 
   async findMorososParaCorte(graceDays: number): Promise<Contrato[]> {

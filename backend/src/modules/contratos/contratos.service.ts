@@ -284,7 +284,7 @@ export class ContratosService {
     }
 
     // ── Post-commit: historial y auditoría ────────────────────
-    await this.contratoRepo.guardarHistorial({ contratoId:saved.id, empresaId:user.empresaId, estadoNuevo:EstadoContrato.PENDIENTE_ACTIVACION, motivo:`Plan: ${plan?.nombre ?? 'sin plan'} | IP: ${ipAsignada||'sin asignar'}`, usuarioId:user.sub });
+    await this.contratoRepo.guardarHistorial({ servicioId:saved.id, empresaId:user.empresaId, estadoNuevo:EstadoContrato.PENDIENTE_ACTIVACION, motivo:`Plan: ${plan?.nombre ?? 'sin plan'} | IP: ${ipAsignada||'sin asignar'}`, usuarioId:user.sub });
     await this.auditoria.logCreate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:saved.id, descripcion:`Contrato ${saved.numeroContrato}`, req });
     this.logger.log(`Contrato creado: ${saved.numeroContrato} | ip: ${ipAsignada}`);
 
@@ -931,7 +931,7 @@ export class ContratosService {
       }
     }
     await this.contratoRepo.update(id, upd);
-    await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:anterior, estadoNuevo:dto.estado, motivo:dto.motivo, usuarioId:user.sub, automatico });
+    await this.contratoRepo.guardarHistorial({ servicioId:id, empresaId:user.empresaId, estadoAnterior:anterior, estadoNuevo:dto.estado, motivo:dto.motivo, usuarioId:user.sub, automatico });
     await this.auditoria.logUpdate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:id, descripcion:`Estado: ${anterior} → ${dto.estado}`, req });
 
     // Sincronizar clientes.estado cuando se BLOQUEA un contrato.
@@ -1245,7 +1245,7 @@ export class ContratosService {
       await this.sagaLog.registrarPaso(sagaId, 1, 'provision_mikrotik', 'FAIL', err?.message, Date.now() - t1);
       await this.sagaLog.fallar(sagaId, `Provisión MikroTik fallida: ${err?.message}`);
       await this.contratoRepo.guardarHistorial({
-        contratoId: id, empresaId: user.empresaId,
+        servicioId: id, empresaId: user.empresaId,
         estadoAnterior: EstadoContrato.PENDIENTE_ACTIVACION,
         estadoNuevo:    EstadoContrato.PENDIENTE_ACTIVACION,
         motivo: `Intento fallido — MikroTik: ${err?.message} | sagaId: ${sagaId}`,
@@ -1300,7 +1300,7 @@ export class ContratosService {
     ].filter(Boolean).join(' | ');
 
     await this.contratoRepo.guardarHistorial({
-      contratoId: id, empresaId: user.empresaId,
+      servicioId: id, empresaId: user.empresaId,
       estadoAnterior: EstadoContrato.PENDIENTE_ACTIVACION,
       estadoNuevo:    EstadoContrato.ACTIVO,
       motivo, usuarioId: user.sub,
@@ -1481,7 +1481,7 @@ export class ContratosService {
     await this.deudaSvc.recalcularPorCliente(c.clienteId, empresaId);
 
     await this.contratoRepo.guardarHistorial({
-      contratoId, empresaId,
+      servicioId: contratoId, empresaId,
       estadoAnterior: c.estado,
       estadoNuevo: EstadoContrato.ACTIVO,
       motivo: `Reactivación por pago | Nuevo vencimiento: ${nuevaFechaStr}`,

@@ -113,7 +113,7 @@ export class FacturacionService {
     const factura = this.facturaRepo.create({
       empresaId:            user.empresaId,
       clienteId:            dto.clienteId,
-      contratoId:           dto.contratoId,
+      servicioId:           dto.contratoId,
       comprobanteConfigId:  comprobanteConfig.id,
       tipoComprobante:      comprobanteConfig.codigo,
       tipoComprobanteNombre: comprobanteConfig.nombre,
@@ -320,9 +320,9 @@ export class FacturacionService {
     for (const fila of await this.facturaRepo.historialParaCiclo(
       contratos.map((c) => c.contrato_id), finHistorial,
     )) {
-      const previas = historialPorContrato.get(fila.contrato_id) ?? [];
+      const previas = historialPorContrato.get(fila.servicio_id) ?? [];
       previas.push({ estado_nuevo: fila.estado_nuevo, fecha: fila.fecha });
-      historialPorContrato.set(fila.contrato_id, previas);
+      historialPorContrato.set(fila.servicio_id, previas);
     }
 
     for (const [clienteId, grupo] of porCliente) {
@@ -442,7 +442,7 @@ export class FacturacionService {
         const factura = this.facturaRepo.create({
           empresaId:               user.empresaId,
           clienteId,
-          contratoId:              null,
+          servicioId:              null,
           comprobanteConfigId:     comprobante.id,
           tipoComprobante:         comprobante.codigo,
           tipoComprobanteNombre:   comprobante.nombre,
@@ -586,9 +586,9 @@ export class FacturacionService {
       contratos.map((c) => c.contrato_id),
       mes === 12 ? this.ultimoDiaMes(anio + 1, 1) : this.ultimoDiaMes(anio, mes + 1),
     )) {
-      const previas = historialDiario.get(fila.contrato_id) ?? [];
+      const previas = historialDiario.get(fila.servicio_id) ?? [];
       previas.push({ estado_nuevo: fila.estado_nuevo, fecha: fila.fecha });
-      historialDiario.set(fila.contrato_id, previas);
+      historialDiario.set(fila.servicio_id, previas);
     }
 
     for (const [clienteId, grupo] of porCliente) {
@@ -670,7 +670,7 @@ export class FacturacionService {
         const descripcion = this.descripcionConsolidada(comprobante.nombre, grupo, periodo.mes, periodo.anio);
 
         const factura = this.facturaRepo.create({
-          empresaId, clienteId, contratoId: null,
+          empresaId, clienteId, servicioId: null,
           comprobanteConfigId: comprobante.id, tipoComprobante: comprobante.codigo,
           tipoComprobanteNombre: comprobante.nombre, tieneCargaFiscal: comprobante.tieneCargaFiscal,
           serie, correlativo, periodoInicio, periodoFin, descripcion,
@@ -964,7 +964,7 @@ export class FacturacionService {
     const nc = this.facturaRepo.create({
       empresaId:            user.empresaId,
       clienteId:            original.clienteId,
-      contratoId:           original.contratoId,
+      servicioId:           original.servicioId,
       comprobanteConfigId:  original.comprobanteConfigId,
       tipoComprobante:      `nc_${original.tipoComprobante}`,
       tipoComprobanteNombre: `Nota de Crédito — ${original.tipoComprobanteNombre}`,
@@ -1031,7 +1031,7 @@ export class FacturacionService {
     }
 
     const patch: Partial<Factura> = {};
-    if (dto.contratoId       !== undefined) patch.contratoId      = dto.contratoId;
+    if (dto.contratoId       !== undefined) patch.servicioId      = dto.contratoId;
     if (dto.periodoInicio    !== undefined) patch.periodoInicio    = dto.periodoInicio;
     if (dto.periodoFin       !== undefined) patch.periodoFin       = dto.periodoFin;
     if (dto.descripcion      !== undefined) patch.descripcion      = dto.descripcion;

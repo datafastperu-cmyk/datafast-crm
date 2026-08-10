@@ -200,9 +200,9 @@ export class PagosService {
       const factura = facturas[0];
 
       let contrato: Contrato | null = null;
-      if (factura.contratoId) {
+      if (factura.servicioId) {
         contrato = await manager.findOne(Contrato, {
-          where: { id: factura.contratoId },
+          where: { id: factura.servicioId },
         });
       }
       // Fallback para facturas CONSOLIDADAS (contrato_id nulo, el caso normal cuando un
@@ -271,7 +271,7 @@ export class PagosService {
         // En un consolidado apunta al comprobante más antiguo: el reparto completo vive en
         // `pago_aplicaciones`, esta columna es la referencia principal para el histórico.
         facturaId:       factura.id,
-        contratoId:      factura.contratoId ?? null,
+        servicioId:      factura.servicioId ?? null,
         monto:           dto.monto,
         moneda:          'PEN',
         // Modelo antiguo: se sigue escribiendo. El histórico se lee tal como se registró,
@@ -386,7 +386,7 @@ export class PagosService {
             contrato.id, factura.clienteId, manager,
           );
           if (deudaVencida <= 0) {
-            if (factura.contratoId) {
+            if (factura.servicioId) {
               // Factura vinculada a un contrato específico → solo ese
               contratosParaReactivar.push(contrato);
             } else {
@@ -409,7 +409,7 @@ export class PagosService {
             contrato.id, factura.clienteId, manager,
           );
           if (prorrogaSaldada.monto <= 0) {
-            if (factura.contratoId) {
+            if (factura.servicioId) {
               contratosEnProrroga.push(contrato.id);
             } else {
               // Consolidada: el pago salda la deuda de TODO el cliente, así que cancela
@@ -1082,13 +1082,13 @@ export class PagosService {
           AND co.deleted_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM facturas f
-             WHERE f.contrato_id = co.id
+             WHERE f.servicio_id = co.id
                AND ${sqlDeudaExigible('f')}
                AND f.deleted_at IS NULL
           )
           AND NOT EXISTS (
             SELECT 1 FROM facturas f
-             WHERE f.cliente_id = co.cliente_id AND f.contrato_id IS NULL
+             WHERE f.cliente_id = co.cliente_id AND f.servicio_id IS NULL
                AND ${sqlDeudaExigible('f')}
                AND f.deleted_at IS NULL
           )

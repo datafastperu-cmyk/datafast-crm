@@ -397,7 +397,7 @@ export class FacturacionWorker {
         // ── Insertar factura unificada (contrato_id = NULL) ─
         const [factura] = await this.ds.query(`
           INSERT INTO facturas (
-            empresa_id, cliente_id, contrato_id,
+            empresa_id, cliente_id, servicio_id,
             tipo_comprobante, tipo_comprobante_nombre, comprobante_config_id,
             serie, correlativo,
             periodo_inicio, periodo_fin,

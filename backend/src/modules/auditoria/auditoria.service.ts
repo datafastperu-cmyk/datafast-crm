@@ -122,7 +122,7 @@ export class AuditoriaService {
                CASE WHEN h.automatico THEN 'ESTADO_AUTO' ELSE 'ESTADO' END,
                h.estado_anterior::text || ' → ' || h.estado_nuevo::text ||
                  COALESCE(': ' || h.motivo, ''),
-               h.contrato_id::text, NULL
+               h.servicio_id::text, NULL
           FROM servicios_historial h
           LEFT JOIN usuarios u ON u.id = h.usuario_id
          WHERE h.empresa_id = $1

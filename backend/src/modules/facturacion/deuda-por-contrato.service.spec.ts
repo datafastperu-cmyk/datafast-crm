@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { DeudaPorContratoService } from './deuda-por-contrato.service';
 
 // El comprobante es CONSOLIDADO por cliente: un abonado con dos servicios recibe uno
-// solo, con contrato_id en null. Sin imputar esa deuda a cada contrato:
+// solo, con servicio_id en null. Sin imputar esa deuda a cada contrato:
 //   · el portal mostraba "Deuda actual S/ 0.00" a quien debía S/ 64;
 //   · el corte automático por morosidad, que decide POR CONTRATO, no sabe a quién cortar.
 //
@@ -34,7 +34,7 @@ const linea = (contratoId: string | null, total: number) => ({
 describe('DeudaPorContratoService', () => {
   it('factura atada a un contrato: se imputa entera a ese contrato', async () => {
     const svc = servicioCon([
-      { id: 'f1', total: '64.00', saldo: '64.00', monto_pagado: '0', contrato_id: A, items: [] },
+      { id: 'f1', total: '64.00', saldo: '64.00', monto_pagado: '0', servicio_id: A, items: [] },
     ]);
 
     const deudas = await svc.calcular(CLIENTE, EMPRESA);
@@ -46,7 +46,7 @@ describe('DeudaPorContratoService', () => {
   it('consolidada sin pagos: cada contrato recibe el importe de sus lineas', async () => {
     const svc = servicioCon([
       {
-        id: 'f1', total: '100.00', saldo: '100.00', monto_pagado: '0', contrato_id: null,
+        id: 'f1', total: '100.00', saldo: '100.00', monto_pagado: '0', servicio_id: null,
         items: [linea(A, 64), linea(B, 36)],
       },
     ]);
@@ -60,7 +60,7 @@ describe('DeudaPorContratoService', () => {
   it('consolidada pagada a medias: el saldo se reparte proporcionalmente', async () => {
     const svc = servicioCon([
       {
-        id: 'f1', total: '100.00', saldo: '50.00', monto_pagado: '50.00', contrato_id: null,
+        id: 'f1', total: '100.00', saldo: '50.00', monto_pagado: '50.00', servicio_id: null,
         items: [linea(A, 64), linea(B, 36)],
       },
     ]);
@@ -77,7 +77,7 @@ describe('DeudaPorContratoService', () => {
   it('factura saldada no suma deuda', async () => {
     const svc = servicioCon([
       {
-        id: 'f1', total: '100.00', saldo: '0.00', monto_pagado: '100.00', contrato_id: null,
+        id: 'f1', total: '100.00', saldo: '0.00', monto_pagado: '100.00', servicio_id: null,
         items: [linea(A, 64), linea(B, 36)],
       },
     ]);
@@ -87,8 +87,8 @@ describe('DeudaPorContratoService', () => {
 
   it('varias facturas acumulan monto y cuentan comprobantes', async () => {
     const svc = servicioCon([
-      { id: 'f1', total: '64.00', saldo: '64.00', monto_pagado: '0', contrato_id: null, items: [linea(A, 64)] },
-      { id: 'f2', total: '64.00', saldo: '64.00', monto_pagado: '0', contrato_id: null, items: [linea(A, 64)] },
+      { id: 'f1', total: '64.00', saldo: '64.00', monto_pagado: '0', servicio_id: null, items: [linea(A, 64)] },
+      { id: 'f2', total: '64.00', saldo: '64.00', monto_pagado: '0', servicio_id: null, items: [linea(A, 64)] },
     ]);
 
     const deudas = await svc.calcular(CLIENTE, EMPRESA);
@@ -100,7 +100,7 @@ describe('DeudaPorContratoService', () => {
   it('consolidada sin lineas atribuibles NO se reparte a ciegas', async () => {
     const svc = servicioCon([
       {
-        id: 'f1', total: '100.00', saldo: '100.00', monto_pagado: '0', contrato_id: null,
+        id: 'f1', total: '100.00', saldo: '100.00', monto_pagado: '0', servicio_id: null,
         items: [linea(null, 100)],
       },
     ]);
@@ -111,9 +111,9 @@ describe('DeudaPorContratoService', () => {
 
   it('items nulo o corrupto no rompe el cálculo', async () => {
     const svc = servicioCon([
-      { id: 'f1', total: '50.00', saldo: '50.00', monto_pagado: '0', contrato_id: null, items: null },
-      { id: 'f2', total: '50.00', saldo: '50.00', monto_pagado: '0', contrato_id: null, items: 'no-es-array' },
-      { id: 'f3', total: '30.00', saldo: '30.00', monto_pagado: '0', contrato_id: null, items: [linea(B, 30)] },
+      { id: 'f1', total: '50.00', saldo: '50.00', monto_pagado: '0', servicio_id: null, items: null },
+      { id: 'f2', total: '50.00', saldo: '50.00', monto_pagado: '0', servicio_id: null, items: 'no-es-array' },
+      { id: 'f3', total: '30.00', saldo: '30.00', monto_pagado: '0', servicio_id: null, items: [linea(B, 30)] },
     ]);
 
     const deudas = await svc.calcular(CLIENTE, EMPRESA);
@@ -124,7 +124,7 @@ describe('DeudaPorContratoService', () => {
 
   it('saldo nulo se deriva de total menos pagado', async () => {
     const svc = servicioCon([
-      { id: 'f1', total: '80.00', saldo: null, monto_pagado: '30.00', contrato_id: A, items: [] },
+      { id: 'f1', total: '80.00', saldo: null, monto_pagado: '30.00', servicio_id: A, items: [] },
     ]);
 
     expect((await svc.calcular(CLIENTE, EMPRESA)).get(A)?.monto).toBe(50);

@@ -294,7 +294,7 @@ export class Contrato extends BaseModel {
   updatedBy: string;
 
   // ── Relaciones ────────────────────────────────────────────
-  @OneToMany(() => ContratoHistorial, (h) => h.contrato)
+  @OneToMany(() => ContratoHistorial, (h) => h.servicio)
   historial: ContratoHistorial[];
 
   // ── Helpers ───────────────────────────────────────────────
@@ -320,13 +320,13 @@ export class Contrato extends BaseModel {
 
 // ─── Historial de estados del contrato ───────────────────────
 @Entity('servicios_historial')
-@Index(['contratoId', 'createdAt'])
+@Index(['servicioId', 'createdAt'])
 export class ContratoHistorial {
   @Column({ type: 'bigint', primary: true, generated: 'increment' })
   id: string;
 
-  @Column({ name: 'contrato_id' })
-  contratoId: string;
+  @Column({ name: 'servicio_id' })
+  servicioId: string;
 
   @Column({ name: 'empresa_id' })
   empresaId: string;
@@ -355,6 +355,6 @@ export class ContratoHistorial {
   createdAt: Date;
 
   @ManyToOne(() => Contrato, (c) => c.historial)
-  @JoinColumn({ name: 'contrato_id' })
-  contrato: Contrato;
+  @JoinColumn({ name: 'servicio_id' })
+  servicio: Contrato;
 }
