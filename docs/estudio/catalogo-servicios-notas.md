@@ -856,6 +856,35 @@ volumen es el mismo.
 `ALTER TABLE contratos RENAME TO servicios` es una sentencia; el coste está en el barrido de
 código y la UI.
 
+### Fase 3c — el dinero: **aplazada en bloque, pero la fase 4 pide una parte**
+
+*(Revisado el 2026-08-09, al medirla.)*
+
+Re-apuntar las cuatro tablas del dinero cuesta **374 sitios**: 160 `x.contrato_id` cualificados por
+alias y 214 sin cualificar. Y el número no es lo grave — **el alias no dice la tabla**. `c.contrato_id`
+puede ser `servicios_historial`, `cargos_pendientes` o `comandos_red_pendientes`, y hay doce alias
+distintos. Ninguna expresión regular resuelve eso: hay que leer el `FROM` de cada consulta.
+
+El método de 3a sigue valiendo —renombrar a `servicio_id` primero, dejar el nombre libre, añadirlo
+después— así que el fallo seguiría siendo ruidoso. Lo que no vale es hacerlo sin motivo.
+
+**Lo que la hacía aplazable:** nada la pedía. El nivel de contrato ya existe y se navega servicio →
+acuerdo; la imputación de deuda por servicio sigue igual.
+
+**Lo que la vuelve a pedir, y era mi error:** si la configuración de facturación vive en el
+contrato, la generación tiene que agrupar **por contrato** y la factura debe registrar a qué acuerdo
+pertenece. Eso es re-apuntar `facturas` — **21 sitios en 10 ficheros**, no 374. Entra en la fase 4.
+
+**Y el escenario que la justifica del todo no es raro.** Se había escrito que dos acuerdos por
+abonado es «cuando exista el caso» (ADR-035 fase 5). El propietario lo corrigió el 2026-08-09:
+*«el escenario de más de un contrato por abonado es una situación que se da más frecuente de lo que
+parece»*. Eso cambia 3c de «quizá nunca» a **esperado**, y obliga a que la fase 4 nazca sin asumir
+un solo contrato por cliente — que es justo por lo que la cuenta va sobre el contrato.
+
+Las otras tres tablas —`pagos`, `cargos_pendientes`, `promesas_pago`— siguen aplazadas hasta que
+algo las pida. Queda escrito como decisión, no como olvido.
+
+
 ### Fase 4 — La cuenta de facturación sobre el contrato
 
 El ciclo y el tipo de comprobante salen de `clientes.facturacion_config` y pasan a la cuenta.
