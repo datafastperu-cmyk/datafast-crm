@@ -426,6 +426,49 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
+### 30. Los tres hallazgos de facturación que siguen abiertos
+
+**Por qué importa:** son defectos de dinero verificados leyendo el código, y **dos están enlazados** —
+corregir uno sin el otro deja a los abonados que sí pagan sin poder reactivarse.
+
+#### H-3 · El primer comprobante del prepago lo emite el navegador
+
+`ClienteWizard.tsx:423` y `ClienteDetalle.tsx:1957`. **Cinco defectos en uno:**
+
+- Vive en el **frontend** — pestaña cerrada, red caída o alta por API, y no hay comprobante.
+- El error se traga en un **`catch` vacío** mientras el toast dice «registrado correctamente».
+- El **periodo** se calcula a mano (`hoy → hoy+1 mes`) en vez de con `periodoServicio()`.
+- El **vencimiento** cae en `hoy + empresas.dias_gracia`, **reintroduciendo el incidente del 05/08**.
+- No se envía **`contratoId`**, así que con el segundo servicio la deuda no se imputa a ningún
+  contrato.
+
+**Se corrige moviendo la emisión al backend**, dentro de la creación del contrato: los cinco de
+golpe, y sin tocar ninguna fecha de corte.
+
+#### H-6 · El tramo entregado hasta el corte no se factura nunca
+
+`findContratosParaFacturar` filtra `AND co.estado = 'activo'`, así que **un contrato suspendido no
+entra en la generación**. Con corte el 07/09 y ciclo `[31/08 → 30/09]`, el abonado tuvo servicio
+ocho días **que no se cobran nunca** — el siguiente comprobante ya cubre octubre.
+
+Se corrige **prorrateando el borde**: la factura que provocó el corte se debe entera, el tramo del
+ciclo en curso hasta el corte se prorratea, y durante la suspensión no se factura.
+
+#### H-7 · La reactivación exige deuda TOTAL cero, no vencida
+
+`pagos.service` comprueba `SUM(f.saldo) <= 0` sobre `sqlDeudaExigible`, **sin filtrar por fecha de
+vencimiento**. Hoy no se nota porque H-6 lo tapa: como no se factura a los suspendidos, nunca hay
+una factura nueva que estorbe.
+
+**Al corregir H-6 aparece:** el abonado paga lo que debe, le queda una factura emitida y aún no
+vencida, y **no se reactiva**. Es exigirle pago adelantado para devolverle el servicio.
+
+**Cómo se comprueba:** el escenario del 07/09 — suspender, dejar correr la emisión, pagar la factura
+vencida, y verificar que el servicio vuelve.
+
+**Detalle y trazabilidad:** `docs/estudio/facturacion-cobranza-benchmark.md` §5.2 y §6.1.
+
+
 ### ~~29-ter~~. Anclaje 1-31 con recorte a fin de mes — RESUELTO 2026-08-09
 **Cerrado.** El tope en 28 evitaba el problema de febrero prohibiendo los tres dias de cierre mas
 usados en tarifa plana. Ahora el abonado guarda un ANCLAJE de 1 a 31 y la fecha se recorta al

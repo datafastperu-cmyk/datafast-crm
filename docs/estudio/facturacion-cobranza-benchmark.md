@@ -520,6 +520,52 @@ Ahora `create()` lo deriva de la política y **rechaza** —no ignora en silenci
 no sea el del ciclo; `update()` no lo deja mover; y el campo está deshabilitado en los dos modales,
 mostrando la fecha en vez de dejar escribirla.
 
+#### H-6 · El tramo entregado hasta el corte no se factura nunca
+
+`findContratosParaFacturar` filtra `AND co.estado = 'activo'`. **Un contrato suspendido no entra en
+la generación.**
+
+Con el escenario que planteó el propietario —emisión 23/08, vence 30/08, cinco días de gracia,
+prórroga hasta el 07/09, se suspende el 07/09 y paga el 25/09—:
+
+```
+23/09   no se emite nada: el contrato está suspendido
+        pero el abonado tuvo servicio del 31/08 al 07/09
+```
+
+**Ocho días entregados y jamás cobrados.** Y no se recuperan después: el siguiente comprobante
+cubrirá octubre.
+
+**Corrección de la primera versión de este hallazgo.** Se dijo que «el mes de suspensión sale
+gratis», citando a Stripe —*«Invoices continue to be generated»*—. Era demasiado fuerte: la fuga son
+**los días entregados antes del corte**, no el mes entero. Y la diferencia con Stripe se explica
+sola: allí `unpaid` puede seguir con el servicio activo, así que sigue facturando; aquí la
+suspensión **es** la interrupción del servicio, y facturar lo que no se entrega no es rigor, es
+cobrar de más.
+
+**Cómo se corrige:** prorrateando el borde, que es lo que el diseño ya define. La factura que
+provocó el corte se debe entera —se entregó el mes completo—; el tramo del ciclo en curso hasta el
+corte se prorratea; durante la suspensión no se factura nada.
+
+#### H-7 · La reactivación exige deuda TOTAL cero, no deuda vencida
+
+`pagos.service` comprueba `SUM(f.saldo) <= 0` sobre `sqlDeudaExigible`, **sin filtrar por fecha de
+vencimiento**. Una factura emitida y todavía no vencida cuenta como deuda que impide reactivar.
+
+**Hoy no se nota, porque H-6 lo tapa:** como no se factura a los suspendidos, nunca hay una factura
+nueva que estorbe.
+
+**Pero aparece en cuanto se corrija H-6.** Con el mismo escenario: el 23/09 se emitiría la factura de
+septiembre, que vence el 30. El abonado paga agosto el 25 —lo que realmente debe— y **no se
+reactivaría**, porque le queda septiembre pendiente aunque todavía no haya vencido.
+
+Eso es exigirle pago adelantado para devolverle el servicio. La reactivación debe mirar la **deuda
+vencida**, no la total.
+
+> **Los dos están enlazados:** corregir H-6 sin corregir H-7 dejaría a los abonados que **sí pagan**
+> sin poder reactivarse. No se pueden desplegar por separado.
+
+
 ### 5.3 Reconocido por el propietario como pendiente de diseño
 
 No son defectos: son trabajo que él mismo señala.
@@ -566,6 +612,8 @@ resuelta; lo que cambiará es la forma de la serie y las reglas de anulación.
 |---|---|---|
 | **H-1** | El corte no contaba «N vencidos + N días desde el último» | ✅ **CORREGIDO 2026-08-08.** `MAX` en vez de `MIN`; barrera de 8 tests |
 | **H-3** | El primer comprobante del prepago lo emite el **navegador**, con `catch` vacío, sin el vencimiento de la política y sin `contratoId` | **Siguiente.** Mover la emisión al backend resuelve los cinco defectos de golpe y no cambia ninguna fecha de corte |
+| **H-6** | **El tramo entregado hasta el corte no se factura nunca** — la generación excluye a los suspendidos | **ABIERTO.** Se corrige prorrateando el borde |
+| **H-7** | **La reactivación exige deuda TOTAL cero**, no vencida — quien paga lo que debe no se reactiva si tiene una factura emitida sin vencer | **ABIERTO, y enlazado a H-6:** no se pueden desplegar por separado |
 | **H-2** | `moroso` no lo escribe nadie | ✅ **RESUELTO 2026-08-08, y no como se planteó**: la mora pasa a ser una **etiqueta derivada**, no un estado. Ver §6.2 |
 | **H-4** | El periodo del comprobante era el mes de calendario, no el ciclo del abonado | ✅ **CORREGIDO 2026-08-08.** Del día siguiente a una fecha de pago hasta la siguiente. La deduplicación pasa a ir por vencimiento |
 | **H-5** | El vencimiento se podía fijar por encima del día de pago — y **editar en una factura emitida** | ✅ **CORREGIDO 2026-08-08.** Derivado de la política, validado al crear, inmutable al editar |
