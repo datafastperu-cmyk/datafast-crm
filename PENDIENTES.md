@@ -297,12 +297,30 @@ FTTH, arqueo, extorno); quedan 19 de menor riesgo.
 
 **Cómo se comprueba:** `metadatos-typeorm.spec.ts`.
 
-### 25. PA-15 — 30 de 33 consultas de fondo sin cap
+### 25. PA-15 — lotes de fondo sin tope — **MEDIDO 2026-08-10, techo congelado**
 **Por qué importa:** un lote sin límite no se degrada al crecer, **se cae de golpe** el día que
 el volumen pasa un umbral que nadie conoce. Afecta a `cobranza.worker`, `facturacion.worker`,
 `ztp.service` y los watchers FTTH.
 
-**Sin barrera todavía.** Es el pendiente de esta lista con más probabilidad de morder solo.
+**Ya hay barrera y el número era otro.** `lotes-sin-cap.spec.ts` mide y congela el techo en **16**
+sobre 74 lotes reales. Los «30 de 33» de la ficha no describían lo mismo: el recuento contaba
+agregados, comprobaciones de existencia, búsquedas por clave y subconsultas de pertenencia, donde
+un `LIMIT` no significa nada o **cambiaría el resultado en vez de acotarlo**.
+
+Es la segunda cifra inflada del día tras los «102 endpoints abiertos» de B-3 que eran 99. Un
+informe que exagera se deja de leer.
+
+**Ocho de los 16 están acotados por naturaleza** y no urgen: `empresas` tiene una fila por
+instalación (ADR-031), `watcher_heartbeat` unas 47, `routers` y `olt_dispositivos` un puñado. Los
+que crecen con el parque —`facturas`, `pagos`, `servicios`, `notificaciones_logs`, `vpn_clientes`,
+`ftth_onu_registro`— son los que hay que atacar primero.
+
+**Y el camino más caro ya estaba a salvo**: el outbox, que es quien habla con el MikroTik y la OLT,
+reclama con `ORDER BY creado_en LIMIT 10 FOR UPDATE SKIP LOCKED`. La barrera lo vigila por nombre.
+
+**Por qué el techo no es cero:** acotar no es poner `LIMIT`. Hace falta un `ORDER BY` estable y
+comprobar que lo procesado deja de casar con el filtro — si no, el lote se come siempre las mismas
+filas y mata de hambre al resto. Eso es trabajo caso por caso, no un barrido.
 
 ---
 
