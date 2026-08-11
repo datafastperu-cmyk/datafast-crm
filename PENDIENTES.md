@@ -489,7 +489,7 @@ migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos 
 vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
 configuración que no hacen nada.
 
-### 33. H-11 · Un abonado suspendido por una deuda que parece duplicada — **DECISIÓN TUYA**
+### 33. H-11 · Un abonado suspendido por una deuda duplicada — **VERIFICADO 2026-08-10, falta tu acción**
 
 **Encontrado el 2026-08-10 en la primera ejecución de `backend/scripts/verificar-emision.sql`.**
 El verificador se escribió para el ciclo del 23 y destapó esto en datos históricos, no en los
@@ -513,6 +513,27 @@ de agosto.** Los dos defectos que lo produjeron están corregidos: el periodo ca
 navegador (H-3, cerrado) y el segundo generador con mes de calendario (H-10, retirado). Lo que
 queda es el rastro que dejaron.
 
+#### Verificación concluyente (2026-08-10)
+
+Se descartó la lectura alternativa. Los datos:
+
+```
+Servicios vivos de James:   CNT-2026-000007 · alta 29/07 · suspendido · S/ 64
+Servicios dados de baja:    ninguno
+
+CI-30   29/07 – 29/08   pagada    64.00   manual       ← la factura del alta
+CI-34   01/08 – 31/08   vencida    0.00   automática   ← vuelve a cobrar agosto
+```
+
+**Un solo servicio y dos comprobantes por el mismo mes.** Los dos ítems son idénticos en
+sustancia: un mes de internet a S/ 64. CI-30 es la factura del alta —prepago, cubre el primer
+mes— y está pagada; CI-34 cobra agosto otra vez.
+
+Un tropiezo intermedio que conviene anotar: una primera consulta pareció mostrar que James tenía
+seis servicios más dados de baja, lo que habría explicado los dos comprobantes como servicios
+distintos. Era un artefacto — la consulta no filtraba `deleted_at` y estaba contando servicios
+borrados. **Casi cierro el hallazgo como falso positivo por no filtrar una columna.**
+
 #### Por qué no lo he tocado
 
 Anular un comprobante y reactivar a un abonado son **actos de negocio con efecto sobre un cliente
@@ -520,14 +541,18 @@ real**, no correcciones técnicas. Además hay una lectura alternativa que solo 
 que CI-30 se emitiera como cobro de instalación o de un periodo anterior y su periodo esté
 simplemente mal escrito, en cuyo caso la deuda de CI-34 es legítima.
 
-#### Qué haría falta decidir
+#### Qué falta, y por qué no lo hago yo
 
-1. **¿CI-34 es un duplicado?** Si lo es, se anula por el flujo del ERP —que deja rastro y nota de
-   crédito—, nunca con un UPDATE.
-2. **¿Se le devuelve el servicio?** Sin CI-34, su deuda vencida baja a cero y la reactivación
-   procede sola por el camino normal.
-3. **¿Hay que revisar los otros dos comprobantes?** Solo hay cuatro facturas en total; conviene
-   mirarlas todas antes de la instalación limpia.
+**Anular CI-34 desde el ERP** — no con un UPDATE. La directriz del corpus lo dice y aquí se ve por
+qué: el flujo emite la nota de crédito, deja rastro en auditoría, recalcula la deuda con la única
+definición y dispara la reactivación en cascada. Un UPDATE directo se saltaría las cuatro cosas y
+dejaría al abonado con deuda cero y el servicio caído.
+
+Hecho eso, su deuda vencida queda en cero y **el servicio vuelve solo** por el camino normal.
+
+No lo ejecuto porque anular un comprobante y devolverle el servicio a un cliente real son actos de
+negocio, no correcciones técnicas, y porque hacerlo por SQL sería precisamente el atajo que el ERP
+existe para evitar.
 
 **Cómo comprobarlo:** `backend/scripts/verificar-emision.sql`, apartado 3. Solo lectura.
 
