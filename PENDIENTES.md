@@ -808,10 +808,10 @@ desbordaban igual** (la previsualizacion habria mostrado el 3 de marzo como fech
 |---|---|---|
 | **B-1** | PD-08 | strict: false · strictNullChecks: false · noImplicitAny: false · regla no-explicit-any desactivada. Se cumple por d… |
 | **B-2** | PA-13 | PARCIAL 2026-08-08 (R7). Las de coordinación y dinero ya tienen entidad: comandos_red_pendientes, operacion_wizard,… |
-| **B-3** | PS-05 | MEDIDA 2026-08-08, y la ficha decía otra cosa. De 317 endpoints mutantes: 143 con permiso fino, 50 con rol, 102 ABI… |
+| ~~**B-3**~~ | PS-05 | **CERRADA 2026-08-10.** Los 317 endpoints mutantes tienen autorización; el techo de la barrera baja de 102 a 0. Y 3 de los 102 nunca fueron un agujero: el analizador perdía los decoradores de clase en los controladores que declaran sus DTO arriba |
 | **B-4** | PA-07 | Las operaciones interactivas de /red/routers son síncronas, sin outbox ni garantías |
 | **B-5** | PA-03 / PA-05 | El plano WISP tiene outbox parcial, sin máquina de estados, sin saga, y VIO solo como detección posterior |
-| **B-6** | PA-15 | reconciliar() itera sin cap ni lock; ningún cron declara presupuesto de tiempo |
+| **B-6** | PA-15 | **MEDIDA 2026-08-10**: 16 lotes sin tope sobre 74 reales, no «30 de 33» — el recuento viejo contaba agregados y subconsultas de pertenencia. Techo congelado con barrera; el camino contra hardware (outbox) ya estaba acotado |
 | **B-7** | PA-17 | El cambio de ONU no existe. Se improvisa como baja + alta |
 | **B-8** | PI-02 / PI-03 | Mercado Pago —el único que cobra dinero real— no usa el contrato de cobro. La abstracción no está validada |
 | **B-10** | PA-11 | Credenciales de connreq de GenieACS duplicadas en el ACS y en el .env, sin verificación de coincidencia. CCD y cron… |
@@ -825,7 +825,7 @@ desbordaban igual** (la previsualizacion habria mostrado el 3 de marzo como fech
 | **C-6** | PA-16 | Se cumple, sin mecanismo que lo impida |
 | **C-7** | DAT-001 §8.6 | Seis tablas de serie temporal sin política de retención ni particionado |
 
-**18 abiertas** · Nivel A: **0** · Las marcadas arriba con entrada propia
+**17 abiertas** · Nivel A: **0** · B-3 cerrada el 10/08 · Las marcadas arriba con entrada propia
 (20-29) llevan además su consecuencia y su forma de comprobarse.
 
 ---
