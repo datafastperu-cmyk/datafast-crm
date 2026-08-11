@@ -86,6 +86,16 @@ for (const f of ficheros) {
 
 const unicos = (t: Toque[] = []) => [...new Set(t.map((x) => x.modulo))].sort();
 
+// El dueño NO se deduce del código: se lee del manifiesto de PA-12, que es donde está
+// declarado. Deducirlo (p.ej. «el primero que escribe») produciría un dato con aspecto de
+// hallazgo que en realidad es un orden alfabético. Lo que sí aporta el código es el CONTRASTE:
+// quién escribe de verdad frente a quién debería.
+const manifiesto = fs.readFileSync('src/common/domain/propiedad-tablas.ts', 'utf8');
+const dueno: Record<string, string> = {};
+for (const [, tabla, d] of manifiesto.matchAll(/^\s*(\w+):\s*\{[^}]*dueno:\s*'([^']+)'/gm)) {
+  dueno[tabla] = d;
+}
+
 // ── Introspección de la base ────────────────────────────────────────────────
 async function main() {
   const semillas = process.argv.slice(2).length
@@ -154,12 +164,34 @@ async function main() {
   p();
   p('## 1. Tablas del dominio');
   p();
-  p('| Tabla | Filas | Cols | Entidad TypeORM | Dueño (escritor principal) | Escriben | Leen |');
+  p('Dueño = lo declarado en el manifiesto de PA-12. Escriben/Leen = lo medido en el código.');
+  p();
+  p('| Tabla | Filas | Cols | Entidad TypeORM | Dueño (PA-12) | Escriben de hecho | Leen |');
   p('|---|---:|---:|---|---|---|---|');
   for (const t of tablas) {
     const w = unicos(escriben[t]);
     const r = unicos(leen[t]).filter((m) => !w.includes(m));
-    p(`| \`${t}\` | ${filas[t] < 0 ? '?' : filas[t]} | ${columnasDe[t] ?? '?'} | ${entidadDe[t] ? '`' + entidadDe[t] + '`' : '**ninguna**'} | ${w[0] ?? '—'} | ${w.length ? w.join(', ') : '—'} | ${r.join(', ') || '—'} |`);
+    const d = dueno[t];
+    // Un escritor que no es el dueño se marca aquí mismo: es la lectura que importa.
+    const escritores = w.map((m) => (d && m !== d ? `**${m}**` : m));
+    p(`| \`${t}\` | ${filas[t] < 0 ? '?' : filas[t]} | ${columnasDe[t] ?? '?'} | ${entidadDe[t] ? '`' + entidadDe[t] + '`' : '**ninguna**'} | ${d ?? '_sin declarar_'} | ${escritores.join(', ') || '—'} | ${r.join(', ') || '—'} |`);
+  }
+  p();
+  p('En negrita, el módulo que escribe una tabla que no le pertenece.');
+
+  const sinDeclarar = tablas.filter((t) => !dueno[t]);
+  if (sinDeclarar.length) {
+    p();
+    p(`**${sinDeclarar.length} tablas del dominio no están en el manifiesto de PA-12** — quedan`);
+    p('fuera del barrido de escritores y pierden la garantía en silencio: ' +
+      sinDeclarar.map((t) => `\`${t}\``).join(', ') + '.');
+  }
+
+  const sinEntidad = tablas.filter((t) => !entidadDe[t]);
+  if (sinEntidad.length) {
+    p();
+    p(`**${sinEntidad.length} tablas sin entidad TypeORM** — solo se tocan por SQL crudo, así que`);
+    p('ningún tipo protege sus columnas: ' + sinEntidad.map((t) => `\`${t}\``).join(', ') + '.');
   }
 
   p();
@@ -173,12 +205,16 @@ async function main() {
   }
 
   p();
-  p('## 3. Escritores múltiples — las tablas sin dueño único');
+  p('## 3. Escritores múltiples — las tablas sin dueño único de hecho');
   p();
-  const multiples = tablas.filter((t) => unicos(escriben[t]).length > 1);
+  const multiples = tablas.filter((t) => unicos(escriben[t]).length > 1)
+                          .sort((a, b) => unicos(escriben[b]).length - unicos(escriben[a]).length);
   if (!multiples.length) p('_Ninguna._');
   for (const t of multiples) {
-    p(`- \`${t}\` — **${unicos(escriben[t]).length} módulos**: ${unicos(escriben[t]).join(', ')}`);
+    const w = unicos(escriben[t]);
+    const ajenos = dueno[t] ? w.filter((m) => m !== dueno[t]) : w;
+    p(`- \`${t}\` — **${w.length} módulos escriben**; dueño declarado: ${dueno[t] ?? '_ninguno_'}. ` +
+      `Ajenos: ${ajenos.join(', ') || '—'}`);
   }
 
   p();
