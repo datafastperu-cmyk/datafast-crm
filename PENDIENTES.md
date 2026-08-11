@@ -13,6 +13,23 @@
 
 ## 🔴 Abierto — impacto en producción
 
+**No se retira la columna: se retira el segundo escritor.** Las «87 referencias» eran casi todas
+propiedades de objetos de notificación. Escrituras reales a la columna había **tres**, y A-4 exigía
+una.
+
+- `DeudaPorContratoService` — la canónica: calcula desde las facturas.
+- `contratos.service` — ya retirada en su momento; queda el comentario que lo explica.
+- **`cobranza.worker`** — ponía `deuda_total = 0, meses_deuda = 0` en la reactivación automática.
+
+**Y desde H-7 esa tercera además era falsa.** Reactivar exige deuda **vencida** cero, no deuda
+total cero: un abonado con un comprobante emitido y aún sin vencer se reactiva con razón, y poner
+la proyección a cero borraba esa deuda de su ficha. Es el defecto del incidente 2026-08-04 —ficha
+S/ 64, deuda real S/ 128— del revés, y lo introdujo la corrección de otro.
+
+Ahora recalcula desde las facturas. Barrera: `un-solo-escritor-de-la-deuda.spec.ts`, que vigila
+`deuda_total`, `meses_deuda` y que el recálculo siga estando —quitar la escritura sin poner el
+recálculo dejaría la ficha congelada en la cifra anterior, que es igual de falso.
+
 ### 0. Despliegue: el backend estuvo 11 h ejecutando código viejo (RESUELTO, pero leer)
 **Estado:** corregido el 2026-08-06. Se documenta porque la clase de fallo se repitió tres
 veces en el mismo día y conviene reconocerla.
@@ -343,7 +360,7 @@ Relacionado con ADR-033 (límite comercial de 5 000 abonados, **capacidad sin va
 
 **Cómo se comprueba:** `watcher_heartbeat.duracion_ms` frente a `intervalo_esperado_seg`.
 
-### 28. `contratos.deuda_total` no debería existir
+### ~~28~~. `servicios.deuda_total` — **cola de A-4 CERRADA 2026-08-10**
 **Por qué importa:** un modelo contable estándar deriva la deuda de los apuntes por cobrar
 abiertos. Almacenarla produjo las cuatro implementaciones de A-4 y el incidente del 04/08.
 **Ya no puede divergir** —un solo escritor, una sola definición— pero el concepto sigue mal

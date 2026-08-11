@@ -840,14 +840,22 @@ export class CobranzaWorker {
         motivo_estado = 'Reactivación automática por pago registrado',
         en_prorroga = false,
         prorroga_hasta = NULL,
-        fecha_vencimiento = $2,
-        deuda_total = 0,
-        meses_deuda = 0
+        fecha_vencimiento = $2
       WHERE id = $1 AND estado = 'suspendido'
       RETURNING id
     `, [contratoId, nuevaFechaStr]));
 
     if (contratoActualizado) {
+      // La proyección de deuda NO se pone a cero a mano: se RECALCULA desde las facturas.
+      //
+      // Este UPDATE escribía `deuda_total = 0, meses_deuda = 0`, y era el segundo escritor de
+      // una proyección que A-4 dejó con uno solo. Desde H-7 además es falso: la reactivación
+      // ocurre cuando la deuda VENCIDA es cero, y el abonado puede tener un comprobante
+      // emitido y todavía sin vencer. Ponerla a cero lo borraría de la ficha — el mismo
+      // defecto del incidente 2026-08-04 (ficha S/64, deuda real S/128), del revés.
+      await this.deudaSvc.recalcularPorCliente(clienteId, empresaId)
+        .catch((e: any) => this.logger.warn(`[REACTIVAR] No se pudo refrescar la deuda: ${e?.message}`));
+
       await this.ds.query(`
         INSERT INTO servicios_historial
           (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
