@@ -1,0 +1,460 @@
+# Contexto del Proyecto: ErpDatafast
+
+## Stack Tecnológico Principal
+- **Lenguaje base:** TypeScript (89.9%) / JavaScript (2.1%)
+- **Backend / Scripts auxiliares:** Python (3.6%) / Shell (3.7%)
+
+## Reglas de Codificación para el Equipo IA
+- Responder y documentar siempre en **Idioma Español**.
+- Mantener tipado estricto en TypeScript (evitar el uso de `any`).
+- Seguir la arquitectura modular existente en el repositorio local.
+- Respetar los formatos del linter o formateador del proyecto al guardar cambios.
+
+## Directrices de Negocio Críticas
+
+### VPN — Ciclo de vida de IPs (OpenVPN + MikroTik)
+- **Las IPs VPN son permanentes.** Una vez que un cert conecta y recibe su IP del servidor, esa IP queda bloqueada en el CCD del servidor (`ifconfig-push`) para ese cert. OpenVPN nunca debe reasignar esa IP a otro equipo.
+- **La IP solo se libera en dos casos:**
+  1. El router es eliminado del sistema → `removeRouter` revoca todos los certs vinculados → se elimina el CCD → se mata el túnel.
+  2. El wizard de registro se cierra/cancela sin completar el paso 3 → `fireRevoke` revoca el cert → se elimina el CCD → se mata el túnel.
+- **Al eliminar un router o al cancelar el wizard, el túnel VPN con ese router debe eliminarse** (`revocar` → `killClienteVpnManagement` + borrar CCD). No dejarlo activo.
+- **Implementación vigente:**
+  - `validarTunel` escribe el CCD con `ifconfig-push` en el primer handshake (bloqueo inmediato de IP).
+  - `revocar` elimina el CCD y mata la sesión → libera la IP.
+  - `fireRevoke` en el wizard no tiene guard por túnel activo — siempre revoca al cerrar sin registrar.
+  - Cron `limpiarWizardsAbandonados` (cada 30 min, corte a 2h) es red de seguridad adicional.
+- **Nunca reutilizar un cert que ya tenga `vpnIp` asignada** sin verificar primero que esa IP no esté en uso por otro router activo en BD.
+
+## Todo `@Cron` declara `name:` — Regla de Construcción Obligatoria
+
+**Un `@Cron()` sin `name:` recibe de NestJS un UUID v4 distinto en cada arranque**
+(`scheduler.orchestrator.js` → `addCron`: `options.name || uuid.v4()`). Sin nombre estable no
+puede latir, porque su identidad cambia con cada despliegue.
+
+```typescript
+@Cron('*/2 * * * *', { name: 'ztp-reinyeccion-pendiente' })   // ✅
+@Cron('*/2 * * * *')                                          // ❌ invisible
+```
+
+No hace falta llamar a `heartbeat.ejecutar`: `CronLatidoService` envuelve todo job registrado en el
+`SchedulerRegistry` y el latido se **deriva** de estar ahí. Lo único que hay que aportar es el
+nombre. Lo sostiene `cron-nombres.barrera.spec.ts`, que falla si aparece un `@Cron` sin nombre o
+con uno duplicado.
+
+Origen: 2026-08-07 (ADR-020). `WatcherHeartbeatService` llevaba diez días disponible y su módulo era
+`@Global()` precisamente «para que no haya watchers sin latido». Diez días después latían **10 de
+47**: el `@Global()` quitó la fricción de importar y dejó intacta la de llamar. Una garantía que cada autor
+debe acordarse de implementar no es una garantía, es una estadística — la misma lección que la
+idempotencia derivada de la máquina de estados.
+
+## Arquitectura de Resiliencia — Regla de Construcción Obligatoria
+
+### Módulos Degradables: construir degradado desde el primer commit
+
+Todo módulo nuevo que dependa de hardware físico, API externa, servicio de terceros o
+infraestructura opcional (no es BD principal ni auth) **DEBE implementar el patrón degradado
+desde el momento en que se crea el archivo `.service.ts`**. No se acepta construirlo primero
+y aplicar el patrón después.
+
+**Checklist obligatorio para cualquier módulo degradable nuevo:**
+
+1. `implements OnModuleInit` en el servicio principal.
+2. `onModuleInit()` ejecuta un probe ligero (ping, `which <cmd>`, check de env var, query mínima).
+3. Si el probe falla → `this.moduleHealth.registrar('<nombre>', 'degraded', '<razón>')`. El módulo arranca igual.
+4. Si el probe pasa → `this.moduleHealth.registrar('<nombre>', 'ok')`.
+5. Métodos que requieren el recurso externo tienen `this.assertNotDegraded()` o retornan `ModuleResult<T>` estructurado.
+6. **Nunca relanzar la excepción del probe** fuera del `onModuleInit` — eso crashearía el backend.
+
+**Módulos/integraciones pendientes de construcción que DEBEN nacer degradados:**
+- IPTV / Streaming (API externa XUI ONE u otra)
+- Portal Cliente (backend/API para app móvil del abonado)
+- Inventario / Almacén (descuento automático de stock)
+- Pasarelas de pago adicionales (Webpay, Stripe, Culqi, etc.)
+- Cualquier integración futura con APIs de terceros (RENIEC, SMS, SMTP propio, etc.)
+
+**Módulos del Core Indestructible — NUNCA aplicar el patrón degradado:**
+auth, usuarios, licencia, clientes, contratos, planes, facturacion, pagos (caja manual),
+finanzas-opex, reportes, zonas, plantillas, config, schema-guard, auditoria.
+Si alguno de estos falla en init → el backend debe crashear para proteger el servidor anterior en PM2.
+
+## Verified Infrastructure Operations (VIO) — Regla de Construcción Obligatoria
+
+### Aceptar una configuración no significa que la infraestructura la haya materializado
+
+Origen: incidente 2026-07-17 (CNT-2026-000004). Una ONU Huawei EG8145V5 aceptó sin error
+el comando OMCI del carril de gestión TR-069 (`ont ipconfig ... dhcp vlan 1600`) — la OLT
+lo mostraba configurado — pero el firmware de la ONU nunca activó el IP-host (0 tramas
+Ethernet emitidas, confirmado con sniffer durante un cold-boot físico real). El ERP reportó
+"carril aplicado" durante días mientras la gestión remota estaba completamente muerta,
+porque el código solo verificaba que el comando CLI no devolviera error — nunca verificó
+que el cambio existiera realmente en el plano operativo.
+
+**Regla:** toda operación mutante contra hardware externo (OLT, MikroTik, cualquier
+dispositivo de red) tiene dos estados distintos, y el segundo NUNCA se asume a partir del
+primero:
+
+1. **Accepted** — el comando CLI/API no devolvió error. Esto es lo único que confirma
+   `success: true` de un driver típico. **No es suficiente para marcar algo como aplicado.**
+2. **Materialized/Verified** — existe evidencia observable, obtenida con un comando de
+   lectura independiente (`display ...`), de que el cambio vive en el plano operativo.
+
+**Checklist obligatorio para operaciones mutantes nuevas o modificadas sobre hardware
+externo (OLT/MikroTik/etc.):**
+
+1. Tras ejecutar el comando de escritura, ejecutar un comando de lectura independiente que
+   confirme el efecto esperado (estado real del recurso, no el eco del comando).
+2. Si la verificación falla o no puede confirmarse en un tiempo acotado, el método
+   **NO reporta éxito silencioso** — distingue explícitamente "aceptado, sin confirmar" de
+   "aplicado y confirmado" en el mensaje/resultado devuelto al operador.
+3. La verificación no debe bloquear indefinidamente el flujo (usar reintentos acotados,
+   p.ej. 3-4 intentos con backoff corto) — si el recurso puede tardar en converger de forma
+   legítima (ej. DHCP), no fallar duro, pero sí dejar constancia de que no se confirmó.
+4. Reutilizar/extender las funciones de verificación ya existentes en
+   `olt-automation-service/app/services/provisioning.py` como referencia de patrón:
+   `_undo_service_port_verificado`, `check_ont_wan_pppoe`, `check_ont_mgmt_ip`, y el loop de
+   verificación de `rollback_gpon`/`suspend_onu`/`rehabilitate_onu`.
+
+**Alcance de aplicación:** aplica a todo código **nuevo** o que se **modifique** por otra
+razón (bug, feature) sobre drivers de hardware externo. No es mandato de refactor retroactivo
+masivo de las funciones existentes del driver Huawei/MikroTik que hoy no verifican
+materialización — se corrigen incrementalmente, una por una, la próxima vez que se toquen.
+
+## VIO hacia adentro — El software también afirma sin verificar
+
+Origen: análisis de causa raíz 2026-07-28. VIO se aplicaba al hardware externo pero no a
+las afirmaciones que el propio software hace sobre sí mismo. Dos ejemplos que costaron
+producción:
+
+- `outbox-red.service.ts` afirmaba en un comentario: *"`SELECT FOR UPDATE SKIP LOCKED`:
+  dos instancias PM2 nunca toman el mismo registro"*. Era **falso** — la transacción se
+  cerraba antes de ejecutar contra el hardware. Nadie lo verificó nunca; lo verificó
+  producción, y lo salvó por casualidad un lock que existe por otra razón.
+- `contratos.service.ts` logueaba *"requiere confirmación manual"* cuando el outbox ya
+  tenía el trabajo encolado. El log describía la intención del autor al escribirlo, no el
+  estado del sistema.
+
+**Regla:** una afirmación sobre el propio sistema es una afirmación **sin verificar** hasta
+que un test la demuestra. Un comentario que garantiza una propiedad es un `success: true`
+sin comprobar; la única diferencia es que el driver de hardware al menos tiene la regla
+escrita.
+
+1. Todo comentario que garantice **concurrencia, atomicidad o exclusión mutua** ("dos
+   instancias nunca...", "esto no puede ocurrir", "es idempotente") lleva un test que lo
+   ejercite, o se borra el comentario. Borrarlo es una opción legítima: una garantía que
+   nadie sostiene es peor que ninguna, porque el siguiente lector construye encima.
+2. Un **log describe lo que ocurrió**, nunca lo que el código pretendía hacer. Si el
+   mensaje puede quedar desactualizado por un cambio en otro archivo, ya está mal escrito.
+3. Los tests de estas garantías nombran el **incidente real** que las motivó. Un test
+   llamado "no debería fallar" se borra en la primera limpieza; uno que dice "409 de lock
+   es reintentable, no un veredicto (incidente 28/07)" sobrevive.
+
+**Alcance:** igual que VIO — código nuevo o que se modifique por otra razón. No es mandato
+de auditar retroactivamente todos los comentarios del repositorio.
+
+## Máquina de estados declarativa — Regla de Construcción Obligatoria
+
+Origen: mismo análisis. Los estados legales de cada operación FTTH vivían en arrays y
+condicionales sueltos repartidos por el servicio (13 sitios). Nadie podía leer la máquina
+completa y **por eso faltaba un estado de origen sin que nadie pudiera notarlo**:
+`desaprovisionar` no aceptaba `suspendido`, que es el caso más frecuente del negocio (un
+moroso suspendido al que se le da de baja). Resultado: ONU huérfana en la OLT.
+
+**Regla:** todo recurso con ciclo de vida contra hardware declara sus transiciones en **un
+solo lugar** (`domain/*-maquina-estados.ts`), no en condicionales dispersos.
+
+1. La declaración indica, por transición: estados de origen legales, estado destino y qué
+   significa en términos de negocio.
+2. **La idempotencia se DERIVA del estado destino**, no se implementa a mano en cada
+   método: si el recurso ya está en el destino, la operación es `ya_en_destino` (ÉXITO).
+   Un método nuevo no puede olvidarse de ser idempotente si no es él quien lo implementa.
+3. Los guards consultan la máquina (`evaluarTransicion`), nunca escriben su propio array.
+4. Un criterio disperso no es auditable; uno declarativo se revisa de un vistazo en un PR.
+   Cualquier cambio a la lista de orígenes debe justificar por qué un estado deja de poder
+   hacer esa transición.
+
+## Vocabulario de dominio, no de transporte — Regla de Construcción Obligatoria
+
+Origen: mismo análisis. Los mismos métodos los consume un humano (controller HTTP) y una
+máquina (outbox). Los guards se escribieron para el primero y expresaban su veredicto con
+excepciones de NestJS. Para un reintentador automático eso es ambiguo: un `409` puede
+significar "esto nunca va a funcionar" o "vuelve en 5 minutos", y el status code no lo
+distingue. El outbox terminó haciendo arqueología sobre códigos HTTP, y se equivocó dos
+veces: un no-op idempotente leído como fallo (1788 reintentos contra el MA5800 en 4 días)
+y un 409 de lock leído como veredicto definitivo (trabajo descartado).
+
+**Regla:** todo método invocable por un orquestador automático devuelve `ResultadoOperacion`
+(`common/domain/resultado-operacion.ts`), no excepciones HTTP. El transporte traduce en el
+borde (`traducirAHttp` en el controller), nunca al revés.
+
+1. Clases: `aplicado` | `ya_en_destino` | `no_aplica` | `rechazado_definitivo` |
+   `reintentable` | `indeterminado`.
+2. **`indeterminado` es obligatorio ante un timeout contra hardware.** Un timeout NO
+   significa "no pasó nada": la operación pudo aplicarse y solo tardar más que el límite
+   del cliente. No se reintenta a ciegas ni se reporta como fallo al operador — se reporta
+   como "aceptado, sin confirmar" y se audita para que alguien verifique el estado real.
+3. La lista de rechazos definitivos es **explícita y corta**: solo 400 y 404. Un criterio
+   amplio tipo `status < 500` es incorrecto — 409/408/429 significan "vuelve luego". Ante
+   la duda: reintentable, porque reintentar es recuperable y descartar no.
+4. Nunca inferir reintentabilidad desde un código de estado HTTP.
+
+## Wizards y Modales — Regla de Construcción Obligatoria
+
+### Un procedimiento no terminado se anula por completo
+
+**Ningún wizard o modal que se cierre, por el motivo que sea, puede dejar procesos pendientes.**
+Si se cierra sin completarse — botón X, Cancelar, ESC, click fuera, navegación, recarga,
+cierre de pestaña, crash del navegador, pérdida de sesión — **todo lo que se ejecutó dentro
+debe anularse**.
+
+Origen: incidente 2026-07-21 (CNT-2026-000004). Un wizard de provisión FTTH cerrado a medias
+dejó la ONU registrada en la OLT sin `ftth_onu_registro`, y una tarea async del carril TR-069
+siguió corriendo contra un contrato que ya no tenía registro
+(`carril (async): No hay registro FTTH para el contrato`). Resultado: ONU huérfana — discordancia
+entre el plano físico (OLT) y el lógico (ERP).
+
+**La frontera de confirmación es el ESTADO TERMINAL VERIFICADO, no el clic del operador.**
+Un procedimiento está confirmado cuando su recurso alcanzó el estado terminal de su máquina
+de estados con verificación VIO (en FTTH: `estado = activo`). Todo lo anterior
+(`pendiente`, `gpon_registrado`, `wan_inyectado`, `fallido_*`) es trabajo en vuelo y **se anula
+al cerrar**. Lo confirmado **jamás** se anula por un cierre: para deshacerlo existe la
+desaprovisión formal, que pide confirmación y queda auditada.
+
+El clic NO puede ser la frontera transaccional por dos razones:
+1. Es inalcanzable justo en los peores casos — crash del navegador, caída de sesión, corte de
+   luz — que son precisamente los que motivan esta regla. Una frontera que no existe en el
+   caso que la justifica no es una frontera.
+2. Convertiría la regla en fábrica de cortes de servicio: provisión correcta → ONU activa →
+   cliente navegando → crash → el ERP desaprovisiona a un cliente en producción. La regla
+   nació para evitar la discordancia físico↔lógico; así la crearía.
+
+El caso objetivo queda cubierto al 100%: si el procedimiento arrojó error y el operador cierra
+para empezar de nuevo, el recurso está en estado no terminal y se anula completo. El botón
+"Finalizar" sigue existiendo como acto de UX y auditoría, nunca como acto transaccional.
+
+**Nunca se interrumpe una operación de hardware a mitad.** Anular no es abortar: si hay una
+operación en vuelo contra la OLT/MikroTik, se ESPERA a que termine de forma atómica y recién
+entonces se revierte por completo. Cortar a mitad de un comando es justamente lo que deja el
+plano físico sucio.
+
+**Checklist obligatorio para cualquier wizard/modal que toque hardware o reserve recursos**
+(pools de service-port, ONU ID, IP de gestión, certs VPN, etc.):
+
+1. **Ruta de anulación completa** invocada en TODOS los caminos de cierre — no solo en "Cancelar".
+2. **El fire-and-forget debe ser cancelable/anulable.** Una tarea en vuelo (p.ej. el carril TR-069
+   async) no puede sobrevivir a la muerte del wizard: se aborta o se revierte.
+3. **Red de seguridad del lado servidor**, porque el cierre puede ser un crash y el navegador no
+   alcanza a avisar: marca de "wizard en curso" con dueño y heartbeat/TTL, más un barrido que
+   revierta lo iniciado si el wizard nunca confirmó término.
+4. **Anular = revertir el hardware Y liberar los recursos reservados**, respetando el invariante
+   de atomicidad: nunca borrar el registro con la OLT sucia (estado `fallido_rollback` +
+   watcher `reintentarRollbacksFallidos`).
+5. **Prohibir operaciones concurrentes sobre el mismo contrato/ONU.** Una desaprovisión y una
+   provisión en vuelo simultáneas fueron causa directa de un huérfano (2026-07-21).
+   Implementado: `FtthOperacionLockService` (tabla `ftth_operacion_lock`, TTL corto, 409 si
+   hay algo en curso). Ese lock cubre UNA operación; NO se toma por toda la sesión del wizard
+   (bloquearía el contrato a los watchers) — se toma solo mientras se ejecuta cada paso.
+
+**Reglas estructurales de la anulación (patrón saga con bitácora de compensación):**
+
+6. **La compensación se registra ANTES de ejecutar el paso**, nunca después (write-ahead).
+   Si el proceso muere entre "ejecuté `ont add`" y "escribí el paso", el huérfano renace.
+   Orden obligatorio: escribir paso `en_vuelo` → ejecutar contra hardware → marcar `aplicado`.
+   Un paso que queda `en_vuelo` tras el TTL es SOSPECHOSO de haberse ejecutado: se verifica
+   contra el hardware antes de decidir si hay algo que compensar.
+7. **Cada paso guarda DOS cosas: cómo deshacerlo y cómo verificar si llegó a aplicarse.**
+   Sin la sonda de verificación, un paso `en_vuelo` no es resoluble.
+8. **Las compensaciones son idempotentes por contrato.** Reejecutar una compensación ya
+   aplicada debe contar como ÉXITO ("does not exist" al deshacer = hecho, no error). Una
+   anulación interrumpida se reintenta desde el principio sin efectos raros.
+9. **VIO también al deshacer.** Una compensación no confirmada NO se reporta como hecha; el
+   procedimiento pasa a `anulacion_fallida` y lo hereda el watcher. Una sola pasada ordenada,
+   sin reintentos agresivos (el MA5800 tiene un límite bajo de sesiones VTY concurrentes).
+10. **El heartbeat SUPRIME el barrido, nunca autoriza nada**, y tiene TECHO ABSOLUTO: pasado
+    un máximo duro, el barrido procede aunque el heartbeat siga latiendo (si no, una pestaña
+    olvidada bloquea el recurso para siempre). El servidor es la autoridad: `beforeunload` no
+    puede ejecutar trabajo asíncrono fiable, así que el mecanismo real de anulación es la
+    expiración del TTL en el servidor, jamás un `sendBeacon` best-effort del navegador.
+11. **Anular es asíncrono.** Si el operador cierra mientras corre un paso, la anulación no es
+    la respuesta a ese request: es un trabajo del servidor que espera a que el paso termine y
+    recién entonces compensa (consecuencia directa de "no se interrumpe el hardware").
+
+Referencia de patrón ya aplicado correctamente: el wizard de registro de routers VPN
+(`fireRevoke` al cerrar sin completar el paso 3 + cron `limpiarWizardsAbandonados` como red
+de seguridad).
+
+## ⚠️ MIGRACIONES DE ONUs — Advertencia Obligatoria Antes de Programar Ninguna
+
+**Antes de diseñar, programar o ejecutar cualquier migración que incorpore ONUs existentes
+al ERP (SmartOLT, MikroWISP, adopción masiva de huérfanas), leer esto y actuar en
+consecuencia. No es opcional.**
+
+Una ONU que entra al ERP con `contrato_onu_config.provisioning_enabled = true` y
+`last_applied_revision` en NULL queda marcada como **drift**, y el pipeline ZTP le
+**reescribe el SSID, la clave del WiFi y las credenciales de acceso web** con el preset de
+la OLT.
+
+**No hay una noche de margen: son dos minutos.** Son DOS los barridos que lo hacen, y el
+peligroso no es el nocturno:
+
+| Barrido | Frecuencia | Filtro |
+|---|---|---|
+| `ztp.reconcile()` | 03:30 | `provisioning_enabled AND (rev NULL OR rev < revision)` |
+| **`ztp.reconcilePendingReinjection()`** | **cada 2 min** | `provisioning_enabled AND rev IS NULL` |
+
+Una ONU recién migrada tiene exactamente `last_applied_revision IS NULL`: **la captura el
+watcher de dos minutos**, no el de las 03:30.
+
+En una migración eso no afecta a una ONU: afecta a **todas a la vez, sin que nadie lo pida**.
+Son clientes reales en producción que llevan años con su configuración — muchos con su
+propia clave de WiFi — que se quedan sin internet en sus dispositivos sin que nadie sepa por
+qué.
+
+**Protección vigente (desde `AddOrigenAContratoOnuConfig1791800000045`):**
+`contrato_onu_config.origen` (`erp` | `adoptada` | `migrada`). **Los dos barridos y
+`provisionContract` filtran por `origen = 'erp'`.** Una ONU que el ERP no aprovisionó se
+observa y se respeta; sobrescribir su config exige `sobrescribirConfigAjena: true`, un acto
+deliberado del operador. Cubierto por tests en `ztp.service.reconcile.spec.ts`.
+
+Antes existía solo por composición de tres decisiones independientes (`_nuevo()` con
+`provisioning_enabled = false`, `adoptarOnusHuerfanas` que no crea config, y el preset
+invocado solo desde la provisión del ERP). Ninguna de las tres decía la regla, y un script
+de migración que hiciera `upsert()` + `setProvisioningEnabled(true)` las anulaba a la vez.
+
+**Reglas para cualquier migración de ONUs:**
+
+1. Una ONU migrada/adoptada nace con **`origen = 'migrada'` o `'adoptada'`** — nunca con el
+   constructor por defecto, que asume `'erp'`. Adicionalmente puede nacer con
+   `provisioning_enabled = false` o `last_applied_revision = revision`.
+2. El auto-config **solo** se aplica a aprovisionamientos nuevos hechos desde el ERP. Una
+   ONU que ya funcionaba se ADOPTA (se observa y se respeta), nunca se reconfigura — es la
+   directriz de "implementación desde cero": el ERP inyecta su config canónica en equipos
+   que él provisiona, y respeta como intocable lo preexistente.
+3. **Pre-flight obligatorio antes y después de la migración:**
+   `GET /api/v1/olt-nativo/ztp/preflight-migracion` (o
+   `ContratoOnuConfigService.preflightMigracion`). Devuelve `seguro: false` si alguna ONU de
+   origen distinto de `erp` entraría en el barrido. **Si devuelve `seguro: false`, PARAR.**
+
+## Portabilidad Multi-VPS — Regla Crítica de Configuración
+
+Este ERP se instala en múltiples servidores VPS con IPs y dominios distintos.
+**Ningún archivo del repositorio puede contener IPs, dominios o URLs de servidor hardcodeadas.**
+
+### Qué nunca hacer
+
+```typescript
+// ❌ MAL — amarrado a una instalación concreta
+const API_BASE = 'http://149.34.48.224:4000';
+const VPS_IP   = '149.34.48.224';
+```
+
+```javascript
+// ❌ MAL — ecosystem.config.js con IP fija
+env: { APP_URL: 'http://149.34.48.224:4000' }
+```
+
+### Qué hacer siempre
+
+```typescript
+// ✅ BIEN — leído de process.env en tiempo de llamada (no de carga de módulo)
+const getApiBase = () => (process.env.APP_URL || '').replace(/\/$/, '');
+const getVpsIp   = () => process.env.VPN_SERVER_IP || process.env.APP_URL?.replace(/^https?:\/\//, '').split(':')[0] || '';
+```
+
+**Reglas concretas:**
+
+1. **Variables de entorno, nunca literales.** Cualquier valor que cambie entre instalaciones (`APP_URL`, `VPN_SERVER_IP`, `VPN_SERVER_PORT`, dominio público, etc.) va en `.env.production` de cada VPS — nunca en código ni en `ecosystem.config.js`.
+
+2. **Lazy getters para constantes de módulo.** Las constantes top-level en servicios NestJS se evalúan al cargar el módulo, *antes* de que `ConfigModule` lea el `.env`. Si el valor viene de `process.env`, conviértelo en función: `const getFoo = () => process.env.FOO`.
+
+3. **`ecosystem.config.js` sin IPs.** Solo puede contener variables que no cambian entre servidores (`NODE_ENV`, `PORT`, `RUN_CRONS`, límites de memoria). Las vars de red van en `.env.production`.
+
+4. **Scripts generados dinámicamente.** Scripts MikroTik, comandos CLI, URLs de descarga y endpoints que se envían a hardware externo deben construirse llamando a los getters en tiempo de ejecución, no interpolando constantes de módulo.
+
+5. **`.env.example` como contrato.** Toda variable nueva que dependa del servidor debe documentarse en `.env.example` con un comentario que explique qué valor poner. Es la guía de instalación para un nuevo servidor.
+
+### Checklist antes de hacer commit con cualquier URL o IP
+
+- [ ] ¿El valor viene de `process.env`?
+- [ ] Si es una constante de módulo, ¿es un lazy getter (función)?
+- [ ] ¿`ecosystem.config.js` sigue sin IPs ni dominios?
+- [ ] ¿`.env.example` documenta la variable?
+
+## Causa raíz antes que parche — Regla de Corrección Obligatoria
+
+**Ante un error, un bug o cualquier comportamiento incorrecto, primero se indaga la causa
+raíz y después se aplica una solución definitiva. No se aplican soluciones superficiales.**
+
+Un parche que hace desaparecer el síntoma deja el defecto vivo y, peor, lo deja invisible:
+el siguiente que lo encuentre partirá de un sistema que "ya se revisó". El coste de buscar
+la raíz se paga una vez; el de no buscarla se paga en cada aparición.
+
+Origen: 2026-08-05, el mapa de red. Tres fallos encadenados, ninguno ruidoso:
+
+- Los abonados no aparecían. **Parche superficial disponible:** copiar las coordenadas a
+  `clientes.latitud` con un UPDATE y "listo". **Raíz:** el mismo dato vivía en dos sitios y
+  la consulta leía el equivocado — los formularios escriben `contratos.latitud_instalacion`.
+  El UPDATE habría funcionado ese día y habría vuelto a fallar con cada alta nueva.
+- Ninguna capa vectorial se dibujaba. **Parche superficial disponible:** quitar las capas de
+  etiquetas, que era lo que parecía sospechoso. **Raíz:** `maplibre-gl` 6.1.0 no procesa
+  GeoJSON bajo el empaquetado de Next 14 — el mapa nunca alcanzaba `loaded()`. Quitar las
+  etiquetas no habría cambiado nada y habría enterrado la pista.
+- El GPS del móvil decía "permiso denegado". **Parche superficial disponible:** mejorar el
+  texto del mensaje. **Raíz:** la cabecera `Permissions-Policy` declaraba `geolocation=()`
+  —lista vacía, que prohíbe la ubicación al propio sitio—, así que el navegador respondía sin
+  llegar a preguntar. Ningún texto habría arreglado eso.
+
+**Checklist antes de dar por corregido un fallo:**
+
+1. **Reproducirlo y observarlo**, no deducirlo. Si el diagnóstico no se apoya en una medición
+   —una consulta, un header, un valor leído en ejecución— es una hipótesis, y debe decirse así.
+2. **Explicar por qué el sistema llegó a ese estado.** Si la explicación es "no sé por qué
+   pasaba, pero con esto ya no pasa", no está corregido: está oculto.
+3. **Preguntar dónde más ocurre lo mismo.** Un defecto de criterio suele estar repetido: la
+   capa del mapa y el encuadre inicial tenían el mismo error, en dos consultas distintas.
+4. **Corregir en el punto común**, no en cada sitio donde se manifiesta. De ahí salió el CTE
+   `PUNTOS_SERVICIO`: una sola definición de dónde está un abonado, en vez de cuatro consultas
+   que pueden divergir.
+5. **Dejar constancia de la causa**, no del arreglo. El commit y el comentario explican qué
+   estaba mal y por qué no se veía; eso es lo que evita que se reintroduzca.
+
+## Reutilizar antes de construir — Regla de Consulta de Datos Obligatoria
+
+**Antes de escribir una consulta o un servicio para obtener datos, hay que verificar si esos
+datos ya se obtienen en otra sección o por otro servicio del ERP, y tomarlos de ahí.** No se
+reconstruye un trabajo que el sistema ya hace para llegar al mismo resultado.
+
+No es solo ahorro de esfuerzo. Dos caminos hacia el mismo dato son dos verdades que empiezan
+idénticas y divergen en la primera modificación que alguien haga en una sola de ellas — y
+entonces el ERP responde distinto según por dónde se le pregunte, que es peor que no
+responder.
+
+Origen: 2026-08-05, al diseñar el estado de los abonados en el mapa. Se estuvo a punto de
+proponer una clasificación de estados de ONU desde cero. Ya existía: `clasificarOnus`
+(`GET /olt-nativo/:oltId/onus`) lee la OLT por SSH, cruza `display ont info` con la causa de
+caída y distingue `online | apagada | ruptura_fibra | desactivada | offline` — incluido el
+`ruptura_fibra` que se había dado por imposible de determinar. Construirlo de nuevo habría
+producido una segunda clasificación, peor y destinada a contradecir a la primera.
+
+**Checklist antes de escribir una consulta o un servicio de lectura:**
+
+1. **Buscar primero.** ¿Existe ya un endpoint, un servicio o una consulta que devuelva esto?
+   Un `grep` por el concepto de negocio cuesta un minuto.
+2. **Si existe y sirve, usarlo.** Aunque devuelva de más: filtrar sobra es barato, mantener
+   dos fuentes no.
+3. **Si existe pero no encaja, extenderlo**, no clonarlo. Un parámetro nuevo en el servicio
+   existente es preferible a un servicio paralelo.
+4. **Si de verdad hace falta uno nuevo, dejar UNA definición** reutilizable (constante, CTE,
+   servicio) y que los demás consumidores pasen por ella.
+5. **Justificar la duplicación cuando sea inevitable.** A veces lo es —una consulta masiva no
+   puede usar el camino de una lectura en vivo contra hardware—, pero eso se escribe en el
+   código: qué se duplicó, por qué, y qué hay que cambiar en los dos sitios si cambia la regla.
+
+**Antes de reutilizar, comprobar que el coste encaja con el uso.** Un servicio pensado para
+una consulta puntual puede ser inviable en bucle: leer el estado en vivo de una ONU está bien
+al abrir una ficha, y tumba la gestión del MA5800 si se hace por cada pin del mapa en cada
+movimiento. Reutilizar no significa ignorar el patrón de acceso.
+
+## Perfiles y Especialidades Obligatorias del Agente
+- **Al trabajar en `backend/src/`:** Asume el rol de **Ingeniero de Software Senior Especialista en NestJS y Arquitecturas de Microservicios** [INDEX]. Aplica patrones de inyección de dependencias estrictos, tipado fuerte de TypeScript, optimización de consultas TypeORM y manejo de excepciones robusto [INDEX].
+- **Al trabajar en scripts de red:** Asume el rol de **Ingeniero de Redes y Telecomunicaciones (Especialista MikroTik MTCNA/MTCRE y Redes WISP/FTTH)** [INDEX]. Prioriza la estabilidad de los sockets, control de concurrencia en la API de RouterOS y logs preventivos de fallos de conexión [INDEX].
+- **Al trabajar en `frontend/src/`:** Asume el rol de **Arquitecto Frontend Senior en Next.js 14 (App Router), React y Tailwind CSS** [INDEX]. Optimiza el renderizado del lado del servidor (SSR) y el manejo de estados globales limpios con Zustand [INDEX].
