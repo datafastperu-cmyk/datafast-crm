@@ -7,9 +7,23 @@
 > Formato de cada entrada: qué falta, **por qué importa** (la consecuencia real, no la
 > tarea) y cómo se comprueba. Una entrada sin consecuencia acaba siendo ignorada.
 >
-> Última actualización: 2026-08-08
+> Última actualización: 2026-08-10
 
 ---
+
+
+> ### 📌 Corte del 10 de agosto de 2026
+>
+> Todo lo que estaba abierto al cierre del **10/08/2026** quedó congelado en
+> [`docs/gobierno/CORTE-2026-08-10-pendientes.md`](docs/gobierno/CORTE-2026-08-10-pendientes.md),
+> con identificadores **`C10-01`** a **`C10-34`**.
+>
+> **Por qué.** Entra un diseño definitivo del propietario. Sin un corte con fecha, los pendientes
+> anteriores se mezclan con el trabajo que traiga el rediseño y en dos semanas nadie sabe qué se
+> sabía antes. Al adaptar cada punto se marca su destino: **VIGENTE**, **ABSORBIDO**, **CAMBIA** u
+> **OBSOLETO**.
+>
+> Lo de este fichero que sea posterior al 10/08 **no** lleva identificador `C10`: es del diseño nuevo.
 
 ## 🔴 Abierto — impacto en producción
 
