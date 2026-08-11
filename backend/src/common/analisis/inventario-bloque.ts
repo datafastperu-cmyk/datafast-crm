@@ -392,17 +392,26 @@ async function main() {
   for (const m of enBloque) {
     const svc = servicios.filter((s) => s.modulo === m);
     const escribe = [...new Set(escrituras.filter((e) => e.modulo === m).map((e) => e.tabla))].sort();
+    // Tres cubos, no dos: una tabla sin dueño declarado no es propia ni ajena, y si no se
+    // nombra desaparece del inventario del módulo aunque el módulo la escriba.
     const propias = escribe.filter((t) => dueno[t] === m);
     const ajenas = escribe.filter((t) => dueno[t] && dueno[t] !== m);
+    const huerfanas = escribe.filter((t) => !dueno[t]);
     const deps = [...new Set(dependencias.filter((d) => d.desde === m).map((d) => d.hacia))].sort();
     const usanme = [...new Set(dependencias.filter((d) => d.hacia === m).map((d) => d.desde))].sort();
     const eps = endpoints.filter((e) => e.modulo === m);
     p();
     p(`### \`${m}\``);
     p();
+    if (!fs.existsSync(path.join('src/modules', m))) {
+      p(`**No existe como módulo.** No hay \`src/modules/${m}/\`: lo que el bloque llama «${m}»`);
+      p('vive repartido en otros módulos. Es un hallazgo del inventario, no un vacío del informe.');
+      continue;
+    }
     p(`- **Servicios** (${svc.length}): ${svc.map((s) => `\`${s.clase}\``).join(', ') || '—'}`);
     p(`- **Escribe (propias)**: ${propias.map((t) => `\`${t}\``).join(', ') || '—'}`);
     p(`- **Escribe (ajenas)**: ${ajenas.map((t) => `\`${t}\` (de ${dueno[t]})`).join(', ') || '—'}`);
+    p(`- **Escribe (sin dueño declarado)**: ${huerfanas.map((t) => `\`${t}\``).join(', ') || '—'}`);
     p(`- **Depende de**: ${deps.join(', ') || '—'}`);
     p(`- **Le llaman**: ${usanme.join(', ') || '—'}`);
     p(`- **Expone**: ${eps.length} endpoints${eps.length ? ` en \`${[...new Set(eps.map((e) => e.ruta.split('/').slice(0, 2).join('/')))].join(', ')}\`` : ''}`);
