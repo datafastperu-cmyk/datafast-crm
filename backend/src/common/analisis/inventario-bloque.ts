@@ -133,7 +133,8 @@ for (const f of ficheros) {
   }
 
   // Escrituras en SQL crudo.
-  for (const m of s.matchAll(/\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\w+)/gi)) {
+  // El `(?<!\bFOR\s+)` evita leer `FOR UPDATE SKIP LOCKED` como escritura a una tabla `skip`.
+  for (const m of s.matchAll(/(?<!\bFOR\s+)\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\w+)/gi)) {
     const op = m[1].toUpperCase().split(/\s+/)[0];
     escrituras.push({ modulo: mod, tabla: m[2].toLowerCase(), operacion: op,
                       fichero: rel, linea: lineaDe(m.index!), via: 'SQL' });
