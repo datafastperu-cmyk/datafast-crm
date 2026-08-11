@@ -76,6 +76,31 @@ const moduloDe = (f: string): string =>
   (/src[\\/]modules[\\/]([^\\/]+)[\\/]/.exec(f) || [, 'common'])[1] as string;
 const relativo = (f: string) => path.relative('src', f).split(path.sep).join('/');
 
+// Nombres de evento declarados como constantes (`NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO`).
+// Buscar solo literales daba una foto falsa: los eventos vivos del ERP se nombran así, y el
+// informe llegó a decir que 23 eventos no los escuchaba nadie cuando sí tenían consumidor.
+const constanteEvento: Record<string, string> = {};
+for (const f of ficheros) {
+  const s = fs.readFileSync(f, 'utf8');
+  for (const bloque of s.matchAll(/export const (\w+)\s*=\s*\{([\s\S]*?)\n\}/g)) {
+    for (const [, campo, valor] of bloque[2].matchAll(/(\w+)\s*:\s*'([^']+)'/g)) {
+      constanteEvento[`${bloque[1]}.${campo}`] = valor;
+    }
+  }
+  for (const e of s.matchAll(/export enum (\w+)\s*\{([\s\S]*?)\n\}/g)) {
+    for (const [, campo, valor] of e[2].matchAll(/(\w+)\s*=\s*'([^']+)'/g)) {
+      constanteEvento[`${e[1]}.${campo}`] = valor;
+    }
+  }
+}
+/** Un nombre de evento: literal, o constante resuelta. `null` si no se puede resolver. */
+const resolverEvento = (bruto: string): string | null => {
+  const lit = /^['"]([^'"]+)['"]$/.exec(bruto.trim());
+  if (lit) return lit[1];
+  const ref = bruto.trim();
+  return constanteEvento[ref] ?? (/^\w+\.\w+$/.test(ref) ? `${ref} (no resuelto)` : null);
+};
+
 // Entidad → tabla, para poder leer las escrituras por repositorio.
 const tablaDeEntidad: Record<string, string> = {};
 for (const f of ficheros) {
@@ -207,15 +232,22 @@ for (const f of ficheros) {
     for (const w of cuerpo.matchAll(new RegExp(`getRepository\\((\\w+)\\)\\s*\\.\\s*(${OPS_ORM})\\(`, 'g'))) {
       if (tablaDeEntidad[w[1]]) met.escribe.push({ tabla: tablaDeEntidad[w[1]], op: w[2] });
     }
-    for (const e of cuerpo.matchAll(/\.emit\(\s*'([^']+)'/g)) met.emite.push(e[1]);
+    for (const e of cuerpo.matchAll(/\.emit\(\s*([^,)]+)/g)) {
+      const n = resolverEvento(e[1]);
+      if (n) met.emite.push(n);
+    }
     for (const e of cuerpo.matchAll(/\bthis\.(\w+)\.add\(\s*(?:[A-Z_]+\.)?['"]?([\w.-]+)['"]?/g)) {
       if (propCola[e[1]]) met.encola.push(`${e[2]} @ ${propCola[e[1]]}`);
     }
 
     // `@OnEvent('x')` va justo encima de la declaración.
     const encima = s.slice(Math.max(0, a.ini - 200), a.ini);
-    const oe = /@OnEvent\(\s*'([^']+)'[\s\S]*$/.exec(encima);
-    if (oe) { met.escuchaEvento = oe[1]; consumidores.push({ evento: oe[1], clase: met.clase, metodo: met.nombre, modulo: mod }); }
+    const oe = /@OnEvent\(\s*([^,)]+)[\s\S]*$/.exec(encima);
+    const nombreOe = oe && resolverEvento(oe[1]);
+    if (nombreOe) {
+      met.escuchaEvento = nombreOe;
+      consumidores.push({ evento: nombreOe, clase: met.clase, metodo: met.nombre, modulo: mod });
+    }
     // Quién procesa un trabajo se lee de su decorador, no de parecidos entre nombres.
     const pr = /@Process\(\s*\{?\s*(?:name:\s*)?(?:[A-Z_]+\.)?['"]?([\w.-]+)['"]?[\s\S]*$/.exec(encima);
     if (pr) met.procesaJob = pr[1];
