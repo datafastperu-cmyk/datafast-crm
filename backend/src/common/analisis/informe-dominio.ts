@@ -204,6 +204,29 @@ async function main() {
     p(`| \`${fk.tabla}\` | ${fk.columna} | \`${fk.ref_tabla}\`.${fk.ref_columna} | ${fk.borrado} |`);
   }
 
+  // Una columna `X_id` que apunta a una tabla que no se llama `X` es un nombre que miente al
+  // lector. Tras renombrar `contratos`→`servicios` (fase 3a) hay ~20 tablas cuyo `contrato_id`
+  // significa SERVICIO, mientras el `contrato_id` de `servicios` significa ACUERDO: el mismo
+  // nombre con dos sentidos, y nada en el esquema lo advierte.
+  const mienten = fks.filter((f) => {
+    if (!dominio.has(f.tabla) && !dominio.has(f.ref_tabla)) return false;
+    const m = /^(.+)_id$/.exec(f.columna);
+    if (!m) return false;
+    const raiz = m[1];
+    return f.ref_tabla !== raiz && f.ref_tabla !== `${raiz}s` && f.ref_tabla !== `${raiz}es`;
+  });
+  p();
+  p('## 2b. Columnas cuyo nombre no dice a dónde apuntan');
+  p();
+  if (!mienten.length) p('_Ninguna._');
+  else {
+    const porNombre: Record<string, string[]> = {};
+    for (const f of mienten) (porNombre[`${f.columna} → ${f.ref_tabla}`] ??= []).push(f.tabla);
+    for (const [par, tablas_] of Object.entries(porNombre).sort((a, b) => b[1].length - a[1].length)) {
+      p(`- **${par}** — ${tablas_.length} tabla(s): ${tablas_.map((t) => `\`${t}\``).join(', ')}`);
+    }
+  }
+
   p();
   p('## 3. Escritores múltiples — las tablas sin dueño único de hecho');
   p();
