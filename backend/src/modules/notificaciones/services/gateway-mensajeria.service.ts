@@ -5,6 +5,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource }       from 'typeorm';
 import { CACHE_MANAGER }    from '@nestjs/cache-manager';
 import { Cache }            from 'cache-manager';
+import { ResultadoOperacion, clasificarError } from '../../../common/domain/resultado-operacion';
+import { RechazosDefinitivos } from '../../../common/domain/rechazos-definitivos';
 import { decrypt }              from '../../../common/utils/encryption.util';
 import { normalizarTelefono }  from '../../../common/utils/telefono.util';
 import { TipoNotificacion, WhatsAppParams } from './whatsapp.service';
@@ -182,145 +184,179 @@ export class GatewayMensajeriaService {
   ) {}
 
   // ── Punto de entrada único para el worker ─────────────────
-  async despachar(params: WhatsAppParams): Promise<EnvioResult> {
-    const destino = await this.resolveDestino(params);
+  //
+  // Ola 1 (2026-08-16): convertido a ResultadoOperacion. Consumida por dos workers
+  // (MensajeriaWorker.procesarNotificacionIndividual, CampanasWorker.procesarCampanaMasiva)
+  // — un worker de cola ES el orquestador automático que E03-02 tiene en mente, aunque
+  // también la llame `SistemaService.reenviarNotifLog()` para un reenvío manual.
+  //
+  // HALLAZGO al clasificar, no antes: `despachar()` nunca lanzaba — devolvía
+  // `{enviado:false}` para CUALQUIER fallo, permanente o transitorio, y los dos workers
+  // hacían `if (!result.enviado) logger.warn(...)` sin relanzar. BullMQ ya tiene
+  // `attempts: 3` con backoff exponencial configurado para estos jobs (`workers.constants.ts`,
+  // `gateway-monitor.service.ts`) — pero `@OnQueueFailed` solo se dispara si el handler
+  // LANZA, y este nunca lanzaba. Los 3 reintentos configurados llevan tanto tiempo sin
+  // ejecutarse como el código que dicen proteger: un fallo transitorio del proveedor se
+  // marcaba "procesado" y el mensaje se perdía, sin que el mecanismo de reintento —que
+  // existe y está configurado— llegara a intervenir nunca. Declarado en F-0.1 §9.1.
+  async despachar(params: WhatsAppParams): Promise<ResultadoOperacion> {
+    try {
+      const destino = await this.resolveDestino(params);
 
-    if (!destino) {
-      this.logger.warn(
-        `[GW] Sin destino para ${params.tipo} (empresa=${params.empresaId}) — whatsapp_corporativo no configurado`,
-      );
-      if (params.logId) {
-        // Actualizar log pre-creado por encolar() → visible en /mensajeria/enviados
-        await this.ds.query(
-          `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1 WHERE id = $2`,
-          ['Sin número de destino configurado', params.logId],
-        ).catch(() => {});
-      } else if (params.empresaId) {
-        // Log no fue pre-creado (encolar() falló en BD) → insertar ahora para garantizar visibilidad
-        await this.ds.query(
-          `INSERT INTO notificaciones_logs
-             (empresa_id, contrato_id, cliente_id, telefono, tipo_template, estado_entrega, error_detalle, variables)
-           VALUES ($1, $2, $3, $4, $5, 'NO_ENVIADO', $6, $7)`,
-          [
-            params.empresaId,
-            params.contratoId ?? null,
-            params.clienteId  ?? null,
-            (params.telefono ?? '').substring(0, 30),
-            params.tipo,
-            'Sin número de destino configurado — whatsapp_corporativo no configurado',
-            params.variables ? JSON.stringify(params.variables) : null,
-          ],
-        ).catch(() => {});
+      if (!destino) {
+        this.logger.warn(
+          `[GW] Sin destino para ${params.tipo} (empresa=${params.empresaId}) — whatsapp_corporativo no configurado`,
+        );
+        if (params.logId) {
+          // Actualizar log pre-creado por encolar() → visible en /mensajeria/enviados
+          await this.ds.query(
+            `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1 WHERE id = $2`,
+            ['Sin número de destino configurado', params.logId],
+          ).catch(() => {});
+        } else if (params.empresaId) {
+          // Log no fue pre-creado (encolar() falló en BD) → insertar ahora para garantizar visibilidad
+          await this.ds.query(
+            `INSERT INTO notificaciones_logs
+               (empresa_id, contrato_id, cliente_id, telefono, tipo_template, estado_entrega, error_detalle, variables)
+             VALUES ($1, $2, $3, $4, $5, 'NO_ENVIADO', $6, $7)`,
+            [
+              params.empresaId,
+              params.contratoId ?? null,
+              params.clienteId  ?? null,
+              (params.telefono ?? '').substring(0, 30),
+              params.tipo,
+              'Sin número de destino configurado — whatsapp_corporativo no configurado',
+              params.variables ? JSON.stringify(params.variables) : null,
+            ],
+          ).catch(() => {});
+        }
+        return RechazosDefinitivos.NOTIF_SIN_DESTINO();
       }
-      return { enviado: false, error: 'Sin número destino configurado' };
-    }
 
-    // Si el Worker ya creó el log (notificaciones individuales), reutilizarlo.
-    // Para campañas masivas (sin logId), crear uno nuevo con estado ENCOLADO.
-    let logId: string | null = params.logId ?? null;
-    if (!logId) {
-      try {
-        const [row] = await this.ds.query(`
-          INSERT INTO notificaciones_logs (empresa_id, contrato_id, telefono, tipo_template, estado_entrega)
-          VALUES ($1, $2, $3, $4, 'ENCOLADO') RETURNING id
-        `, [params.empresaId ?? null, params.contratoId ?? null, destino.substring(0, 30), params.tipo]);
-        logId = row?.id ?? null;
-      } catch (logErr: any) {
-        this.logger.warn(`[GW] No se pudo crear log: ${logErr.message}`);
-      }
-    }
-
-    const config = await this.resolveConfig(params.empresaId);
-    let resultado: EnvioResult;
-    let noEnviado = false;
-    let proveedorUsado: string | null = config?.proveedor ?? null;
-
-    // Verificar switch de activación antes de cualquier despacho
-    if (!config) {
-      // Sin configuración de mensajería — no hay servicio activo para esta empresa
-      this.logger.warn(`[GW] Sin config de mensajería para empresa ${params.empresaId}`);
-      resultado = { enviado: false, error: 'Sin configuración de mensajería activa' };
-      noEnviado = true;
-    } else if (!config.activo) {
-      this.logger.warn(`[GW] Servicio inactivo para empresa ${params.empresaId} (proveedor=${config.proveedor})`);
-      resultado  = { enviado: false, error: 'Servicio de mensajería inactivo' };
-      noEnviado  = true;
-    } else {
-      // Intento primario
-      const primario = await this.tryEnvio(config.proveedor, config, params, destino);
-      resultado  = primario.resultado;
-      noEnviado  = primario.noEnviado;
-
-      // Fallback: solo si el primario tuvo un fallo transitorio (no de configuración)
-      if (!resultado.enviado && !noEnviado) {
-        for (const candidato of FALLBACK_ORDER) {
-          if (candidato === config.proveedor) continue;
-          if (!config.activoMap[candidato])   continue;
-          this.logger.warn(
-            `[GW] Primario ${config.proveedor} falló → fallback a ${candidato} (empresa=${params.empresaId})`,
-          );
-          const fb = await this.tryEnvio(candidato, config, params, destino);
-          resultado = fb.resultado;
-          noEnviado = fb.noEnviado;
-          if (resultado.enviado) proveedorUsado = candidato;
-          break; // un solo intento de fallback
+      // Si el Worker ya creó el log (notificaciones individuales), reutilizarlo.
+      // Para campañas masivas (sin logId), crear uno nuevo con estado ENCOLADO.
+      let logId: string | null = params.logId ?? null;
+      if (!logId) {
+        try {
+          const [row] = await this.ds.query(`
+            INSERT INTO notificaciones_logs (empresa_id, contrato_id, telefono, tipo_template, estado_entrega)
+            VALUES ($1, $2, $3, $4, 'ENCOLADO') RETURNING id
+          `, [params.empresaId ?? null, params.contratoId ?? null, destino.substring(0, 30), params.tipo]);
+          logId = row?.id ?? null;
+        } catch (logErr: any) {
+          this.logger.warn(`[GW] No se pudo crear log: ${logErr.message}`);
         }
       }
-    }
 
-    // Actualizar log con resultado final
-    if (logId) {
-      try {
-        let nuevoEstado: string;
-        const proveedorNombre = proveedorUsado;
-        if (resultado.enviado) {
-          nuevoEstado = 'ENVIADO';
-          await this.ds.query(
-            `UPDATE notificaciones_logs SET estado_entrega = 'ENVIADO', provider_message_id = $1, proveedor = $2, sent_at = NOW() WHERE id = $3`,
-            [resultado.messageId ?? null, proveedorNombre, logId],
-          );
-        } else if (noEnviado) {
-          await this.ds.query(
-            `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1, proveedor = $2 WHERE id = $3`,
-            [(resultado.error ?? 'Sin servicio activo').substring(0, 500), proveedorNombre, logId],
-          );
-          nuevoEstado = 'NO_ENVIADO';
-        } else {
-          await this.ds.query(
-            `UPDATE notificaciones_logs SET estado_entrega = 'FALLIDO', error_detalle = $1, proveedor = $2 WHERE id = $3`,
-            [(resultado.error ?? 'Error desconocido').substring(0, 500), proveedorNombre, logId],
-          );
-          nuevoEstado = 'FALLIDO';
-          void this.eventos?.registrar({
-            origen:   'whatsapp',
-            codigo:   'ENVIO_FALLIDO',
-            mensaje:  `Envío WhatsApp FALLIDO (proveedor ${proveedorNombre ?? 'desconocido'}): ${resultado.error ?? 'Error desconocido'}`,
-            contexto: { logId, proveedor: proveedorNombre ?? null },
-          });
+      const config = await this.resolveConfig(params.empresaId);
+      let resultado: EnvioResult;
+      let definitivo = false;
+      let proveedorUsado: string | null = config?.proveedor ?? null;
+
+      // Verificar switch de activación antes de cualquier despacho
+      if (!config) {
+        // Sin configuración de mensajería — no hay servicio activo para esta empresa
+        this.logger.warn(`[GW] Sin config de mensajería para empresa ${params.empresaId}`);
+        resultado  = { enviado: false, error: 'Sin configuración de mensajería activa' };
+        definitivo = true;
+      } else if (!config.activo) {
+        this.logger.warn(`[GW] Servicio inactivo para empresa ${params.empresaId} (proveedor=${config.proveedor})`);
+        resultado  = { enviado: false, error: 'Servicio de mensajería inactivo' };
+        definitivo = true;
+      } else {
+        // Intento primario
+        const primario = await this.tryEnvio(config.proveedor, config, params, destino);
+        resultado  = primario.resultado;
+        definitivo = primario.definitivo;
+
+        // Fallback: si el primario tuvo un fallo transitorio (no de configuración) — y esto
+        // ahora incluye el circuit breaker OPEN, que antes quedaba fuera (ver comentario en
+        // tryEnvio).
+        if (!resultado.enviado && !definitivo) {
+          for (const candidato of FALLBACK_ORDER) {
+            if (candidato === config.proveedor) continue;
+            if (!config.activoMap[candidato])   continue;
+            this.logger.warn(
+              `[GW] Primario ${config.proveedor} falló → fallback a ${candidato} (empresa=${params.empresaId})`,
+            );
+            const fb = await this.tryEnvio(candidato, config, params, destino);
+            resultado  = fb.resultado;
+            definitivo = fb.definitivo;
+            if (resultado.enviado) proveedorUsado = candidato;
+            break; // un solo intento de fallback
+          }
         }
-        this.logger.log(`[GW] Log ${logId} → ${nuevoEstado}`);
-      } catch (logErr: any) {
-        this.logger.warn(`[GW] No se pudo actualizar log ${logId}: ${logErr.message}`);
       }
-    }
 
-    return resultado;
+      // Actualizar log con resultado final
+      if (logId) {
+        try {
+          let nuevoEstado: string;
+          const proveedorNombre = proveedorUsado;
+          if (resultado.enviado) {
+            nuevoEstado = 'ENVIADO';
+            await this.ds.query(
+              `UPDATE notificaciones_logs SET estado_entrega = 'ENVIADO', provider_message_id = $1, proveedor = $2, sent_at = NOW() WHERE id = $3`,
+              [resultado.messageId ?? null, proveedorNombre, logId],
+            );
+          } else if (definitivo) {
+            await this.ds.query(
+              `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1, proveedor = $2 WHERE id = $3`,
+              [(resultado.error ?? 'Sin servicio activo').substring(0, 500), proveedorNombre, logId],
+            );
+            nuevoEstado = 'NO_ENVIADO';
+          } else {
+            await this.ds.query(
+              `UPDATE notificaciones_logs SET estado_entrega = 'FALLIDO', error_detalle = $1, proveedor = $2 WHERE id = $3`,
+              [(resultado.error ?? 'Error desconocido').substring(0, 500), proveedorNombre, logId],
+            );
+            nuevoEstado = 'FALLIDO';
+            void this.eventos?.registrar({
+              origen:   'whatsapp',
+              codigo:   'ENVIO_FALLIDO',
+              mensaje:  `Envío WhatsApp FALLIDO (proveedor ${proveedorNombre ?? 'desconocido'}): ${resultado.error ?? 'Error desconocido'}`,
+              contexto: { logId, proveedor: proveedorNombre ?? null },
+            });
+          }
+          this.logger.log(`[GW] Log ${logId} → ${nuevoEstado}`);
+        } catch (logErr: any) {
+          this.logger.warn(`[GW] No se pudo actualizar log ${logId}: ${logErr.message}`);
+        }
+      }
+
+      if (resultado.enviado) return { clase: 'aplicado', mensaje: 'Mensaje enviado.' };
+      if (definitivo) return RechazosDefinitivos.NOTIF_CONFIG_INVALIDA(resultado.error ?? 'Rechazo de configuración sin detalle.');
+      return { clase: 'reintentable', motivo: resultado.error ?? 'Envío falló sin detalle.' };
+    } catch (err) {
+      return clasificarError(err);
+    }
   }
 
   // ── Despacho para un proveedor concreto (reutilizado en primario y fallback) ──
+  //
+  // Ola 1 (2026-08-16): `noEnviado` (booleano) pasa a `definitivo` con el mismo significado
+  // en 5 de sus 7 salidas tempranas (sin plantilla, texto excede límite, sin credenciales,
+  // sin email SMTP — datos de configuración que no cambian solos) — PERO el circuit breaker
+  // OPEN estaba en el mismo bucket que esos cuatro, y es exactamente lo contrario:
+  // `CircuitBreakerRegistry` lo abre porque el proveedor viene fallando, y se CIERRA solo
+  // pasado su cooldown. Marcarlo `noEnviado=true` hacía que `despachar()` NO intentara el
+  // proveedor de fallback mientras el circuit breaker seguía en pausa — el mecanismo que
+  // existe para sortear justo esa situación quedaba inutilizado por su propio disyuntor.
+  // Encontrado al clasificar para RechazosDefinitivos, no antes: `definitivo: false` en las
+  // dos salidas de circuit breaker es la corrección, declarada en F-0.1 §9.1.
   private async tryEnvio(
     proveedor: ProveedorActivo,
     config: GwConfig,
     params: WhatsAppParams,
     destino: string,
-  ): Promise<{ resultado: EnvioResult; noEnviado: boolean }> {
+  ): Promise<{ resultado: EnvioResult; definitivo: boolean }> {
     let resultado: EnvioResult;
-    let noEnviado = false;
+    let definitivo = false;
 
     if (proveedor === 'SMTP') {
       const emailDestino = await this.resolveClientEmail(params);
       if (!emailDestino) {
-        return { resultado: { enviado: false, error: 'Sin email de cliente configurado' }, noEnviado: true };
+        return { resultado: { enviado: false, error: 'Sin email de cliente configurado' }, definitivo: true };
       }
       const asunto = SMTP_ASUNTOS[params.tipo as string] ?? (params.tipo as string);
       const textoEmail = await this.resolveTexto(
@@ -328,16 +364,16 @@ export class GatewayMensajeriaService {
         params.contratoId, params.clienteId, params.variables ?? {}, 'email', params.codigoPlantilla,
       );
       if (textoEmail === null) {
-        return { resultado: { enviado: false, error: `Sin plantilla email para '${params.tipo}'` }, noEnviado: true };
+        return { resultado: { enviado: false, error: `Sin plantilla email para '${params.tipo}'` }, definitivo: true };
       }
       const smtpConfig: GwConfig = { ...config, proveedor: 'SMTP' };
       const strategy = this.buildStrategy(smtpConfig, params.empresaId);
       if (!strategy) {
-        return { resultado: { enviado: false, error: 'SMTP sin credenciales configuradas' }, noEnviado: true };
+        return { resultado: { enviado: false, error: 'SMTP sin credenciales configuradas' }, definitivo: true };
       }
       const cbKey = `${params.empresaId ?? 'global'}:SMTP`;
       if (!this.cb.canProceed(cbKey)) {
-        return { resultado: { enviado: false, error: 'Circuit breaker OPEN: SMTP' }, noEnviado: true };
+        return { resultado: { enviado: false, error: 'Circuit breaker OPEN: SMTP' }, definitivo: false };
       }
       this.logger.log(`[GW] SMTP → ${emailDestino} | ${params.tipo}`);
       resultado = await strategy.enviarMensaje(emailDestino, textoEmail, asunto);
@@ -349,19 +385,19 @@ export class GatewayMensajeriaService {
         params.contratoId, params.clienteId, params.variables ?? {}, 'whatsapp', params.codigoPlantilla,
       );
       if (texto === null) {
-        return { resultado: { enviado: false, error: `Sin plantilla para '${params.tipo}'` }, noEnviado: true };
+        return { resultado: { enviado: false, error: `Sin plantilla para '${params.tipo}'` }, definitivo: true };
       }
       if (texto.length > config.limiteCaracteres) {
-        return { resultado: { enviado: false, error: `Texto excede límite ${config.limiteCaracteres}` }, noEnviado: true };
+        return { resultado: { enviado: false, error: `Texto excede límite ${config.limiteCaracteres}` }, definitivo: true };
       }
       const gwConfig: GwConfig = { ...config, proveedor };
       const strategy = this.buildStrategy(gwConfig, params.empresaId);
       if (!strategy) {
-        return { resultado: { enviado: false, error: `${proveedor} sin credenciales configuradas` }, noEnviado: true };
+        return { resultado: { enviado: false, error: `${proveedor} sin credenciales configuradas` }, definitivo: true };
       }
       const cbKey = `${params.empresaId ?? 'global'}:${proveedor}`;
       if (!this.cb.canProceed(cbKey)) {
-        return { resultado: { enviado: false, error: `Circuit breaker OPEN: ${proveedor}` }, noEnviado: true };
+        return { resultado: { enviado: false, error: `Circuit breaker OPEN: ${proveedor}` }, definitivo: false };
       }
       const telefono = normalizarTelefono(destino, config.codigoPais) ?? destino;
       this.logger.log(`[GW] ${proveedor} → ${telefono} | ${params.tipo}`);
@@ -374,7 +410,7 @@ export class GatewayMensajeriaService {
       if (config.pausa > 0) await this.sleep(config.pausa);
     }
 
-    return { resultado, noEnviado };
+    return { resultado, definitivo };
   }
 
   // ── Enrutamiento dual: alertas internas → whatsapp_corporativo ──

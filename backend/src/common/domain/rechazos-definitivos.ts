@@ -66,4 +66,35 @@ export const RechazosDefinitivos = {
     clase: 'rechazado_definitivo',
     motivo: 'El registro no tiene perfiles GPON guardados — re-aprovisiona desde el modal del contrato.',
   }),
+
+  // ── Mensajería (notificaciones) ─────────────────────────────────────────
+  // Ola 1, grupo 2 — GatewayMensajeriaService.despachar()
+
+  /** Ni el teléfono del cliente ni el `whatsapp_corporativo` de la empresa están configurados. */
+  NOTIF_SIN_DESTINO: (): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: 'Sin número de destino configurado.',
+  }),
+
+  /** La empresa no tiene ningún proveedor de mensajería configurado (`proveedor_activo` nulo). */
+  NOTIF_SIN_CONFIG: (): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: 'Sin configuración de mensajería activa.',
+  }),
+
+  /** El operador desactivó explícitamente el servicio de mensajería para esta empresa. */
+  NOTIF_SERVICIO_INACTIVO: (): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: 'Servicio de mensajería inactivo.',
+  }),
+
+  /**
+   * El proveedor (o su fallback) rechazó el envío por un problema de configuración o
+   * contenido que no cambia solo: sin plantilla para el tipo, texto que excede el límite de
+   * caracteres, sin credenciales del proveedor, o sin email del cliente (ruta SMTP).
+   */
+  NOTIF_CONFIG_INVALIDA: (detalle: string): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: detalle,
+  }),
 } as const;

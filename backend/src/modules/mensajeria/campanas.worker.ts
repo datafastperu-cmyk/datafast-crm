@@ -4,6 +4,7 @@ import { Job }                              from 'bull';
 import { GatewayMensajeriaService }         from '../notificaciones/services/gateway-mensajeria.service';
 import { TipoNotificacion }                 from '../notificaciones/services/whatsapp.service';
 import { QUEUES, JOBS, PayloadCampanaItem } from '../workers/workers.constants';
+import { ResultadoOperacion, esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 
 // ─── Cola CAMPANAS: mensajes masivos con goteo ─────────────────
 // Separada de NOTIFICACIONES para que las alertas críticas del sistema
@@ -19,7 +20,7 @@ export class CampanasWorker {
   ) {}
 
   @Process({ name: JOBS.CAMPANA_MASIVA, concurrency: 1 })
-  async procesarCampanaMasiva(job: Job<PayloadCampanaItem>): Promise<any> {
+  async procesarCampanaMasiva(job: Job<PayloadCampanaItem>): Promise<ResultadoOperacion> {
     const { empresaId, tipo, telefono, variables } = job.data;
 
     const result = await this.gatewaySvc.despachar({
@@ -29,10 +30,15 @@ export class CampanasWorker {
       empresaId,
     });
 
-    if (!result.enviado) {
-      this.logger.warn(`[CampanasWorker] Fallo job #${job.id} → ${telefono}: ${result.error}`);
+    if (esExito(result)) return result;
+
+    if (result.clase === 'rechazado_definitivo') {
+      this.logger.warn(`[CampanasWorker] Rechazo definitivo job #${job.id} → ${telefono}: ${result.motivo}`);
+      return result;
     }
-    return result;
+
+    this.logger.warn(`[CampanasWorker] Fallo job #${job.id} → ${telefono} [${result.clase}]: ${mensajeDe(result)}`);
+    throw new Error(mensajeDe(result));
   }
 
   @OnQueueFailed()

@@ -19,6 +19,7 @@ import { SYSTEM_DEFAULTS_WHATSAPP } from '../plantillas/plantillas.service';
 import { TipoNotificacion }         from '../notificaciones/services/whatsapp.service';
 import { EventosSistemaService }    from './eventos-sistema.service';
 import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
+import { esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 
 export const GATEWAY_EVENTS = {
   PROVIDER_ACTIVATED: 'gateway.provider.activated',
@@ -877,7 +878,11 @@ export class SistemaService implements OnModuleInit {
       contratoId: log.contrato_id,
     });
 
-    return { enviado: resultado.enviado, error: resultado.error };
+    // reenviarNotifLog conserva su propio contrato externo ({enviado, error}) — despachar()
+    // ahora habla ResultadoOperacion (Ola 1), pero este es un llamador humano (controller de
+    // Sistema), no el outbox ni un watcher: no hay reintento automático que active aquí.
+    if (esExito(resultado)) return { enviado: true };
+    return { enviado: false, error: mensajeDe(resultado) };
   }
 
   private buildNotifVariables(tipo: string, row: any): Record<string, string> {

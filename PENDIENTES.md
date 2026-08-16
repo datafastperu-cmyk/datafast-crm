@@ -219,6 +219,17 @@ del Core buscando el mismo patrón.
 **No se despliega suelto.** Nivel B no activa la excepción de R-1 (F-0.1 §8.1) —eso es solo
 para Nivel A—: viaja con la reconstrucción del Core, no como parche en caliente a la VPS.
 
+**Segunda ocurrencia (2026-08-16, Ola 1 grupo 2) — registrada, NO corregida:** al convertir
+`GatewayMensajeriaService.despachar()` a `ResultadoOperacion` apareció el mismo patrón en
+`ProvisionFtthService.marcarUsoTr069()` (`provision-ftth.service.ts:2318`):
+`.catch(() => { /* best-effort: un fallo al sellar el uso no debe romper la apertura del
+modal */ })`. Correctamente fuera del alcance de E03-02/E03-03 (PA-1: es bookkeeping del plano
+de negocio — la marca que suprime el barrido TTL del carril TR-069 —, no una operación de
+frontera contra hardware), pero si el `UPDATE` falla nadie se entera: el modal Ver ONU abre
+igual y el TTL puede expirar el carril sin que quede rastro. **No se toca aquí** — dos
+ocurrencias son anécdota, no patrón. Si aparece una tercera, el barrido de `catch` mudos que el
+estado objetivo de B-16 ya prevé deja de ser opcional.
+
 ---
 
 ## 🔵 A vigilar (no es un fallo, es un cambio sin ejercitar)
@@ -859,7 +870,7 @@ desbordaban igual** (la previsualizacion habria mostrado el 3 de marzo como fech
 | **B-10** | PA-11 | Credenciales de connreq de GenieACS duplicadas en el ACS y en el .env, sin verificación de coincidencia. CCD y cron… |
 | **B-11** | PA-08 | Implementados y en producción, sin test que los ejercite |
 | **B-15** | PS-01 / OWASP | La aplicación se conecta a PostgreSQL como SUPERUSUARIO (datafast_db_user: rolsuper, rolbypassrls, dueña de las 111… |
-| **B-16** | PC-06 / PF-4 | `SchemaGuardModule` tenía un catch mudo (encontrado 16/08 por la Ola 0). Causa puntual y silencio ya corregidos; falta el test de regresión — ver entrada 34 |
+| **B-16** | PC-06 / PF-4 | `SchemaGuardModule` tenía un catch mudo (encontrado 16/08 por la Ola 0). Causa puntual y silencio ya corregidos; falta el test de regresión. Segunda ocurrencia en `marcarUsoTr069()` (16/08, Ola 1) registrada sin corregir — ver entrada 34 |
 | **C-1** | PS-06 | forbidNonWhitelisted: false: los campos extra se descartan en silencio |
 | **C-2** | PA-06 | Solo en el plano de red; el financiero lanza excepciones HTTP a consumidores que a veces son máquinas |
 | **C-3** | PA-01 | El patrón existe y se aplica, pero nada obliga a implementarlo en un módulo nuevo |

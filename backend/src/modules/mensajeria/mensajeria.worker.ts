@@ -6,6 +6,7 @@ import { DataSource }                        from 'typeorm';
 import { GatewayMensajeriaService }          from '../notificaciones/services/gateway-mensajeria.service';
 import { TipoNotificacion }                  from '../notificaciones/services/whatsapp.service';
 import { QUEUES, JOBS }                      from '../workers/workers.constants';
+import { ResultadoOperacion, esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 
 // ─── Payload unificado de llegada desde NotificationEventListener ─
 interface PayloadNotifEnvio {
@@ -34,7 +35,7 @@ export class MensajeriaWorker {
   ) {}
 
   @Process({ name: JOBS.NOTIF_ENVIO, concurrency: 5 })
-  async procesarNotificacionIndividual(job: Job<PayloadNotifEnvio>): Promise<any> {
+  async procesarNotificacionIndividual(job: Job<PayloadNotifEnvio>): Promise<ResultadoOperacion> {
     const { telefono, tipo, variables, empresaId, contratoId, clienteId, logId, codigoPlantilla } = job.data;
 
     if (logId) {
@@ -56,10 +57,20 @@ export class MensajeriaWorker {
       logId,
     });
 
-    if (!result.enviado) {
-      this.logger.warn(`[Worker] Fallo #${job.id} → ${telefono} (${tipo}): ${result.error}`);
+    if (esExito(result)) return result;
+
+    // `rechazado_definitivo`: BullMQ NO debe reintentar — el veredicto no cambia. Se
+    // registra y se devuelve tal cual (D-14: detener y escalar, no martillar).
+    if (result.clase === 'rechazado_definitivo') {
+      this.logger.warn(`[Worker] Rechazo definitivo #${job.id} → ${telefono} (${tipo}): ${result.motivo}`);
+      return result;
     }
-    return result;
+
+    // `reintentable` / `indeterminado`: lanzar para que el `attempts`+backoff ya
+    // configurado en JOB_OPTIONS (workers.constants.ts) intervenga de verdad — antes
+    // este handler nunca lanzaba y esos reintentos llevaban configurados sin ejecutarse.
+    this.logger.warn(`[Worker] Fallo #${job.id} → ${telefono} (${tipo}) [${result.clase}]: ${mensajeDe(result)}`);
+    throw new Error(mensajeDe(result));
   }
 
   @OnQueueFailed()
