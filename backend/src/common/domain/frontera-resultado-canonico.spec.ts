@@ -46,10 +46,11 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
     return out;
   };
 
-  // 17 = recongelado el 2026-08-16 tras convertir ProvisionFtthService.reaplicar()
-  // (grupo 1, consumida por el outbox — bajó de 18). Desglose: 10 BadRequestException,
-  // 9 NotFoundException, 3 ConflictException (una operación puede lanzar más de una clase).
-  const TECHO_FRONTERA_CON_EXCEPCION_TRANSPORTE = 17;
+  // 15 = recongelado el 2026-08-16 tras el grupo 3a (VpnClienteService.revocar() ya no
+  // lanza ConflictException; SmartoltApiService.aprovisionarOnu() ya no lanza
+  // BadRequestException — bajó de 17). Desglose: 9 BadRequestException, 9 NotFoundException,
+  // 2 ConflictException (una operación puede lanzar más de una clase).
+  const TECHO_FRONTERA_CON_EXCEPCION_TRANSPORTE = 15;
 
   it('el número de operaciones de frontera que lanzan HttpException es exactamente el techo congelado', () => {
     const encontrados = hallazgos().map((h) => h.id).sort();
@@ -85,6 +86,22 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
   // conteo agregado.
   it('caso conocido: ProvisionFtthService.reaplicar() ya no lanza excepción de transporte', () => {
     const h = hallazgos().find((x) => x.id === 'ProvisionFtthService.reaplicar');
+    expect(h).toBeUndefined();
+  });
+
+  // Regresión del grupo 3a (mikrotik → openvpn, 2026-08-16): revocar() lanzaba
+  // ConflictException para "ya revocado" — exactamente el 409 que el llamador
+  // (MikrotikService.removeRouter()) tenía que adivinar por status/constructor (D-14).
+  // Ahora es `ya_en_destino`.
+  it('caso conocido: VpnClienteService.revocar() ya no lanza excepción de transporte', () => {
+    const h = hallazgos().find((x) => x.id === 'VpnClienteService.revocar');
+    expect(h).toBeUndefined();
+  });
+
+  // Regresión del grupo 3a (2026-08-16): aprovisionarOnu() lanzaba BadRequestException si
+  // SmartOLT no devolvía un id de ONU válido. Ahora es `rechazado_definitivo`.
+  it('caso conocido: SmartoltApiService.aprovisionarOnu() ya no lanza excepción de transporte', () => {
+    const h = hallazgos().find((x) => x.id === 'SmartoltApiService.aprovisionarOnu');
     expect(h).toBeUndefined();
   });
 });

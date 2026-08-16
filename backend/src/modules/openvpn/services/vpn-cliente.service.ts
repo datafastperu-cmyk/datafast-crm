@@ -1,6 +1,6 @@
 import {
   Injectable, Logger, NotFoundException,
-  ConflictException, BadRequestException, OnModuleInit, Optional,
+  BadRequestException, OnModuleInit, Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not, LessThan, In } from 'typeorm';
@@ -21,6 +21,7 @@ import { JwtPayload }                   from '../../../common/decorators/current
 import { generateToken, encrypt }       from '../../../common/utils/encryption.util';
 import { Router, MetodoConexion, EstadoEquipo, VersionRouterOS } from '../../mikrotik/entities/router.entity';
 import { EmpresaConfigService } from '../../config/empresa-config.service';
+import { ResultadoOperacion, clasificarError } from '../../../common/domain/resultado-operacion';
 
 // ── Rutas del sistema VPN ─────────────────────────────────────
 const CA_CRT = '/etc/openvpn/server/ca.crt';
@@ -526,19 +527,31 @@ export class VpnClienteService implements OnModuleInit {
 
   // ── Revocar certificado ───────────────────────────────────────
 
-  async revocar(id: string, empresaId: string): Promise<void> {
-    const cliente = await this._getCliente(id, empresaId);
-    if (cliente.estado === 'revocado') throw new ConflictException('Ya revocado');
+  // Ola 1, grupo 3a (2026-08-16). Consumida por MikrotikService.removeRouter() en un bucle
+  // sobre todos los certs del router — antes distinguía "ya revocado" haciendo arqueología
+  // sobre el status/constructor de la excepción (`err?.status === 409 ||
+  // err?.constructor?.name === 'ConflictException'`), exactamente lo que D-14 prohíbe.
+  // `ya_en_destino` reemplaza ese sniffing por la clase de dominio.
+  async revocar(id: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const cliente = await this._getCliente(id, empresaId);
+      if (cliente.estado === 'revocado') {
+        return { clase: 'ya_en_destino', mensaje: 'El cliente VPN ya estaba revocado.' };
+      }
 
-    const effectiveCn = cliente.vpnUsuario ?? cliente.nombreCert;
+      const effectiveCn = cliente.vpnUsuario ?? cliente.nombreCert;
 
-    await this.killClienteVpnManagement(effectiveCn);
-    await this.repo.update(cliente.id, { estado: 'revocado', activo: false });
+      await this.killClienteVpnManagement(effectiveCn);
+      await this.repo.update(cliente.id, { estado: 'revocado', activo: false });
 
-    // Eliminar archivo CCD del cliente revocado para limpiar rutas del servidor
-    const ccdPath = path.join(CCD_DIR, effectiveCn);
-    await fs.unlink(ccdPath).catch(() => {});
-    this.logger.log(`VPN cliente revocado: ${cliente.id}`);
+      // Eliminar archivo CCD del cliente revocado para limpiar rutas del servidor
+      const ccdPath = path.join(CCD_DIR, effectiveCn);
+      await fs.unlink(ccdPath).catch(() => {});
+      this.logger.log(`VPN cliente revocado: ${cliente.id}`);
+      return { clase: 'aplicado', mensaje: 'Cliente VPN revocado.' };
+    } catch (err) {
+      return clasificarError(err);
+    }
   }
 
   // ── Servir certificado (endpoint público protegido por token) ─
@@ -589,89 +602,107 @@ export class VpnClienteService implements OnModuleInit {
   // Usa el cert real (mt-<slug>-<hex>) como vpnCommonName del router,
   // evitando el flujo df_router_id_<uuid> que genera un cert nunca instalado.
 
+  // Ola 1, grupo 3a (2026-08-16). Consumida por MikrotikService.crearRouter(). Cuando el
+  // cert del wizard no aplica, delega en `generarParaRouter` y devuelve exactamente su
+  // resultado — un solo veredicto, no dos representaciones del mismo "vinculé la VPN".
   async vincularCertWizardARouter(
     vpnClienteId: string,
     routerId:     string,
     empresaId:    string,
     usuarioId?:   string,
-  ): Promise<void> {
-    const where: any = { id: vpnClienteId, empresaId, activo: true };
-    // Validar que el cert pertenezca al mismo usuario que creó el wizard
-    // para evitar que un operador reclame el cert pendiente de otro.
-    if (usuarioId) where.usuarioId = usuarioId;
+  ): Promise<ResultadoOperacion> {
+    try {
+      const where: any = { id: vpnClienteId, empresaId, activo: true };
+      // Validar que el cert pertenezca al mismo usuario que creó el wizard
+      // para evitar que un operador reclame el cert pendiente de otro.
+      if (usuarioId) where.usuarioId = usuarioId;
 
-    const cliente = await this.repo.findOne({ where });
-    if (!cliente || cliente.estado === 'revocado') {
-      this.logger.warn(`[VPN-LINK] vpn_cliente ${vpnClienteId} no encontrado, revocado o de otro usuario — fallback a generarParaRouter`);
-      const router = await this.routerRepo.findOne({ where: { id: routerId, empresaId } });
-      if (router) await this.generarParaRouter(router);
-      return;
+      const cliente = await this.repo.findOne({ where });
+      if (!cliente || cliente.estado === 'revocado') {
+        this.logger.warn(`[VPN-LINK] vpn_cliente ${vpnClienteId} no encontrado, revocado o de otro usuario — fallback a generarParaRouter`);
+        const router = await this.routerRepo.findOne({ where: { id: routerId, empresaId } });
+        if (!router) {
+          return { clase: 'no_aplica', mensaje: `Router ${routerId} no encontrado durante el fallback — nada que vincular.` };
+        }
+        return this.generarParaRouter(router);
+      }
+
+      const effectiveCn = cliente.vpnUsuario ?? cliente.nombreCert;
+
+      await this.routerRepo.update(routerId, { vpnCommonName: effectiveCn } as any);
+      await this.repo.update(cliente.id, { routerId });
+
+      // Escribir/actualizar CCD con el CN correcto y las subnets del router
+      const router = await this.routerRepo.findOne({ where: { id: routerId } });
+      if (router) {
+        await this.escribirArchivoCcd(effectiveCn, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
+      }
+
+      this.logger.log(`[VPN-LINK] VPN vinculada: "${effectiveCn}" → router ${routerId}`);
+      return { clase: 'aplicado', mensaje: `VPN vinculada: "${effectiveCn}" → router ${routerId}` };
+    } catch (err) {
+      return clasificarError(err);
     }
-
-    const effectiveCn = cliente.vpnUsuario ?? cliente.nombreCert;
-
-    await this.routerRepo.update(routerId, { vpnCommonName: effectiveCn } as any);
-    await this.repo.update(cliente.id, { routerId });
-
-    // Escribir/actualizar CCD con el CN correcto y las subnets del router
-    const router = await this.routerRepo.findOne({ where: { id: routerId } });
-    if (router) {
-      await this.escribirArchivoCcd(effectiveCn, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
-    }
-
-    this.logger.log(`[VPN-LINK] VPN vinculada: "${effectiveCn}" → router ${routerId}`);
   }
 
   // ── Generar cliente VPN sin certificado (user/pass) y escribir CCD ─
   // Llamado como fallback desde MikrotikService cuando se crea un router
   // VPN_TUNNEL sin pasar por el wizard (sin vpnClienteId).
+  //
+  // Ola 1, grupo 3a (2026-08-16). Antes devolvía el `vpnUsuario` generado como string —
+  // verificado que NINGÚN llamador (MikrotikService.crearRouter(), .repararRouter()) usa
+  // ese valor de retorno: ambos vuelven a leerlo de BD cuando lo necesitan. `ResultadoOperacion`
+  // no pierde nada que se estuviera consumiendo.
+  async generarParaRouter(router: Router): Promise<ResultadoOperacion> {
+    try {
+      // Si ya existe un cliente activo para este router, solo actualiza el CCD
+      const existing = await this.repo.findOne({
+        where: { routerId: router.id, empresaId: router.empresaId, activo: true },
+      });
+      if (existing?.vpnUsuario) {
+        await this.escribirArchivoCcd(existing.vpnUsuario, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
+        await this.routerRepo.update(router.id, { vpnCommonName: existing.vpnUsuario } as any);
+        return { clase: 'aplicado', mensaje: `CCD actualizado para cliente VPN existente: ${existing.vpnUsuario}` };
+      }
 
-  async generarParaRouter(router: Router): Promise<string> {
-    // Si ya existe un cliente activo para este router, solo actualiza el CCD
-    const existing = await this.repo.findOne({
-      where: { routerId: router.id, empresaId: router.empresaId, activo: true },
-    });
-    if (existing?.vpnUsuario) {
-      await this.escribirArchivoCcd(existing.vpnUsuario, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
-      await this.routerRepo.update(router.id, { vpnCommonName: existing.vpnUsuario } as any);
-      return existing.vpnUsuario;
+      const slug = router.nombre
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .substring(0, 30);
+      const shortId        = generateToken(3);
+      const vpnUsuario     = `df-${slug}-${shortId}`;
+      const vpnPassword    = generateToken(12);
+      const nombreCert     = `user-${slug}-${shortId}`;
+      const tokenDescarga  = generateToken(32);
+      const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+
+      const cliente = this.repo.create({
+        empresaId:          router.empresaId,
+        nombre:             router.nombre,
+        nombreCert,
+        versionRos:         (router.versionRos as string) === 'v7' ? 'v7' : 'v6',
+        vpnUsuario,
+        vpnPasswordCifrado: encrypt(vpnPassword),
+        cipher:             'aes256',
+        authAlg:            'sha256',
+        verifyServerCert:   false,
+        estado:             'pendiente',
+        routerId:           router.id,
+        tokenDescarga,
+        tokenExpiresAt,
+        activo:             true,
+      });
+      await this.repo.save(cliente);
+
+      await this.routerRepo.update(router.id, { vpnCommonName: vpnUsuario } as any);
+      await this.escribirArchivoCcd(vpnUsuario, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
+      this.logger.log(`[VPN] Cliente no-cert creado: ${vpnUsuario} → router ${router.id}`);
+
+      return { clase: 'aplicado', mensaje: `Cliente VPN creado: ${vpnUsuario}` };
+    } catch (err) {
+      return clasificarError(err);
     }
-
-    const slug = router.nombre
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .substring(0, 30);
-    const shortId        = generateToken(3);
-    const vpnUsuario     = `df-${slug}-${shortId}`;
-    const vpnPassword    = generateToken(12);
-    const nombreCert     = `user-${slug}-${shortId}`;
-    const tokenDescarga  = generateToken(32);
-    const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-
-    const cliente = this.repo.create({
-      empresaId:          router.empresaId,
-      nombre:             router.nombre,
-      nombreCert,
-      versionRos:         (router.versionRos as string) === 'v7' ? 'v7' : 'v6',
-      vpnUsuario,
-      vpnPasswordCifrado: encrypt(vpnPassword),
-      cipher:             'aes256',
-      authAlg:            'sha256',
-      verifyServerCert:   false,
-      estado:             'pendiente',
-      routerId:           router.id,
-      tokenDescarga,
-      tokenExpiresAt,
-      activo:             true,
-    });
-    await this.repo.save(cliente);
-
-    await this.routerRepo.update(router.id, { vpnCommonName: vpnUsuario } as any);
-    await this.escribirArchivoCcd(vpnUsuario, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
-    this.logger.log(`[VPN] Cliente no-cert creado: ${vpnUsuario} → router ${router.id}`);
-
-    return vpnUsuario;
   }
 
   // ── Escribir archivo CCD en /etc/openvpn/ccd/<commonName> ────
@@ -997,21 +1028,31 @@ export class VpnClienteService implements OnModuleInit {
   }
 
   // Mata la sesión activa de un router si la ocupa un impostor.
-  // Retorna true si se mató una sesión, false si no había sesión activa.
-  async matarSesionImpostora(routerId: string, empresaId: string): Promise<boolean> {
-    const cliente = await this.repo.findOne({
-      where: { routerId, empresaId, activo: true },
-    });
-    if (!cliente) return false;
+  // Ola 1, grupo 3a (2026-08-16). Consumida por MikrotikService.repararRouter() al fallar
+  // la conexión — antes booleano (true si mató una sesión), ahora `aplicado` para ese mismo
+  // caso y `no_aplica` para "nada que matar" (sin cliente o sin sesión de ese CN).
+  async matarSesionImpostora(routerId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const cliente = await this.repo.findOne({
+        where: { routerId, empresaId, activo: true },
+      });
+      if (!cliente) {
+        return { clase: 'no_aplica', mensaje: 'No hay cliente VPN activo para este router.' };
+      }
 
-    const cn = cliente.vpnUsuario ?? cliente.nombreCert;
+      const cn = cliente.vpnUsuario ?? cliente.nombreCert;
 
-    const sessions = await this._leerManagement();
-    if (!sessions.find(s => s.commonName === cn)) return false;
+      const sessions = await this._leerManagement();
+      if (!sessions.find(s => s.commonName === cn)) {
+        return { clase: 'no_aplica', mensaje: 'No hay sesión activa que corresponda a un impostor.' };
+      }
 
-    await this.killClienteVpnManagement(cn);
-    this.logger.log(`[VPN] Sesión impostora terminada para CN ${cn} (router ${routerId})`);
-    return true;
+      await this.killClienteVpnManagement(cn);
+      this.logger.log(`[VPN] Sesión impostora terminada para CN ${cn} (router ${routerId})`);
+      return { clase: 'aplicado', mensaje: 'Sesión impostora terminada.' };
+    } catch (err) {
+      return clasificarError(err);
+    }
   }
 
   private async _getCliente(id: string, empresaId: string): Promise<VpnCliente> {

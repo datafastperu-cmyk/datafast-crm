@@ -39,6 +39,7 @@ import { AuditoriaService } from '../auth/auditoria.service';
 import { VpnClienteService } from '../openvpn/services/vpn-cliente.service';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 import { encrypt, decrypt } from '../../common/utils/encryption.util';
+import { esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 
 import {
   CreateRouterDto,
@@ -204,25 +205,34 @@ export class MikrotikService implements OnModuleInit {
       if (dto.vpnClienteId) {
         // Vincular cert del wizard directamente — evita generar un cert UUID huérfano.
         // Pasamos usuarioId para asegurar que el cert pertenece al operador que abrió el wizard.
-        try {
-          await this.vpnSvc.vincularCertWizardARouter(
-            dto.vpnClienteId,
-            saved.id,
-            user.empresaId,
-            user.sub,
-          );
-        } catch (e: any) {
+        // Ola 1, grupo 3a: vincularCertWizardARouter() habla ResultadoOperacion y ya no
+        // lanza — se traduce aquí al mismo InternalServerErrorException+rollback de antes.
+        const r = await this.vpnSvc.vincularCertWizardARouter(
+          dto.vpnClienteId,
+          saved.id,
+          user.empresaId,
+          user.sub,
+        );
+        if (!esExito(r)) {
+          const msg = mensajeDe(r);
           this.logger.error(
-            `[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`,
+            `[VPN-CCD] vincular wizard cert router ${saved.id}: ${msg}`,
           );
           await this.routerRepo.softDelete(saved.id);
           throw new InternalServerErrorException(
-            `Router creado pero falló la configuración VPN: ${e.message}. El registro fue revertido.`,
+            `Router creado pero falló la configuración VPN: ${msg}. El registro fue revertido.`,
           );
         }
       } else {
         this.vpnSvc
           .generarParaRouter(await this.findOne(saved.id, user.empresaId))
+          .then((r) => {
+            if (!esExito(r)) {
+              this.logger.error(
+                `[VPN-CCD] generarParaRouter falló para router ${saved.id} — vpnCommonName quedará null hasta el próximo "Reparar": ${mensajeDe(r)}`,
+              );
+            }
+          })
           .catch((e) =>
             this.logger.error(
               `[VPN-CCD] generarParaRouter falló para router ${saved.id} — vpnCommonName quedará null hasta el próximo "Reparar": ${e.message}`,
@@ -469,17 +479,17 @@ export class MikrotikService implements OnModuleInit {
 
     // Revocar VPN ANTES del softDelete para garantizar que si la revocación falla
     // el router siga visible en la UI y el operador pueda reintentar.
+    // Ola 1, grupo 3a: revocar() habla ResultadoOperacion — `ya_en_destino` reemplaza la
+    // arqueología sobre status/constructor de excepción que había aquí antes (D-14).
     const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);
     for (const c of vpnClientes) {
-      try {
-        await this.vpnSvc.revocar(c.id, user.empresaId);
+      const r = await this.vpnSvc.revocar(c.id, user.empresaId);
+      if (r.clase === 'ya_en_destino') {
+        this.logger.warn(`VPN cliente ${c.id} ya estaba revocado — continuando`);
+      } else if (esExito(r)) {
         this.logger.log(`VPN cliente revocado al eliminar router ${id}: ${c.id}`);
-      } catch (err: any) {
-        if (err?.status === 409 || err?.constructor?.name === 'ConflictException') {
-          this.logger.warn(`VPN cliente ${c.id} ya estaba revocado — continuando`);
-        } else {
-          throw err;
-        }
+      } else {
+        throw new BadRequestException(`No se pudo revocar el cliente VPN ${c.id}: ${mensajeDe(r)}`);
       }
     }
 
@@ -593,12 +603,19 @@ export class MikrotikService implements OnModuleInit {
   }> {
     const router = await this.findOne(routerId, empresaId);
 
-    // Si la configuración VPN inicial falló (vpnCommonName quedó null), regenerar ahora
+    // Si la configuración VPN inicial falló (vpnCommonName quedó null), regenerar ahora.
+    // Ola 1, grupo 3a: generarParaRouter() ya no lanza (habla ResultadoOperacion) — se
+    // traduce aquí al mismo "abortar reparar" que antes producía una excepción sin capturar.
     if (router.metodoConexion === MetodoConexion.VPN_TUNNEL && !router.vpnCommonName) {
       this.logger.warn(
         `[VPN] Router ${routerId} sin vpnCommonName — regenerando VPN antes de reparar`,
       );
-      await this.vpnSvc.generarParaRouter(router);
+      const rGen = await this.vpnSvc.generarParaRouter(router);
+      if (!esExito(rGen)) {
+        throw new BadRequestException(
+          `No se pudo regenerar la configuración VPN del router: ${mensajeDe(rGen)}`,
+        );
+      }
       // Recargar solo los campos VPN actualizados para no contaminar la entidad tracked
       const fresh = await this.findOne(routerId, empresaId);
       router.vpnCommonName = fresh.vpnCommonName;
@@ -646,15 +663,15 @@ export class MikrotikService implements OnModuleInit {
     } catch (err: any) {
       // Verificar si la sesión VPN está ocupada por un impostor
       // (router offline cuyo script fue pegado en otro equipo por error)
-      let sesionKilled = false;
-      try {
-        sesionKilled = await this.vpnSvc.matarSesionImpostora(routerId, empresaId);
-      } catch (vpnErr: any) {
+      // Ola 1, grupo 3a: matarSesionImpostora() ya no lanza — reintentable/indeterminado se
+      // loguean igual que antes, `no_aplica` sustituye al `false` silencioso.
+      const rImpostor = await this.vpnSvc.matarSesionImpostora(routerId, empresaId);
+      if (rImpostor.clase === 'reintentable' || rImpostor.clase === 'indeterminado') {
         this.logger.warn(
-          `[VPN] Error al verificar sesión impostora para ${routerId}: ${vpnErr.message}`,
+          `[VPN] Error al verificar sesión impostora para ${routerId}: ${mensajeDe(rImpostor)}`,
         );
       }
-      if (sesionKilled) {
+      if (rImpostor.clase === 'aplicado') {
         throw new BadRequestException(
           `Sesión VPN del router "${router.nombre}" estaba ocupada por un dispositivo no autorizado. ` +
             `La sesión del impostor ha sido cerrada. ` +

@@ -10,6 +10,7 @@ import { OltDispositivo, OltMarca, OltMetodoConexion } from './entities/olt-disp
 import { OltProveedorConfig, TipoProveedor }    from './entities/olt-proveedor-config.entity';
 import { Onu, EstadoOnu }                        from '../smartolt/entities/onu.entity';
 import { SmartoltApiService, ProvisionarOnuPayload } from '../smartolt/smartolt-api.service';
+import { traducirAHttp } from '../../common/domain/resultado-operacion';
 import { OltAutomationClient }   from './olt-automation.client';
 import { OltOperationRouter, SinProveedorConfigException } from './services/olt-operation-router.service';
 import { OltProvisionPayload, OltMetricasPayload, ProveedorCredenciales } from './interfaces/olt-provider.interface';
@@ -1020,15 +1021,30 @@ export class OltNativoService implements OnModuleInit {
       `Desviando aprovisionamiento a SmartOLT API | OLT=${olt.nombre} SN=${dto.sn}`,
     );
 
-    const onuSmartolt = await this.smartoltApi.aprovisionarOnu(smartoltPayload);
+    // Ola 1, grupo 3a (2026-08-16): aprovisionarOnu() habla ResultadoOperacion (con el
+    // payload transitorio `onu`, ver comentario en smartolt-api.service.ts). NO se traduce
+    // a `success:false` (a diferencia de routerRes arriba): el modal del frontend
+    // (ModalProvisionOnu.tsx) decide éxito/fallo por el STATUS HTTP de la mutación, nunca
+    // lee `result.success` — un `success:false` a 200 dispararía su `onSuccess` y cerraría
+    // el modal con un toast verde sobre una ONU que NO se aprovisionó. Se preserva el
+    // comportamiento previo (propagar como excepción) usando `traducirAHttp`, el traductor
+    // compartido del borde (D-14) — antes esto salía por un `throw` sin capturar dentro de
+    // `aprovisionarOnu()` mismo. (routerRes SÍ tiene este defecto latente hoy — no se
+    // replica aquí; corregirlo allí es un cambio aparte, fuera del alcance de este lote.)
+    const r = await this.smartoltApi.aprovisionarOnu(smartoltPayload);
+
+    if (r.clase !== 'aplicado') {
+      const t = traducirAHttp(r); // rechazado_definitivo -> BadRequestException (throw)
+      throw new ServiceUnavailableException(t.error ? `${t.mensaje}: ${t.error}` : t.mensaje);
+    }
 
     return {
       success:        true,
-      message:        `ONU aprovisionada vía SmartOLT API: ID=${onuSmartolt.id}`,
+      message:        `ONU aprovisionada vía SmartOLT API: ID=${r.onu.id}`,
       oltIp:          olt.ipGestion,
       onuSn:          dto.sn,
       metodoConexion: OltMetodoConexion.SMARTOLT_API,
-      details:        { smartoltOnuId: onuSmartolt.id },
+      details:        { smartoltOnuId: r.onu.id },
     };
   }
 

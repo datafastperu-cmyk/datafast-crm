@@ -7,6 +7,7 @@ import { ConfigService }       from '@nestjs/config';
 import { firstValueFrom }      from 'rxjs';
 import { AxiosRequestConfig }  from 'axios';
 import { ModuleHealthService } from '../../common/services/module-health.service';
+import { ResultadoOperacion, clasificarError } from '../../common/domain/resultado-operacion';
 
 // ─── Tipos de la API SmartOLT ─────────────────────────────────
 export interface SmartoltOnu {
@@ -65,6 +66,13 @@ export interface ProvisionarOnuPayload {
   description?: string;
   vlan_mode?:   string;    // 'access' | 'trunk'
 }
+
+// Extensión LOCAL de ResultadoOperacion — nunca en resultado-operacion.ts (corpus congelado
+// E-0.3). TRANSITORIA: retirar en la Ola 3, cuando el binding del módulo posea el
+// identificador y el Core deje de necesitarlo (ver comentario en `aprovisionarOnu`, abajo).
+export type ResultadoAprovisionarOnu =
+  | (Extract<ResultadoOperacion, { clase: 'aplicado' }> & { onu: SmartoltOnu })
+  | Exclude<ResultadoOperacion, { clase: 'aplicado' }>;
 
 // ─────────────────────────────────────────────────────────────
 // Cliente HTTP para la API de SmartOLT
@@ -253,34 +261,50 @@ export class SmartoltApiService implements OnModuleInit {
   // APROVISIONAMIENTO
   // ────────────────────────────────────────────────────────────
 
-  async aprovisionarOnu(payload: ProvisionarOnuPayload): Promise<SmartoltOnu> {
-    this.assertNotDegraded();
-    this.logger.log(
-      `Aprovisionando ONU: SN=${payload.serial} | ` +
-      `OLT=${payload.olt_id} | PON=${payload.pon_port} | ` +
-      `Perfil=${payload.profile} | VLAN=${payload.vlan}`,
-    );
-
-    const body = {
-      serial:      payload.serial.toUpperCase(),
-      olt_id:      payload.olt_id,
-      pon_port:    payload.pon_port,
-      profile:     payload.profile,
-      vlan:        payload.vlan,
-      vlan_mode:   payload.vlan_mode || 'access',
-      description: payload.description || '',
-    };
-
-    const onu = await this.post<SmartoltOnu>('/api/onu/provision', body);
-
-    if (!onu?.id) {
-      throw new BadRequestException(
-        `SmartOLT no retornó un ID de ONU válido para SN ${payload.serial}`,
+  // Ola 1, grupo 3a (2026-08-16) — TRANSITORIO, retirar en la Ola 3.
+  // Primera de las 26 capacidades que crea un recurso cuyo identificador el llamador
+  // realmente necesita: `OltNativoService.provisionarViaSmartolt()` persiste `onu.id` en
+  // `ProvisionResult.details.smartoltOnuId`, visible al operador en la respuesta HTTP.
+  // `ResultadoOperacion` (resultado-operacion.ts) no lleva payload A PROPÓSITO — abrir un
+  // campo `datos` ahí sería un canal permanente para que identificadores de proveedor entren
+  // al Core (contra E02-10/E04-10), y afectaría a las 26 capacidades y a todas las futuras,
+  // no solo a esta. Por eso la extensión vive AQUÍ, junto al método, y no en el tipo
+  // compartido: se retira cuando exista el binding de la Ola 3 y el módulo deje de tener que
+  // devolverle el id al Core. Ver F-0.1 §9.1 (tabla de deuda transitoria).
+  async aprovisionarOnu(payload: ProvisionarOnuPayload): Promise<ResultadoAprovisionarOnu> {
+    try {
+      this.assertNotDegraded();
+      this.logger.log(
+        `Aprovisionando ONU: SN=${payload.serial} | ` +
+        `OLT=${payload.olt_id} | PON=${payload.pon_port} | ` +
+        `Perfil=${payload.profile} | VLAN=${payload.vlan}`,
       );
-    }
 
-    this.logger.log(`ONU aprovisionada: ID=${onu.id} | SN=${payload.serial}`);
-    return onu;
+      const body = {
+        serial:      payload.serial.toUpperCase(),
+        olt_id:      payload.olt_id,
+        pon_port:    payload.pon_port,
+        profile:     payload.profile,
+        vlan:        payload.vlan,
+        vlan_mode:   payload.vlan_mode || 'access',
+        description: payload.description || '',
+      };
+
+      const onu = await this.post<SmartoltOnu>('/api/onu/provision', body);
+
+      if (!onu?.id) {
+        return {
+          clase: 'rechazado_definitivo',
+          motivo: `SmartOLT no retornó un ID de ONU válido para SN ${payload.serial}`,
+        };
+      }
+
+      this.logger.log(`ONU aprovisionada: ID=${onu.id} | SN=${payload.serial}`);
+      return { clase: 'aplicado', mensaje: `ONU aprovisionada: ID=${onu.id} | SN=${payload.serial}`, onu };
+    } catch (err) {
+      // clasificarError() nunca devuelve 'aplicado' — no hay éxito posible desde un catch.
+      return clasificarError(err) as Exclude<ResultadoOperacion, { clase: 'aplicado' }>;
+    }
   }
 
   // ────────────────────────────────────────────────────────────

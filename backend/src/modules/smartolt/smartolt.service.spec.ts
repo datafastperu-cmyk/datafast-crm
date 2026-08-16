@@ -129,7 +129,9 @@ describe('SmartoltService', () => {
     it('debe aprovisionar ONU nueva correctamente', async () => {
       mockOnuRepo.findOltById.mockResolvedValue(mockOlt);
       mockOnuRepo.findBySerial.mockResolvedValue(null);     // no existe
-      mockApi.aprovisionarOnu.mockResolvedValue(mockOnuSmartolt);
+      // Ola 1, grupo 3a: aprovisionarOnu() habla ResultadoOperacion (con el payload
+      // transitorio `onu` — ver smartolt-api.service.ts).
+      mockApi.aprovisionarOnu.mockResolvedValue({ clase: 'aplicado', mensaje: 'ok', onu: mockOnuSmartolt });
       mockOnuRepo.save.mockResolvedValue(mockOnu);
       mockDs.query.mockResolvedValue([{ id: 'cnt-001' }]);
 

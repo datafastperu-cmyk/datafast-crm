@@ -247,6 +247,36 @@ es solo para Nivel A—, viaja con la reconstrucción del Core.
 
 ---
 
+### 35. `provisionarOnuNativa()` — el camino multi-proveedor (`routerRes`) puede reportar éxito falso al operador
+**Encontrado 2026-08-16, Ola 1 grupo 3a, sin tocarlo — registrado, no corregido.** Al convertir
+`SmartoltApiService.aprovisionarOnu()` se verificó cómo consume el resultado
+`OltNativoService.provisionarViaSmartolt()`, y de ahí se revisó su método hermano en el mismo
+`provisionarOnuNativa()` (`olt-nativo.service.ts:163-176`): el camino multi-proveedor
+(`_tryRouter` → `this.router.provisionar(...)`) traduce el resultado a
+`{ success: routerRes.exitoso, message: routerRes.mensaje, ... }` — un `ProvisionResult` con
+`success:false` a **HTTP 200**, nunca una excepción.
+
+**El consumidor no lee `success`.** `ModalProvisionOnu.tsx` (`frontend/src/components/clientes/`)
+decide éxito/fallo de la mutación **solo por el status HTTP** — su `onSuccess` (que muestra un
+toast verde y **cierra el modal**) se dispara con cualquier respuesta 2xx, sin mirar
+`res.success`. Si `routerRes.exitoso` es `false`, el operador ve "ONU aprovisionada correctamente"
+y el modal se cierra dando el aprovisionamiento por hecho, cuando en realidad falló.
+
+**Por qué no se corrigió aquí:** el mismo hallazgo llevó a NO replicar este patrón en el camino
+SmartOLT hermano (`aprovisionarOnu()`, esta misma ola) — ahí se preservó el `throw` original
+precisamente para no caer en este defecto. Corregir `routerRes` es un cambio de comportamiento
+en un camino que la Ola 1 no tocó (no está entre las 26 capacidades: `OltOperationRouter` es
+otro nivel de abstracción), y decidir cuál de los dos lados corregir —¿el backend deja de usar
+`success:false` a 200, o el frontend empieza a leer `success`?— es una pregunta de diseño
+aparte, no una corrección de una línea.
+
+**Estado objetivo:** decidir y aplicar una única convención para `ProvisionResult` (o bien
+`success:false` nunca sale con HTTP 2xx, o bien todo consumidor frontend de `ProvisionResult`
+lee `.success` antes de celebrar) y verificarla con un test que ejercite el caso `exitoso:false`
+del router multi-proveedor.
+
+---
+
 ## 🔵 A vigilar (no es un fallo, es un cambio sin ejercitar)
 
 ### 9. Primera emisión automática con el ciclo por cliente

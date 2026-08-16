@@ -1,6 +1,6 @@
 import {
   Injectable, Logger, NotFoundException,
-  BadRequestException, ConflictException,
+  BadRequestException, ConflictException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource }       from '@nestjs/typeorm';
 import { DataSource }             from 'typeorm';
@@ -15,6 +15,7 @@ import {
   AsociarOnuContratoDto, FilterOnuDto,
 } from './dto/smartolt.dto';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
+import { traducirAHttp } from '../../common/domain/resultado-operacion';
 
 @Injectable()
 export class SmartoltService {
@@ -155,7 +156,13 @@ export class SmartoltService {
     }
 
     // ── Llamar a SmartOLT ────────────────────────────────────
-    const onuSmartolt = await this.api.aprovisionarOnu({
+    // Ola 1, grupo 3a: aprovisionarOnu() habla ResultadoOperacion (con el payload
+    // transitorio `onu` — ver comentario en smartolt-api.service.ts). Este método sigue
+    // hablando excepciones hacia su propio llamador (no es una de las 26 capacidades, es un
+    // wrapper de controller) — traducirAHttp() ya lanza BadRequestException para
+    // rechazado_definitivo, igual que antes; reintentable/indeterminado antes llegaban como
+    // ServiceUnavailableException desde el HTTP interno y así se preservan.
+    const r = await this.api.aprovisionarOnu({
       serial:      dto.serialNumber,
       olt_id:      olt.smartoltId,
       pon_port:    dto.ponPort,
@@ -164,6 +171,11 @@ export class SmartoltService {
       vlan_mode:   dto.vlanModo || 'access',
       description: dto.descripcion || '',
     });
+    if (r.clase !== 'aplicado') {
+      const t = traducirAHttp(r);
+      throw new ServiceUnavailableException(t.error ? `${t.mensaje}: ${t.error}` : t.mensaje);
+    }
+    const onuSmartolt = r.onu;
 
     // ── Parsear PON port ─────────────────────────────────────
     const { slot, subslot, port, onuIdx } = this.parsePonPort(dto.ponPort);
