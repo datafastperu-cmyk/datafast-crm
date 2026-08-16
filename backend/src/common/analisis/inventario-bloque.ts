@@ -2,6 +2,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Client } from 'pg';
+import { ficherosTs, tablaDeEntidad as tablaDeEntidadDe, escrituras as escriturasDe } from './escritores-tabla';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.production') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -63,14 +64,11 @@ const BLOQUES: Record<string, Bloque> = {
 };
 
 // ── Análisis del código ─────────────────────────────────────────────────────
-const ficheros: string[] = [];
-(function recorrer(dir: string) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) { if (e.name !== 'migrations') recorrer(p); }
-    else if (e.name.endsWith('.ts') && !e.name.includes('.spec.')) ficheros.push(p);
-  }
-})('src');
+// Detección de ficheros, entidad→tabla y escrituras (SQL+ORM): en `escritores-tabla.ts`,
+// compartida con la barrera ampliada de `propiedad-tablas.spec.ts` — un solo instrumento
+// midiendo lo mismo (hallazgo Ola 0, mismo criterio que ADR-032 con las 15 tablas).
+const SRC_DIR = path.resolve('src');
+const ficheros = ficherosTs(SRC_DIR);
 
 const sinComentarios = (s: string): string =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
@@ -80,24 +78,21 @@ const moduloDe = (f: string): string =>
 
 const relativo = (f: string) => path.relative('src', f).split(path.sep).join('/');
 
-// Paso 1: entidad → tabla. Hace falta antes de poder leer las escrituras por repositorio.
-const tablaDeEntidad: Record<string, string> = {};
+const tablaDeEntidad = tablaDeEntidadDe(ficheros);
+// `ficheroDeTabla` es una vista propia de este informe (dónde vive el fichero de entidad),
+// no de la detección de escritores — se deriva aparte con el mismo patrón `@Entity(...)`.
 const ficheroDeTabla: Record<string, string> = {};
 for (const f of ficheros) {
   const s = fs.readFileSync(f, 'utf8');
-  for (const [, tabla, clase] of s.matchAll(/@Entity\('(\w+)'\)[\s\S]{0,300}?export class (\w+)/g)) {
-    tablaDeEntidad[clase] = tabla;
-    ficheroDeTabla[tabla] = relativo(f);
-  }
+  for (const [, tabla] of s.matchAll(/@Entity\('(\w+)'\)/g)) ficheroDeTabla[tabla] = relativo(f);
 }
 
 // Paso 2: escrituras, servicios, dependencias, endpoints y jobs.
-interface Escritura { modulo: string; tabla: string; operacion: string; fichero: string; linea: number; via: 'SQL' | 'ORM' }
 interface Servicio { modulo: string; clase: string; fichero: string }
 interface Endpoint { modulo: string; verbo: string; ruta: string; controlador: string; metodo: string }
 interface Job { modulo: string; tipo: 'cron' | 'cola'; nombre: string; fichero: string }
 
-const escrituras: Escritura[] = [];
+const escrituras = escriturasDe(SRC_DIR, ficheros, tablaDeEntidad);
 const servicios: Servicio[] = [];
 const endpoints: Endpoint[] = [];
 const jobs: Job[] = [];
@@ -110,14 +105,11 @@ for (const f of ficheros) {
   }
 }
 
-const OPS_ORM = 'save|insert|update|upsert|delete|remove|softDelete|softRemove|restore|increment|decrement';
-
 for (const f of ficheros) {
   const bruto = fs.readFileSync(f, 'utf8');
   const s = sinComentarios(bruto);
   const mod = moduloDe(f);
   const rel = relativo(f);
-  const lineaDe = (i: number) => s.slice(0, i).split('\n').length;
 
   for (const [, clase] of s.matchAll(/export class (\w+Service)\b/g)) {
     servicios.push({ modulo: mod, clase, fichero: rel });
@@ -130,31 +122,6 @@ for (const f of ficheros) {
       const hacia = moduloDeServicio[clase];
       if (hacia && hacia !== mod) dependencias.push({ desde: mod, hacia, via: clase });
     }
-  }
-
-  // Escrituras en SQL crudo.
-  // El `(?<!\bFOR\s+)` evita leer `FOR UPDATE SKIP LOCKED` como escritura a una tabla `skip`.
-  for (const m of s.matchAll(/(?<!\bFOR\s+)\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\w+)/gi)) {
-    const op = m[1].toUpperCase().split(/\s+/)[0];
-    escrituras.push({ modulo: mod, tabla: m[2].toLowerCase(), operacion: op,
-                      fichero: rel, linea: lineaDe(m.index!), via: 'SQL' });
-  }
-
-  // Escrituras por repositorio TypeORM: `@InjectRepository(X) private xRepo` → `this.xRepo.save(`.
-  const tablaDeProp: Record<string, string> = {};
-  for (const [, entidad, prop] of s.matchAll(/@InjectRepository\((\w+)\)[^,)]*?(\w+):\s*Repository/g)) {
-    if (tablaDeEntidad[entidad]) tablaDeProp[prop] = tablaDeEntidad[entidad];
-  }
-  for (const m of s.matchAll(new RegExp(`\\bthis\\.(\\w+)\\.(${OPS_ORM})\\(`, 'g'))) {
-    const tabla = tablaDeProp[m[1]];
-    if (tabla) escrituras.push({ modulo: mod, tabla, operacion: m[2],
-                                 fichero: rel, linea: lineaDe(m.index!), via: 'ORM' });
-  }
-  // `manager.getRepository(Entidad).save(...)` — el caso transaccional.
-  for (const m of s.matchAll(new RegExp(`getRepository\\((\\w+)\\)\\s*\\.\\s*(${OPS_ORM})\\(`, 'g'))) {
-    const tabla = tablaDeEntidad[m[1]];
-    if (tabla) escrituras.push({ modulo: mod, tabla, operacion: m[2],
-                                 fichero: rel, linea: lineaDe(m.index!), via: 'ORM' });
   }
 
   // Endpoints, con el método que los sirve.
@@ -273,9 +240,12 @@ async function main() {
   const esc = (t: string) => escrituras.filter((e) => e.tabla === t);
   const mods = (t: string) => [...new Set(esc(t).map((e) => e.modulo))].sort();
 
+  const origenBd = c.host === 'localhost' || c.host === '127.0.0.1'
+    ? 'una instalación local limpia (migraciones sobre base vacía)'
+    : `la base conectada (\`${c.host}\`)`;
   p(`# E-0.1-${clave} — ${bloque.nombre}`);
   p();
-  p(`Generado por \`inventario-bloque.ts\` contra la base de producción el ${new Date().toISOString().slice(0, 10)}.`);
+  p(`Generado por \`inventario-bloque.ts\` contra ${origenBd} el ${new Date().toISOString().slice(0, 10)}.`);
   p(`No se edita a mano: se vuelve a correr con \`npm run inventario -- ${clave}\`.`);
   p();
   p(`**${tablas.length} tablas · ${columnas.length} columnas · ${fks.filter((f) => enDominio.has(f.tabla)).length} claves foráneas · ` +

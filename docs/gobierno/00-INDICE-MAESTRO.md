@@ -38,6 +38,7 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 | **F-0.0** | **Punto de entrada para implementar el Core** — se lee antes que nada | Vigente v1.0 | [F-0.0-punto-de-entrada.md](F-0.0-punto-de-entrada.md) |
 | **F-0.1-A** | **Catálogo de comprobaciones** — los 46 invariantes con su mecanismo | Vigente v1.0 | [F-0.1-anexo-catalogo-comprobaciones.md](F-0.1-anexo-catalogo-comprobaciones.md) |
 | **F-0.1** | Plan de Reestructuración del Core | ✅ **Ratificado por el propietario** v3.1 | [F-0.1-plan-de-reestructuracion.md](F-0.1-plan-de-reestructuracion.md) |
+| **F-0.1-R1** | Registro de divergencias de producción durante la congelación (procedimiento de R-1) | Vigente v1.0 — **vivo, se actualiza por incidente** | [F-0.1-R1-divergencias.md](F-0.1-R1-divergencias.md) |
 | **—** | Verificación transversal de E-0.2/3/4 contra el cuerpo normativo | Control de conformidad — hallazgo, no norma | [E-0.2-4-verificacion-transversal.md](E-0.2-4-verificacion-transversal.md) |
 | **PLAN-001** | Plan de Trabajo | Vigente — **temporal** | [PLAN-001-plan-de-trabajo.md](PLAN-001-plan-de-trabajo.md) |
 | **EST-001** | Estándares Técnicos | Vigente | [EST-001-estandares-tecnicos.md](EST-001-estandares-tecnicos.md) |

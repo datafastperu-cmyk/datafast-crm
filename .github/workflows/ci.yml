@@ -100,13 +100,43 @@ jobs:
         # facturación y notificaciones EN SILENCIO — sin tráfico real no se notaba nada.
         run: npm run sql:check -- /tmp/schema.txt src
 
-      # El barrido de aislamiento multi-tenant se retiró de aquí el 2026-08-08, el mismo día
-      # que entró. ADR-031: el ERP es mono-empresa por diseño y la base lo impone con un
-      # índice único sobre `empresas`. No puede haber datos ajenos si no hay ajenos, así que
-      # el barrido guardaba un invariante que ya no puede romperse.
-      #
-      # El script sigue en `backend/scripts/barrido-aislamiento.mjs`, latente. Vuelve aquí si
-      # se retira ese índice — ver ADR-031 §4.2 para los cuatro escenarios que lo despertarían.
+      # ── F-0.1-A §6, orden 2 y 3 — E02-10 y E02-08, con techo congelado ─────────
+      # Las dos FALLAN hoy (22 columnas de proveedor en `servicios`, 3 de estado en
+      # `clientes`) y es lo esperado: deuda declarada con techo, no chequeo apagado
+      # (regla 5 del anexo). El paso solo rompe el build si el número SUBE — o si baja
+      # y nadie actualizó el techo, para que el progreso no quede invisible.
+      - name: Frontera del Core — E02-10 (proveedor) y E02-08 (estado en Cliente)
+        run: node scripts/verificar-frontera-core.mjs /tmp/schema.txt
+
+      # ── F-0.1-A §6.1 — las cinco comprobaciones que existían y el CI no ejecutaba ──────
+      # Existían, funcionaban (probado localmente contra instalación limpia, Ola 0,
+      # 2026-08-16) y no vigilaban nada porque nadie las disparaba. Aviso honesto: de las
+      # cinco, solo `sql:check` (arriba) tiene una condición de fallo real. Estas cuatro más
+      # `db:check` (abajo) son generadores/informes — ninguna llama `process.exit` con un
+      # código de error por lo que encuentra, `aislamiento:check` incluso fuerza
+      # `exitCode = 0` a propósito (ver su propio comentario). Enchufarlas da VISIBILIDAD
+      # en cada push, no un gate nuevo: convertir alguna en assertion con umbral es decisión
+      # aparte, no de esta ola.
+      - name: Autorización de endpoints mutantes (informe)
+        run: npm run autorizacion:check
+
+      - name: Aislamiento multi-tenant (informe — ADR-031 ya lo hace imposible de romper)
+        run: npm run aislamiento:check
+
+      - name: Inventario del Core comercial (regenerado, no se compara contra umbral aún)
+        run: npm run inventario -- A
+
+      - name: Auditoría de interacciones entre módulos (regenerada)
+        run: npm run interacciones
+
+      - name: Esquema real vs. entidades TypeORM (informe)
+        # `schema:log` no crea `typeorm_metadata` si falta (a diferencia de `synchronize()`),
+        # y en una instalación limpia real esa tabla nunca existe: revienta en vez de
+        # comparar. Hallazgo Ola 0 (2026-08-16). `preparar-schema-log.ts` reproduce solo el
+        # paso de bookkeeping que falta — nunca sincroniza tablas ni columnas.
+        run: |
+          TS_NODE_PROJECT=tsconfig.migration.json npx ts-node -T scripts/preparar-schema-log.ts
+          npm run db:check
 
   frontend:
     name: Frontend — typecheck

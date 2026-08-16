@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PROPIEDAD_TABLAS, TECHO_TABLAS_COMPARTIDAS } from './propiedad-tablas';
+import { PROPIEDAD_TABLAS, TECHO_TABLAS_COMPARTIDAS, TECHO_TABLAS_COMPARTIDAS_ORM } from './propiedad-tablas';
+import { escritoresPorTabla as escritoresPorTablaCompleto } from '../analisis/escritores-tabla';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // La barrera de ADR-032 / PA-12.
@@ -86,6 +87,28 @@ describe('Una tabla, un dueño (ADR-032 · PA-12)', () => {
       .sort();
 
     expect(compartidas.length).toBeLessThanOrEqual(TECHO_TABLAS_COMPARTIDAS);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Segundo techo — misma pregunta, instrumento completo (SQL en cualquier parte del
+  // archivo + ORM). Hallazgo Ola 0: 20, no 15. Que un instrumento más barato vea menos no
+  // vuelve inexistente lo que el instrumento completo sí ve — dos cifras para la misma
+  // realidad están bien; que la baja tape a la alta, no (revisión Ola 0, 2026-08-16).
+  //
+  // DIVERGENCIA DECLARADA respecto de ADR-032 §4.4 ("puede bajar, nunca subir"): este test
+  // falla en LAS DOS direcciones, no solo al subir. Es a propósito — ver F-0.1-A §7, regla 7.
+  // ═══════════════════════════════════════════════════════════════════════════
+  it('el número de tablas con varios escritores (SQL+ORM) es exactamente el techo congelado', () => {
+    const SRC = join(__dirname, '..', '..');
+    const reales = escritoresPorTablaCompleto(SRC);
+    const compartidas = [...reales.entries()]
+      .filter(([, mods]) => mods.size > 1)
+      .map(([t]) => t)
+      .sort();
+
+    // Ni más (regresión) ni menos (techo obsoleto — hay que recongelar en el número nuevo,
+    // no dejar que la cifra vieja siga citándose).
+    expect(compartidas.length).toBe(TECHO_TABLAS_COMPARTIDAS_ORM);
   });
 
   // Un `infractor` que ya no infringe es ruido que hace el manifiesto menos creíble, y
