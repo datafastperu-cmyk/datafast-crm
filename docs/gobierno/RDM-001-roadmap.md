@@ -320,7 +320,7 @@ Se declara explícitamente para acotar expectativas:
 
 CON-001 §8.11.3 · POL-001 Anexo B (excepciones con condición de cierre) · AEM-001 §Anexo B
 (capacidades ausentes) · ADR-013 · ADR-014 ·
-`docs/consolidacion/06-recomendaciones-estrategicas.md` · `PENDIENTES.md`
+`docs/archivo/consolidacion/06-recomendaciones-estrategicas.md` · `PENDIENTES.md`
 
 ---
 

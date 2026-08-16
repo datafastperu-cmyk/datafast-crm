@@ -1,5 +1,13 @@
 # F0 — Línea base y diagnóstico del módulo de Cobranza
 
+> ⚠ **Documento anterior al diseño del Core, y de un módulo que aún no se ha reestructurado.**
+> Donde diga algo distinto de **E-0.2 / E-0.3 / E-0.4** (Vigentes), **mandan estos últimos**
+> (00-INDICE §4). Se reescribirá en la fase de su módulo (F-0.1 §12).
+> **No se cita como fuente en un documento vigente.**
+
+---
+
+
 **Ejecutado:** 2026-08-06 contra producción (`datafast-postgres`, `datafast_db`).
 **Naturaleza:** solo lectura. Ninguna consulta modificó datos.
 **Fase del plan:** [F0](./cobranza-plan-implementacion.md#f0--línea-base-y-diagnóstico).

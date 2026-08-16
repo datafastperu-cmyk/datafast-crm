@@ -330,7 +330,7 @@ flowchart LR
 ## 8.6 Flujos de negocio
 
 Los ocho flujos implementados, con su nivel de garantía. El detalle completo está en el capítulo
-7 de `docs/consolidacion/`.
+7 de `docs/archivo/consolidacion/`.
 
 | # | Flujo | Outbox | Máq. estados | Saga | VIO | Garantía |
 |---|---|---|---|---|---|---|
@@ -406,8 +406,8 @@ flowchart TD
 - POL-001 — Políticas Corporativas
 - ARS-001 — Arquitectura de Software
 - DOM-001 — Modelo de Dominio
-- `docs/auditoria/` capítulos 2 y 4 — inventario y dependencias medidas
-- `docs/consolidacion/` capítulos 5, 7 y 8 — dominios, flujos y acoplamiento
+- `docs/archivo/auditoria/` capítulos 2 y 4 — inventario y dependencias medidas
+- `docs/archivo/consolidacion/` capítulos 5, 7 y 8 — dominios, flujos y acoplamiento
 
 ---
 

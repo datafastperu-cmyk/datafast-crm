@@ -50,7 +50,7 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 | **MAN-001** | Manual del Operador | Vigente | [MAN-001-manual-operador.md](MAN-001-manual-operador.md) |
 | **MAN-002** | Manual del Administrador | Vigente | [MAN-002-manual-administrador.md](MAN-002-manual-administrador.md) |
 | **RDM-001** | Roadmap del Producto | Vigente | [RDM-001-roadmap.md](RDM-001-roadmap.md) |
-| ~~**REC-001**~~ | ~~Evaluación de recomendaciones~~ | **⛔ Obsoleto** — su contenido está en POL-001, ADR-029 y ADR-030 | [REC-001-evaluacion-recomendaciones.md](REC-001-evaluacion-recomendaciones.md) |
+| ~~**REC-001**~~ | ~~Evaluación de recomendaciones~~ | **⛔ Obsoleto** — **archivado** el 2026-08-16 | [../archivo/REC-001-evaluacion-recomendaciones.md](../archivo/REC-001-evaluacion-recomendaciones.md) |
 
 **Documentos vivos:** los listados en §2 sin marca de obsoleto. **La cifra no se copia: se cuenta
 sobre la tabla** (§7.4 — una cifra citada de otro documento es una cita, no una medición).
@@ -95,13 +95,17 @@ se modifica la política y se registra el cambio.
 
 ## 5. Relación con la documentación previa
 
+> **Todo lo congelado vive desde el 2026-08-16 en [`docs/archivo/`](../archivo/LEEME.md)**, separado
+> de lo vigente para que nadie lo lea como diseño. **No se borró**: se conserva por trazabilidad
+> (§7, estado 6). Lo único eliminado fue `estructura.txt`, un árbol de ficheros de mayo.
+
 Este cuerpo normativo **no reemplaza** los trabajos anteriores: los usa como fuente de evidencia.
 
 | Documento previo | Rol |
 |---|---|
-| `docs/auditoria/` (Etapa I) | **⛔ CONGELADO 2026-08-06.** Evidencia fechada. Contenía 3 afirmaciones falsas |
-| `docs/consolidacion/` (Etapa II) | **⛔ CONGELADO 2026-08-06.** Su contenido vivo migró a POL-001 Anexo B y RDM-001 |
-| `docs/directrices/` | **⛔ CONGELADO 2026-08-06.** Duplicaba POL-001. **POL-001 es la única fuente normativa** |
+| `docs/archivo/auditoria/` (Etapa I) | **⛔ CONGELADO 2026-08-06 · archivado 2026-08-16.** Evidencia fechada. Contenía 3 afirmaciones falsas |
+| `docs/archivo/consolidacion/` (Etapa II) | **⛔ CONGELADO 2026-08-06 · archivado 2026-08-16.** Su contenido vivo migró a POL-001 Anexo B y RDM-001 |
+| `docs/archivo/directrices/` | **⛔ CONGELADO 2026-08-06 · archivado 2026-08-16.** Duplicaba POL-001. **POL-001 es la única fuente normativa** |
 | `CLAUDE.md` | Reglas operativas del repositorio. **Sigue vigente**; POL-001 lo formaliza sin sustituirlo. |
 | `PENDIENTES.md` | Registro vivo de deuda. **Sigue vigente**; alimenta RDM-001. |
 

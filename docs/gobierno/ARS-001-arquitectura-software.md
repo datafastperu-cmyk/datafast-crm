@@ -480,7 +480,7 @@ Resumen; el detalle está en SEC-001.
 # 9. Referencias
 
 CON-001 · POL-001 · AEM-001 · DOM-001 · DAT-001 · INT-001 · SEC-001 · ADR-001…016 ·
-`docs/auditoria/` capítulos 1, 9, 14, 15, 16, 18 · `ecosystem.config.js` · `docker-compose.yml`
+`docs/archivo/auditoria/` capítulos 1, 9, 14, 15, 16, 18 · `ecosystem.config.js` · `docker-compose.yml`
 
 ---
 

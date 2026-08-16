@@ -101,8 +101,8 @@ marca.**
 
 | # | Tarea | Efecto |
 |---|---|---|
-| 2.1 | **Congelar** `docs/auditoria/` y `docs/consolidacion/` como evidencia fechada | Dejan de mantenerse. Ya contenían 3 afirmaciones falsas |
-| 2.2 | **Resolver la duplicación** `docs/directrices/` ↔ POL-001 | Hoy hay dos fuentes para las mismas reglas — lo que R-006 prohíbe |
+| 2.1 | **Congelar** `docs/archivo/auditoria/` y `docs/archivo/consolidacion/` como evidencia fechada | Dejan de mantenerse. Ya contenían 3 afirmaciones falsas |
+| 2.2 | **Resolver la duplicación** `docs/archivo/directrices/` ↔ POL-001 | Hoy hay dos fuentes para las mismas reglas — lo que R-006 prohíbe |
 | 2.3 | Marcar qué documentos **se generan del código** y cuáles se escriben a mano | Los inventarios (módulos, endpoints, tablas, crons, tests) se extraen en un minuto. Generados no mienten; escritos mienten en seis meses |
 | 2.4 | Aplicar las **14 adopciones de Fase 1 de REC-001** a POL-001, CON-001, EST-001 y GUI-001 | Incorpora tus recomendaciones a la norma |
 | 2.5 | Declarar **REC-001 Obsoleto** al terminar 2.4 | Un documento de recomendaciones que sobrevive a las políticas que generó crea dos verdades |

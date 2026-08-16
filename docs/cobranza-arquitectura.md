@@ -1,5 +1,13 @@
 # Arquitectura del Módulo de Cobranza — ERP Datafast
 
+> ⚠ **Documento anterior al diseño del Core, y de un módulo que aún no se ha reestructurado.**
+> Donde diga algo distinto de **E-0.2 / E-0.3 / E-0.4** (Vigentes), **mandan estos últimos**
+> (00-INDICE §4). Se reescribirá en la fase de su módulo (F-0.1 §12).
+> **No se cita como fuente en un documento vigente.**
+
+---
+
+
 > Especificación definitiva. Consolida la propuesta funcional de catálogos (formas/canales/
 > cuentas), la propuesta de arquitectura en dos etapas, y el estado real del código en
 > producción a 2026-08-06.

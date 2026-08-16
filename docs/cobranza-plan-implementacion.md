@@ -1,5 +1,13 @@
 # Plan de Implementación — Módulo de Cobranza
 
+> ⚠ **Documento anterior al diseño del Core, y de un módulo que aún no se ha reestructurado.**
+> Donde diga algo distinto de **E-0.2 / E-0.3 / E-0.4** (Vigentes), **mandan estos últimos**
+> (00-INDICE §4). Se reescribirá en la fase de su módulo (F-0.1 §12).
+> **No se cita como fuente en un documento vigente.**
+
+---
+
+
 > Ejecución de [`cobranza-arquitectura.md`](./cobranza-arquitectura.md).
 > Cada fase es **desplegable de forma independiente** y deja el sistema funcionando.
 > Ninguna fase depende de que la siguiente llegue.

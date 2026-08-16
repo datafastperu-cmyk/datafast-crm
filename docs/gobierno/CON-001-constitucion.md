@@ -444,9 +444,9 @@ exigible**. Lo exigible hoy es POL-001.
 
 | Referencia | Contenido aportado |
 |---|---|
-| `docs/auditoria/` (Etapa I) | Estado real medido del sistema |
-| `docs/consolidacion/` (Etapa II) | Análisis, riesgos y fortalezas |
-| `docs/directrices/directrices-politicas-filosofia.md` | Compilación de reglas desde fuentes primarias |
+| `docs/archivo/auditoria/` (Etapa I) | Estado real medido del sistema |
+| `docs/archivo/consolidacion/` (Etapa II) | Análisis, riesgos y fortalezas |
+| `docs/archivo/directrices/directrices-politicas-filosofia.md` | Compilación de reglas desde fuentes primarias |
 | `CLAUDE.md` | Reglas de construcción vigentes del repositorio |
 | `PENDIENTES.md` | Registro vivo de deuda técnica |
 | `pagos/adaptadores/README.md` | Política de la frontera del dinero |

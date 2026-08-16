@@ -435,7 +435,7 @@ primera clase. Condiciona ADR-022.
 # 9. Referencias
 
 CON-001 · AEM-001 · ARS-001 · DAT-001 · MOD-001/002/003 ·
-`docs/directrices/` (invariantes y su verificación) · `docs/auditoria/` capítulo 6
+`docs/archivo/directrices/` (invariantes y su verificación) · `docs/archivo/auditoria/` capítulo 6
 
 ---
 

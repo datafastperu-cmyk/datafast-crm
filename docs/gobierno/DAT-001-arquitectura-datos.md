@@ -365,7 +365,7 @@ ftth_rollback_log        → qué se intentó deshacer
 # 9. Referencias
 
 CON-001 · POL-001 · ARS-001 · DOM-001 · SEC-001 · PRO-001 ·
-`docs/auditoria/` capítulos 6 y 7 · `docs/consolidacion/` capítulo 4
+`docs/archivo/auditoria/` capítulos 6 y 7 · `docs/archivo/consolidacion/` capítulo 4
 
 ---
 

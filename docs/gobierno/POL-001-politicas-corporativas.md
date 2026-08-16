@@ -16,7 +16,7 @@
 | Versión | Fecha | Cambio | Motivo |
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
-| 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
+| 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/archivo/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
 | **2.1** | **2026-08-09** | **PD-14 — el prorrateo tiene UNA definición y viaja congelada en el cargo.** Base `ACTUAL_360` (días reales / 30), conteo inclusivo en los dos extremos, redondeo único al final, y `proration_basis`/`_denominator`/`_days`/`unit_rate` persistidos en el ítem del comprobante | El propietario verificó el marco de OSIPTEL antes de decidir (PD-12): el regulador manda sobre el ciclo y sobre facturar lo prestado, **no sobre la base de prorrateo**. Eso la convierte en política comercial propia, y se escribe como tal. Separar ciclo de prorrateo —propuesta suya— fue lo que hizo desaparecer los dos parches que arrastraba cada base candidata |
 | **2.0** | **2026-08-09** | **PD-13 — el modelo cubre la forma del sector; la funcionalidad, la instalación.** El ERP es un producto para varios operadores, y el modelo de datos se diseñaba contra el estado de la instalación que lo estrena. Incluye la clasificación obligatoria **adoptado / adaptado / extendido**, la línea **regla vs estructura**, y cinco condiciones sin las cuales sería una licencia para abstraer sin límite | Lo planteó el propietario al corregir una evaluación que medía `BillingAccount` contra las necesidades de Datafast en vez de contra la forma del sector. La política **cambia una decisión ya tomada** (`DIA_PAGO_MAXIMO = 28`) y mejora el argumento de otra (`moroso`), que es como se comprueba que no es decorativa |
 | **1.9** | **2026-08-08** | **B-3 medida y acotada**: 102 endpoints mutantes sin autorización alguna (no «con rol grueso», como decía la ficha), techo congelado. Corregidos los cinco de `auditoria` y un rol fantasma que dejaba `papelera/eliminar` inalcanzable | El guard deja pasar a cualquier autenticado cuando no hay ni rol ni permiso. La ficha describía un problema distinto y menos grave del real |
@@ -1072,7 +1072,7 @@ Para estas, el mecanismo es **la revisión y el ADR**, no la automatización.
 # 9. Referencias
 
 CON-001 · AEM-001 · ARS-001 · DOM-001 · DAT-001 · INT-001 · SEC-001 · EST-001 · GUI-001 ·
-PRO-001 · RDM-001 · ADR-001…016 y ADR-017…028 (propuestas) · `CLAUDE.md` · `docs/directrices/`
+PRO-001 · RDM-001 · ADR-001…016 y ADR-017…028 (propuestas) · `CLAUDE.md` · `docs/archivo/directrices/`
 
 ---
 

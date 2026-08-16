@@ -372,7 +372,7 @@ falla como un error funcional en otro sitio.
 # 9. Referencias
 
 CON-001 · POL-001 · ARS-001 · DAT-001 · INT-001 · PRO-001 ·
-`docs/auditoria/` capítulo 13 · `main.ts` · `nginx/templates/`
+`docs/archivo/auditoria/` capítulo 13 · `main.ts` · `nginx/templates/`
 
 ---
 

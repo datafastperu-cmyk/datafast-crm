@@ -1,5 +1,13 @@
 # Portal del Cliente — Documento de Arquitectura
 
+> ⚠ **Documento anterior al diseño del Core, y de un módulo que aún no se ha reestructurado.**
+> Donde diga algo distinto de **E-0.2 / E-0.3 / E-0.4** (Vigentes), **mandan estos últimos**
+> (00-INDICE §4). Se reescribirá en la fase de su módulo (F-0.1 §12).
+> **No se cita como fuente en un documento vigente.**
+
+---
+
+
 Estado: **Fases 0 a 6 implementadas y desplegadas al repositorio.** Fase 7 (pasarela real) fuera de alcance por decisión de negocio.
 Fecha: 2026-07-30
 

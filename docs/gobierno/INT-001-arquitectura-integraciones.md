@@ -346,7 +346,7 @@ Toda mutación contra hardware debe declarar **su sonda de verificación**. Sin 
 # 9. Referencias
 
 CON-001 · POL-001 · ARS-001 · SEC-001 · ADR-003, ADR-004, ADR-006, ADR-008, ADR-013 ·
-`docs/auditoria/` capítulos 8 y 12 · `pagos/adaptadores/README.md`
+`docs/archivo/auditoria/` capítulos 8 y 12 · `pagos/adaptadores/README.md`
 
 ---
 
