@@ -234,12 +234,24 @@ lo estaba. **Ya corregido** al convertir `despachar()` (los workers ahora relanz
 Con esta tercera ocurrencia se cumple la propia regla que B-16 dejó escrita: **dos ocurrencias
 son anécdota, la tercera obliga al barrido.** B-16 pasa de "falta un test sobre un módulo" a:
 
+**Variante encontrada en el grupo 3a (mismo día), material del mismo barrido aunque no sea
+idéntica:** `VpnClienteService.limpiarWizardsAbandonados()` (cron, la red de seguridad que
+libera IPs VPN abandonadas — CLAUDE.md) hace `try { await this.revocar(...) } catch {}`, y
+`revocarPorToken()` no mira el retorno de `this.revocar(...)`. Antes `revocar()` lanzaba y el
+`catch {}` al menos atrapaba una excepción real; ahora `revocar()` habla `ResultadoOperacion` y
+**no lanza** — un `reintentable`/`indeterminado` (management caído, error de filesystem) se
+descarta en silencio en ambos sitios, sin log, y el cron sigue su ciclo sin que nadie sepa que
+la IP no se liberó. No es regresión (antes era igual de mudo) pero es exactamente el patrón
+que este barrido existe para encontrar — **no se corrige aquí**.
+
 **Estado objetivo (ampliado):** localizar todo `.catch(() => {})` / `catch {}` sin `logger.*`
-ni relanzamiento en `backend/src/`, clasificar cada hallazgo (guardián de arranque / bookkeeping
-de negocio / mecanismo de reintento configurado y muerto — esta última es la de mayor riesgo y
-se prioriza), y para cada uno: corregirlo (log como mínimo) o documentar aquí por qué el
-silencio es intencional. `marcarUsoTr069()` entra en este barrido — ya no queda fuera de
-alcance. Más el test de regresión sobre `schema-guard.module.ts` que ya estaba previsto.
+ni relanzamiento **y todo retorno de `ResultadoOperacion` descartado sin comprobar la clase**
+en `backend/src/`, clasificar cada hallazgo (guardián de arranque / bookkeeping de negocio /
+mecanismo de reintento configurado y muerto — esta última es la de mayor riesgo y se
+prioriza), y para cada uno: corregirlo (log como mínimo) o documentar aquí por qué el
+silencio es intencional. `marcarUsoTr069()`, `limpiarWizardsAbandonados()` y
+`revocarPorToken()` entran en este barrido — ninguno queda fuera de alcance. Más el test de
+regresión sobre `schema-guard.module.ts` que ya estaba previsto.
 
 **No se ejecuta el barrido en esta entrada** — queda registrado con el alcance ampliado, como
 tarea propia. No se despliega suelto: nivel B no activa la excepción de R-1 (F-0.1 §8.1) —eso

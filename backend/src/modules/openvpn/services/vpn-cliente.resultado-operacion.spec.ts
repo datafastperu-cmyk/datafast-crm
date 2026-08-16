@@ -25,10 +25,23 @@ describe('VpnClienteService.revocar() — clasificación por rama', () => {
 
   it('ya_en_destino: cliente ya estaba revocado — no arqueología sobre status HTTP', async () => {
     const svc = hacer({
-      _getCliente: jest.fn(async () => ({ id: 'c-1', estado: 'revocado' })),
+      _getCliente: jest.fn(async () => ({ id: 'c-1', estado: 'revocado', vpnUsuario: 'df-r1' })),
     });
     const r = await svc.revocar('c-1', 'e-1');
     expect(r.clase).toBe('ya_en_destino');
+  });
+
+  // VIO hacia adentro (E03-05): `ya_en_destino` afirma que el CCD está borrado y la sesión
+  // muerta, no que la fila dice 'revocado'. Sin esto, un cert marcado revocado en BD con su
+  // CCD todavía presente seguiría reservando la IP mientras el llamador lee ÉXITO.
+  it('ya_en_destino: también mata la sesión — no se limita a leer el flag de BD', async () => {
+    const killClienteVpnManagement = jest.fn(async () => {});
+    const svc = hacer({
+      _getCliente: jest.fn(async () => ({ id: 'c-1', estado: 'revocado', vpnUsuario: 'df-r1' })),
+      killClienteVpnManagement,
+    });
+    await svc.revocar('c-1', 'e-1');
+    expect(killClienteVpnManagement).toHaveBeenCalledWith('df-r1');
   });
 
   it('rechazado_definitivo: cliente no encontrado (NotFoundException vía clasificarError)', async () => {

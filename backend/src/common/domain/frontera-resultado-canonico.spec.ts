@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { analizarCodigo, operacionesDeFrontera } from '../analisis/metodos-frontera';
+import { analizarCodigo, operacionesDeFrontera, operacionesSinResultadoOperacion } from '../analisis/metodos-frontera';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // E03-03 — «Ningún resultado se expresa en vocabulario de transporte» (E-0.3 §11).
@@ -103,5 +103,37 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
   it('caso conocido: SmartoltApiService.aprovisionarOnu() ya no lanza excepción de transporte', () => {
     const h = hallazgos().find((x) => x.id === 'SmartoltApiService.aprovisionarOnu');
     expect(h).toBeUndefined();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ANCHO — operaciones de frontera que NO hablan ResultadoOperacion, ni literalmente ni por
+  // una extensión declarada (`EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION`,
+  // metodos-frontera.ts). F-0.1 §9.1 lo llamaba «ancho E03-03» y lo narraba solo en prosa —
+  // sin comprobación, la cifra de la doc y la que un script regeneraba podían divergir sin que
+  // nada lo detectara (el error 15-frente-a-23 de la Ola 0, otra vez). Aquí queda exigido.
+  //
+  // `SmartoltApiService.aprovisionarOnu()` habla el vocabulario de dominio (las seis clases)
+  // pero con un tipo local (`ResultadoAprovisionarOnu`) porque necesita cargar el payload que
+  // `ResultadoOperacion` no lleva a propósito — el registro declara esa excepción una vez, en
+  // vez de que el medidor la adivine por el nombre del tipo (eso sería maquillarlo).
+  // ═══════════════════════════════════════════════════════════════════════
+  // 83 = recongelado el 2026-08-16 tras el grupo 3a (88 → 84 automático por el
+  // literal `ResultadoOperacion` de los 4 métodos de VpnClienteService, − 1 más por el
+  // registro de extensiones transitorias reconociendo `aprovisionarOnu()`).
+  const TECHO_FRONTERA_SIN_RESULTADO_OPERACION = 83;
+
+  it('el ancho (frontera sin ResultadoOperacion, ni literal ni por extensión declarada) es exactamente el techo congelado', () => {
+    const sinRO = operacionesSinResultadoOperacion(metodos).map((m) => `${m.clase}.${m.nombre}`).sort();
+    // Mismo criterio simétrico que el techo de excepciones: sube → conversión perdida o
+    // regresión sin declarar; baja sin recongelar aquí → esta prueba lo detiene igual.
+    expect(sinRO.length).toBe(TECHO_FRONTERA_SIN_RESULTADO_OPERACION);
+  });
+
+  // El caso que motivó este techo: aprovisionarOnu() SÍ habla ResultadoOperacion (vía su
+  // extensión declarada) y por eso NO debe aparecer en el ancho, aunque `clasificarRetorno()`
+  // por sí solo lo clasificaría como «objeto» al no reconocer el nombre del tipo local.
+  it('caso conocido: SmartoltApiService.aprovisionarOnu() no aparece en el ancho — su extensión está declarada', () => {
+    const sinRO = operacionesSinResultadoOperacion(metodos).map((m) => `${m.clase}.${m.nombre}`);
+    expect(sinRO).not.toContain('SmartoltApiService.aprovisionarOnu');
   });
 });

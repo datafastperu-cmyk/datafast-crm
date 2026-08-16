@@ -532,20 +532,29 @@ export class VpnClienteService implements OnModuleInit {
   // sobre el status/constructor de la excepción (`err?.status === 409 ||
   // err?.constructor?.name === 'ConflictException'`), exactamente lo que D-14 prohíbe.
   // `ya_en_destino` reemplaza ese sniffing por la clase de dominio.
+  //
+  // VIO hacia adentro (E03-05): el estado destino de `revocar` NO es «la fila dice
+  // 'revocado'» — es CCD borrado y sesión muerta (CLAUDE.md, ciclo de vida de IPs VPN). Un
+  // cert con `estado='revocado'` cuyo CCD siguiera presente seguiría reservando la IP, y
+  // devolver `ya_en_destino` sin comprobar eso sería exactamente la afirmación sin verificar
+  // que VIO prohíbe. `killClienteVpnManagement` y el `unlink` son idempotentes — ejecutarlas
+  // también en este camino no cuesta nada y convierte la afirmación en observación.
   async revocar(id: string, empresaId: string): Promise<ResultadoOperacion> {
     try {
       const cliente = await this._getCliente(id, empresaId);
+      const effectiveCn = cliente.vpnUsuario ?? cliente.nombreCert;
+      const ccdPath = path.join(CCD_DIR, effectiveCn);
+
       if (cliente.estado === 'revocado') {
+        await this.killClienteVpnManagement(effectiveCn);
+        await fs.unlink(ccdPath).catch(() => {});
         return { clase: 'ya_en_destino', mensaje: 'El cliente VPN ya estaba revocado.' };
       }
-
-      const effectiveCn = cliente.vpnUsuario ?? cliente.nombreCert;
 
       await this.killClienteVpnManagement(effectiveCn);
       await this.repo.update(cliente.id, { estado: 'revocado', activo: false });
 
       // Eliminar archivo CCD del cliente revocado para limpiar rutas del servidor
-      const ccdPath = path.join(CCD_DIR, effectiveCn);
       await fs.unlink(ccdPath).catch(() => {});
       this.logger.log(`VPN cliente revocado: ${cliente.id}`);
       return { clase: 'aplicado', mensaje: 'Cliente VPN revocado.' };

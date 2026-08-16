@@ -252,3 +252,69 @@ export function operacionesDeFrontera(metodos: MetodoInfo[]): MetodoInfo[] {
     metodos.some((x) => x.modulo !== m.modulo && x.llamadas.some((c) => c.clase === m.clase && c.metodo === m.nombre)),
   );
 }
+
+/**
+ * Registro DECLARADO de extensiones locales y transitorias de `ResultadoOperacion`
+ * (Ola 1, grupo 3a, 2026-08-16).
+ *
+ * Por qué existe: `clasificarRetorno()` reconoce el vocabulario de dominio por el NOMBRE del
+ * tipo (`/^ResultadoOperacion/`), a propósito — no evalúa la forma estructural, porque eso
+ * convertiría al medidor en un mini-compilador. Un método que necesita cargar un payload que
+ * `ResultadoOperacion` no lleva a propósito (`SmartoltApiService.aprovisionarOnu()`, ver su
+ * propio comentario — E02-10/E04-10 prohíben ese payload en el tipo compartido) declara un
+ * tipo LOCAL que envuelve las seis clases con el campo extra. Ese método SÍ habla el
+ * vocabulario de dominio — pero el medidor, mirando solo el nombre, lo cuenta como si no lo
+ * hablara. Es el error 15-frente-a-23 de la Ola 0 otra vez: dos cifras sobre el mismo hecho.
+ *
+ * La corrección NO es enseñarle el regex a reconocer `ResultadoAprovisionarOnu` — eso
+ * maquillaría el medidor con una excepción ad-hoc que crece sin control la próxima vez que
+ * alguien necesite lo mismo. La corrección es declarar la excepción AQUÍ, una vez, con su
+ * fecha de retiro, y que el cómputo de «operaciones sin ResultadoOperacion» (usado por F-0.1
+ * §9.1 para el ancho de E03-03) reste estas entradas explícitamente — la deuda queda CONTADA
+ * (PF-3), no oculta y no comentada.
+ *
+ * TÉCHO: cuántas extensiones siguen vivas. Solo puede BAJAR (cuando el binding de la Ola 3
+ * retire una), nunca subir sin que la entrada se declare aquí primero. Ver
+ * `extensiones-transitorias.spec.ts`.
+ */
+export interface ExtensionTransitoria {
+  /** Nombre de la clase `*Service` dueña del método. */
+  clase: string;
+  /** Nombre del método cuyo retorno usa la extensión. */
+  metodo: string;
+  /** Nombre del tipo local (el que aparece en la firma, ej. `ResultadoAprovisionarOnu`). */
+  tipo: string;
+  /** Dónde vive la declaración del tipo — para que quien retire la deuda sepa qué tocar. */
+  archivo: string;
+  /** Hito que debe retirarla. No es una fecha: es la condición de cierre. */
+  retiro: string;
+  /** Por qué no es directamente `ResultadoOperacion`. */
+  razon: string;
+}
+
+export const EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION: ExtensionTransitoria[] = [
+  {
+    clase: 'SmartoltApiService',
+    metodo: 'aprovisionarOnu',
+    tipo: 'ResultadoAprovisionarOnu',
+    archivo: 'backend/src/modules/smartolt/smartolt-api.service.ts',
+    retiro: 'Ola 3 (cuando el binding del módulo posea el identificador y el Core deje de necesitarlo)',
+    razon: 'Payload `onu` (el id que SmartOLT asigna) que el llamador realmente necesita — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+  },
+];
+
+/**
+ * Operaciones de frontera que NO hablan `ResultadoOperacion` — ni literalmente (el tipo
+ * compartido) ni por una extensión DECLARADA en el registro de arriba. Es el «ancho» que
+ * F-0.1 §9.1 recongela en cada lote de la Ola 1: la cuenta honesta, ya reconciliada contra la
+ * deuda transitoria en vez de dejarla como una discrepancia sin explicar.
+ */
+export function operacionesSinResultadoOperacion(metodos: MetodoInfo[]): MetodoInfo[] {
+  const declaradas = new Set(
+    EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION.map((e) => `${e.clase}.${e.metodo}`),
+  );
+  return operacionesDeFrontera(metodos).filter((m) =>
+    clasificarRetorno(m.retorno) !== 'ResultadoOperacion' &&
+    !declaradas.has(`${m.clase}.${m.nombre}`),
+  );
+}
