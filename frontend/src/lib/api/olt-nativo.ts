@@ -892,8 +892,11 @@ export const oltNativoApi = {
     return res.data.data;
   },
 
-  ftthActualizarWan: async (contratoId: string): Promise<{ actualizado: boolean; mensaje: string; error?: string; skipped?: boolean }> => {
-    const res = await api.post<ApiRespuesta<{ actualizado: boolean; mensaje: string; error?: string; skipped?: boolean }>>(
+  // Ola 1 (2026-08-16): el backend traduce ResultadoOperacion a HTTP en el borde
+  // (traducirAHttp) — el shape pasa de {actualizado, skipped} a {exitoso}. Sin consumidor
+  // en el frontend hoy (grep sin resultados), así que no hay pantalla que ajustar.
+  ftthActualizarWan: async (contratoId: string): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
+    const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
       `/olt-nativo/ftth/actualizar-wan/${contratoId}`, {}, { timeout: 120_000 },
     );
     return res.data.data;

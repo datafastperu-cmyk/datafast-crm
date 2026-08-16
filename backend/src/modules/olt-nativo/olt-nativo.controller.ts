@@ -1295,8 +1295,9 @@ export class OltNativoController {
   async actualizarWanFtth(
     @Param('contratoId', ParseUUIDPipe) contratoId: string,
     @CurrentUser() user: JwtPayload,
-  ): Promise<{ actualizado: boolean; mensaje: string; error?: string; skipped?: boolean }> {
-    return this.ftth.actualizarWan(contratoId, user.empresaId);
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+    // El servicio habla dominio; la traducción a HTTP vive aquí, en el borde.
+    return traducirAHttp(await this.ftth.actualizarWan(contratoId, user.empresaId));
   }
 
   @Post('ftth/cancelar/:contratoId')

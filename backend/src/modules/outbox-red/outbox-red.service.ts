@@ -738,19 +738,18 @@ export class OutboxRedService {
       } else if (cmd.accion === 'REACTIVAR_ONU') {
         res = await this.ftthSvc.rehabilitarPorContrato(cmd.contrato_id, empresaId);
       } else if (cmd.accion === 'ACTUALIZAR_WAN_ONU') {
-        const r = await this.ftthSvc.actualizarWan(cmd.contrato_id, empresaId);
-        // 'skipped' (bridge / sin ONU): no hay nada que aplicar → éxito vacío.
-        res = r.skipped      ? { clase: 'no_aplica',    mensaje: r.mensaje }
-            : r.actualizado  ? { clase: 'aplicado',     mensaje: r.mensaje }
-                             : { clase: 'reintentable', motivo:  r.error ?? r.mensaje };
+        // Ola 1 (2026-08-16): actualizarWan ya habla ResultadoOperacion — la traducción
+        // ad-hoc que vivía aquí (r.skipped/r.actualizado/r.error) se retiró. Dos
+        // clasificaciones cambiaron al mudarse al dominio: ver el comentario de
+        // ProvisionFtthService.actualizarWan().
+        res = await this.ftthSvc.actualizarWan(cmd.contrato_id, empresaId);
       } else if (cmd.accion === 'ACTIVAR_CARRIL_TR069') {
         res = await this.ftthSvc.activarCarrilPorContrato(cmd.contrato_id, empresaId);
       } else if (cmd.accion === 'REAPROVISIONAR_ONU') {
-        // Push ERP→OLT de drift: re-aplica la ONU con los datos guardados del registro.
-        const r = await this.ftthSvc.reaplicar(cmd.contrato_id, empresaId);
-        res = r.estado === 'activo'
-          ? { clase: 'aplicado',     mensaje: r.mensaje ?? 'ONU reaplicada.' }
-          : { clase: 'reintentable', motivo:  r.mensaje ?? `Estado: ${r.estado}` };
+        // Ola 1 (2026-08-16): reaplicar ya habla ResultadoOperacion — la traducción
+        // `r.estado === 'activo' ? aplicado : reintentable` se retiró. Ver el comentario
+        // de ProvisionFtthService.reaplicar() para la precisión de TIMEOUT_ONLINE.
+        res = await this.ftthSvc.reaplicar(cmd.contrato_id, empresaId);
       } else {
         res = await this.ftthSvc.desaprovisionarPorContrato(cmd.contrato_id, empresaId);
       }

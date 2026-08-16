@@ -20,8 +20,8 @@ import { analizarCodigo, operacionesDeFrontera } from '../analisis/metodos-front
 // HTTP (E-0.3 D-14) — el controller traduce en el borde; esta barrera no mira controllers.
 //
 // TÉCHO CONGELADO, no cero: hoy 959 operaciones existen y solo 11 hablan `ResultadoOperacion`
-// (F-0.1 §5.1). Convertir las 18 operaciones de frontera que hoy lanzan HTTP es el trabajo de
-// la Ola 1, no una condición para arrancarla. El techo puede bajar (cada conversión real),
+// (F-0.1 §5.1). Convertir las operaciones de frontera que lanzan HTTP es el trabajo de la
+// Ola 1, no una condición para arrancarla. El techo puede bajar (cada conversión real),
 // nunca subir sin ADR — mismo mecanismo que `TECHO_TABLAS_COMPARTIDAS` (Ola 0, ADR-032 §4.4).
 //
 // DIVERGENCIA DECLARADA de ADR-032 §4.4 (F-0.1-A §7.1, regla 7): esta prueba falla también si
@@ -46,9 +46,10 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
     return out;
   };
 
-  // 18 = la foto de la Ola 1 (2026-08-16): 11 BadRequestException, 10 NotFoundException,
-  // 3 ConflictException (una operación puede lanzar más de una clase).
-  const TECHO_FRONTERA_CON_EXCEPCION_TRANSPORTE = 18;
+  // 17 = recongelado el 2026-08-16 tras convertir ProvisionFtthService.reaplicar()
+  // (grupo 1, consumida por el outbox — bajó de 18). Desglose: 10 BadRequestException,
+  // 9 NotFoundException, 3 ConflictException (una operación puede lanzar más de una clase).
+  const TECHO_FRONTERA_CON_EXCEPCION_TRANSPORTE = 17;
 
   it('el número de operaciones de frontera que lanzan HttpException es exactamente el techo congelado', () => {
     const encontrados = hallazgos().map((h) => h.id).sort();
@@ -75,6 +76,15 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
   // `ResultadoOperacion`, ver E-0.2-interacciones.md) empezara a figurar, sería una regresión.
   it('caso conocido: una operación que ya devuelve ResultadoOperacion no aparece en los hallazgos', () => {
     const h = hallazgos().find((x) => x.id === 'PlantaExternaService.transicionarElemento');
+    expect(h).toBeUndefined();
+  });
+
+  // Regresión del grupo 1 (outbox → olt-nativo, 2026-08-16): reaplicar() lanzaba
+  // NotFoundException/BadRequestException directamente; ahora los devuelve como
+  // `rechazado_definitivo`. Si volviera a lanzar, este test lo detecta antes que el
+  // conteo agregado.
+  it('caso conocido: ProvisionFtthService.reaplicar() ya no lanza excepción de transporte', () => {
+    const h = hallazgos().find((x) => x.id === 'ProvisionFtthService.reaplicar');
     expect(h).toBeUndefined();
   });
 });

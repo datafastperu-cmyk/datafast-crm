@@ -1944,67 +1944,90 @@ export class ProvisionFtthService {
   // Idempotente (`ont ipconfig ip-index 1` modifica la config existente). Se dispara
   // automáticamente al cambiar las credenciales PPPoE del contrato, y también manual.
   // Solo aplica a ONUs en modo ROUTING (en bridge la WAN vive en el router del cliente).
-  async actualizarWan(
-    contratoId: string,
-    empresaId:  string,
-  ): Promise<{ actualizado: boolean; mensaje: string; error?: string; skipped?: boolean }> {
-    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
-    if (!registro) {
-      return { actualizado: false, skipped: true, mensaje: 'Contrato sin ONU FTTH — actualizar WAN omitido.' };
-    }
-    if (registro.wanMode !== 'routing') {
+  // Ola 1 (2026-08-16): convertido a ResultadoOperacion — es una de las operaciones que
+  // consume el outbox (OutboxRedService.ejecutarComandoOnu, acción ACTUALIZAR_WAN_ONU).
+  // Antes, el outbox traducía `{actualizado, skipped, error}` a dominio él mismo (arqueología
+  // de shape, no de código HTTP, pero el mismo defecto de fondo: D-14). Esa traducción vivía
+  // en el sitio equivocado; ahora vive aquí, donde se conoce el motivo de cada rama.
+  //
+  // DOS CLASIFICACIONES CAMBIAN respecto de la traducción ad-hoc que tenía el outbox
+  // (`r.skipped ? no_aplica : r.actualizado ? aplicado : reintentable`), y no por descuido:
+  //   - VLAN del servicio cambiada: antes contaba como `skipped` → no_aplica → el outbox
+  //     marcaba el comando EJECUTADO sin haber actualizado nada. Es un rechazo, no un
+  //     "no había nada que hacer": SÍ hay algo que hacer (Re-Aprovisionar), y reintentar
+  //     ESTA MISMA operación produce el mismo rechazo siempre → rechazado_definitivo.
+  //   - Credenciales/auth inválidas (`_buildWanInject` con error): antes cayan en el
+  //     default `reintentable`, así que el outbox habría insistido indefinidamente contra
+  //     un dato que no cambia solo. Es un problema de configuración, no de hardware →
+  //     rechazado_definitivo.
+  async actualizarWan(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+      if (!registro) {
+        return { clase: 'no_aplica', mensaje: 'Contrato sin ONU FTTH — actualizar WAN omitido.' };
+      }
+      if (registro.wanMode !== 'routing') {
+        return {
+          clase: 'no_aplica',
+          mensaje: 'ONU en modo bridge — la WAN/PPPoE la maneja el router del cliente (BRAS), no la ONU.',
+        };
+      }
+      if (registro.estado !== FtthOnuEstado.ACTIVO) {
+        return {
+          clase: 'no_aplica',
+          mensaje: `Estado "${registro.estado}": la WAN se actualiza solo en ONUs activas.`,
+        };
+      }
+
+      const contrato = await this._fetchContrato(contratoId, empresaId);
+
+      // Si la VLAN del servicio cambió (p.ej. cambio de método → otro segmento con otra
+      // VLAN), re-inyectar la WAN sola no basta: el service-port de la OLT sigue en la
+      // VLAN vieja. Requiere Re-Aprovisionar (rehace service-port + WAN).
+      if (contrato.vlan_id != null && contrato.vlan_id !== registro.vlan) {
+        return {
+          clase: 'rechazado_definitivo',
+          motivo: `La VLAN del servicio cambió (${registro.vlan} → ${contrato.vlan_id}). ` +
+                  `Usa "Re-Aprovisionar" para actualizar el service-port y la WAN.`,
+        };
+      }
+
+      const wanInject = this._buildWanInject(contrato, registro);
+      if (wanInject.error) {
+        // Dato de configuración (credenciales/auth), no una falla transitoria: reintentar
+        // con los mismos datos produce el mismo rechazo.
+        return { clase: 'rechazado_definitivo', motivo: wanInject.error };
+      }
+
+      const olt  = await this._fetchOlt(registro.oltId, empresaId);
+      const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+
+      this.logger.log(
+        `FTTH actualizarWan | contrato=${contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId} ` +
+        `auth=${contrato.tipo_auth ?? 'pppoe'} mode=${wanInject.payload!.mode}`,
+      );
+      const wanRes = await this.automation.ftthInjectWanPppoe({ connection: conn, ...wanInject.payload! });
+
+      if (!wanRes.success) {
+        await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(wanRes.error) });
+        // Un timeout de transporte ya lo captura el catch de abajo vía clasificarError
+        // (indeterminado). Llegar aquí significa que el automatismo SÍ respondió y
+        // determinó el rechazo — recuperable, no un veto del dominio.
+        return {
+          clase: 'reintentable',
+          motivo: wanRes.error ?? 'No se pudo actualizar la WAN en la ONU.',
+        };
+      }
+
+      await this.ftthRepo.update(registro.id, { ultimoError: null });
+      this.logger.log(`FTTH actualizarWan OK | contrato=${contratoId} mode=${wanInject.payload!.mode}`);
       return {
-        actualizado: false, skipped: true,
-        mensaje: 'ONU en modo bridge — la WAN/PPPoE la maneja el router del cliente (BRAS), no la ONU.',
+        clase: 'aplicado',
+        mensaje: `WAN actualizada en la ONU (${wanInject.payload!.mode}) con la config actual del contrato.`,
       };
+    } catch (err) {
+      return clasificarError(err);
     }
-    if (registro.estado !== FtthOnuEstado.ACTIVO) {
-      return {
-        actualizado: false, skipped: true,
-        mensaje: `Estado "${registro.estado}": la WAN se actualiza solo en ONUs activas.`,
-      };
-    }
-
-    const contrato  = await this._fetchContrato(contratoId, empresaId);
-
-    // Si la VLAN del servicio cambió (p.ej. cambio de método → otro segmento con otra
-    // VLAN), re-inyectar la WAN sola no basta: el service-port de la OLT sigue en la
-    // VLAN vieja. Requiere Re-Aprovisionar (rehace service-port + WAN). Se evita
-    // inyectar con la VLAN incorrecta.
-    if (contrato.vlan_id != null && contrato.vlan_id !== registro.vlan) {
-      return {
-        actualizado: false, skipped: true,
-        mensaje: `La VLAN del servicio cambió (${registro.vlan} → ${contrato.vlan_id}). ` +
-                 `Usa "Re-Aprovisionar" para actualizar el service-port y la WAN.`,
-      };
-    }
-
-    const wanInject = this._buildWanInject(contrato, registro);
-    if (wanInject.error) {
-      return { actualizado: false, mensaje: wanInject.error };
-    }
-
-    const olt  = await this._fetchOlt(registro.oltId, empresaId);
-    const conn = this._buildConn(olt, this._decryptOltPassword(olt));
-
-    this.logger.log(
-      `FTTH actualizarWan | contrato=${contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId} ` +
-      `auth=${contrato.tipo_auth ?? 'pppoe'} mode=${wanInject.payload!.mode}`,
-    );
-    const wanRes = await this.automation.ftthInjectWanPppoe({ connection: conn, ...wanInject.payload! });
-
-    if (!wanRes.success) {
-      await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(wanRes.error) });
-      return {
-        actualizado: false,
-        mensaje: 'No se pudo actualizar la WAN en la ONU. Reintenta o revisa el enlace.',
-        error: wanRes.error,
-      };
-    }
-
-    await this.ftthRepo.update(registro.id, { ultimoError: null });
-    this.logger.log(`FTTH actualizarWan OK | contrato=${contratoId} mode=${wanInject.payload!.mode}`);
-    return { actualizado: true, mensaje: `WAN actualizada en la ONU (${wanInject.payload!.mode}) con la config actual del contrato.` };
   }
 
   // ── verificarYRepararWanDrift ────────────────────────────────────────────
@@ -2055,8 +2078,12 @@ export class ProvisionFtthService {
           `verificarYRepararWanDrift: drift detectado | contrato=${c.contrato_id} ` +
           `connected=${chk.connected} username=${chk.username ?? '?'} (esperado ${c.usuario_pppoe})`,
         );
+        // Ola 1: actualizarWan devuelve ResultadoOperacion. Este contador cuenta
+        // reparaciones REALES, no "éxito" en general — `no_aplica` (bridge, sin ONU,
+        // estado no activo) no es una reparación y sigue contando como no-reparada, igual
+        // que antes de la conversión.
         const rep = await this.actualizarWan(c.contrato_id, c.empresa_id);
-        if (rep.actualizado) reparadas++; else fallidas++;
+        if (rep.clase === 'aplicado') reparadas++; else fallidas++;
       } catch (e) {
         fallidas++;
         this.logger.warn(`verificarYRepararWanDrift: contrato ${c.contrato_id} lanzó — ${(e as Error).message}`);
@@ -2769,36 +2796,64 @@ export class ProvisionFtthService {
   // en la OLT), re-corre provisionarFtth con los parámetros persistidos.
   // Se invoca desde el outbox (REAPROVISIONAR_ONU) con reintentos.
   // ────────────────────────────────────────────────────────────
-  async reaplicar(contratoId: string, empresaId: string): Promise<FtthProvisionResult> {
-    const reg = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
-    if (!reg) {
-      throw new NotFoundException('No hay registro FTTH para este contrato — no se puede re-aplicar.');
+  // Ola 1 (2026-08-16): convertido a ResultadoOperacion — otra de las operaciones que
+  // consume el outbox (acción REAPROVISIONAR_ONU). Antes el outbox traducía con
+  // `r.estado === 'activo' ? aplicado : reintentable`; esa traducción ya vivía tan lejos
+  // del código que decide `estado` que no podía distinguir un timeout de un rechazo real.
+  //
+  // `provisionarFtth` sigue hablando su propio contrato (`FtthProvisionResult`) — D-41: no
+  // se toca su interior en esta ola, solo se traduce en el borde de ESTE método.
+  //
+  // Precisión añadida sobre el criterio del outbox: `TIMEOUT_ONLINE` es `indeterminado`,
+  // no `reintentable` — el nombre del propio estado ya dice que no se sabe si se aplicó
+  // (VIO, E-0.3 D-18); reintentar a ciegas es lo que ensucia el plano físico. El resto de
+  // estados no-ACTIVO se clasifican `reintentable` por defecto (ante la duda, E-0.3 D-14):
+  // `provisionarFtth` es idempotente (ver comentario más abajo), así que una nueva pasada
+  // continúa desde donde quedó — no hay motivo documentado para tratar ninguno de ellos
+  // como veto definitivo del dominio.
+  async reaplicar(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const reg = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+      if (!reg) {
+        return { clase: 'rechazado_definitivo', motivo: 'No hay registro FTTH para este contrato — no se puede re-aplicar.' };
+      }
+      if (reg.lineprofileId == null || reg.srvprofileId == null) {
+        return {
+          clase: 'rechazado_definitivo',
+          motivo: 'El registro no tiene perfiles GPON guardados — re-aprovisiona desde el modal del contrato.',
+        };
+      }
+      const dto: ProvisionarFtthDto = {
+        contratoId,
+        frame:            reg.frame,
+        slot:             reg.slot,
+        port:             reg.port,
+        onuId:            reg.onuId ?? undefined,
+        sn:               reg.sn,
+        servicePortId:    reg.servicePortId ?? undefined,
+        vlan:             reg.vlan,
+        lineprofileId:    reg.lineprofileId,
+        srvprofileId:     reg.srvprofileId,
+        trafficIndexDown: reg.trafficIndexDown ?? undefined,
+        trafficIndexUp:   reg.trafficIndexUp ?? undefined,
+        wanMode:          reg.wanMode ?? undefined,
+      };
+      // El carril de gestión TR-069 lo asegura provisionarFtth de forma intrínseca (punto
+      // común), así que reaplicar no necesita restaurarlo aparte: reusa el service-port de
+      // gestión del contrato en el pool y lo re-aplica idempotente.
+      this.logger.log(`reaplicar | contrato=${contratoId} olt=${reg.oltId} sn=${reg.sn}`);
+      const r = await this.provisionarFtth(reg.oltId, empresaId, dto);
+
+      if (r.estado === FtthOnuEstado.ACTIVO) {
+        return { clase: 'aplicado', mensaje: r.mensaje ?? 'ONU reaplicada.' };
+      }
+      if (r.estado === FtthOnuEstado.TIMEOUT_ONLINE) {
+        return { clase: 'indeterminado', motivo: r.error ?? r.mensaje ?? `Estado: ${r.estado}` };
+      }
+      return { clase: 'reintentable', motivo: r.error ?? r.mensaje ?? `Estado: ${r.estado}` };
+    } catch (err) {
+      return clasificarError(err);
     }
-    if (reg.lineprofileId == null || reg.srvprofileId == null) {
-      throw new BadRequestException(
-        'El registro no tiene perfiles GPON guardados — re-aprovisiona desde el modal del contrato.',
-      );
-    }
-    const dto: ProvisionarFtthDto = {
-      contratoId,
-      frame:            reg.frame,
-      slot:             reg.slot,
-      port:             reg.port,
-      onuId:            reg.onuId ?? undefined,
-      sn:               reg.sn,
-      servicePortId:    reg.servicePortId ?? undefined,
-      vlan:             reg.vlan,
-      lineprofileId:    reg.lineprofileId,
-      srvprofileId:     reg.srvprofileId,
-      trafficIndexDown: reg.trafficIndexDown ?? undefined,
-      trafficIndexUp:   reg.trafficIndexUp ?? undefined,
-      wanMode:          reg.wanMode ?? undefined,
-    };
-    // El carril de gestión TR-069 lo asegura provisionarFtth de forma intrínseca (punto
-    // común), así que reaplicar no necesita restaurarlo aparte: reusa el service-port de
-    // gestión del contrato en el pool y lo re-aplica idempotente.
-    this.logger.log(`reaplicar | contrato=${contratoId} olt=${reg.oltId} sn=${reg.sn}`);
-    return this.provisionarFtth(reg.oltId, empresaId, dto);
   }
 
   async reconciliar(
