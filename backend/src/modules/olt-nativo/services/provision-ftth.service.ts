@@ -16,6 +16,7 @@ import { FtthRollbackLog, RollbackMotivo } from '../entities/ftth-rollback-log.e
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { ResultadoOperacion, clasificarError } from '../../../common/domain/resultado-operacion';
+import { RechazosDefinitivos } from '../../../common/domain/rechazos-definitivos';
 import { evaluarTransicion }                   from '../domain/ftth-maquina-estados';
 import { EventEmitter2 }                       from '@nestjs/event-emitter';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
@@ -1950,16 +1951,12 @@ export class ProvisionFtthService {
   // de shape, no de código HTTP, pero el mismo defecto de fondo: D-14). Esa traducción vivía
   // en el sitio equivocado; ahora vive aquí, donde se conoce el motivo de cada rama.
   //
-  // DOS CLASIFICACIONES CAMBIAN respecto de la traducción ad-hoc que tenía el outbox
-  // (`r.skipped ? no_aplica : r.actualizado ? aplicado : reintentable`), y no por descuido:
-  //   - VLAN del servicio cambiada: antes contaba como `skipped` → no_aplica → el outbox
-  //     marcaba el comando EJECUTADO sin haber actualizado nada. Es un rechazo, no un
-  //     "no había nada que hacer": SÍ hay algo que hacer (Re-Aprovisionar), y reintentar
-  //     ESTA MISMA operación produce el mismo rechazo siempre → rechazado_definitivo.
-  //   - Credenciales/auth inválidas (`_buildWanInject` con error): antes cayan en el
-  //     default `reintentable`, así que el outbox habría insistido indefinidamente contra
-  //     un dato que no cambia solo. Es un problema de configuración, no de hardware →
-  //     rechazado_definitivo.
+  // CAMBIO DE COMPORTAMIENTO declarado en F-0.1 §9.1 (no en este comentario, para no tener
+  // dos descripciones de lo mismo, R-3): la VLAN cambiada y las credenciales inválidas antes
+  // NO detenían el comando (`skipped`/`reintentable` ad-hoc); ahora sí, como
+  // `rechazado_definitivo`. Los motivos exactos de cada rechazo viven en el catálogo único
+  // `RechazosDefinitivos` (`common/domain/rechazos-definitivos.ts`, D-14 — «la lista es
+  // explícita y corta»), no repartidos en este método.
   async actualizarWan(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
     try {
       const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
@@ -1985,18 +1982,12 @@ export class ProvisionFtthService {
       // VLAN), re-inyectar la WAN sola no basta: el service-port de la OLT sigue en la
       // VLAN vieja. Requiere Re-Aprovisionar (rehace service-port + WAN).
       if (contrato.vlan_id != null && contrato.vlan_id !== registro.vlan) {
-        return {
-          clase: 'rechazado_definitivo',
-          motivo: `La VLAN del servicio cambió (${registro.vlan} → ${contrato.vlan_id}). ` +
-                  `Usa "Re-Aprovisionar" para actualizar el service-port y la WAN.`,
-        };
+        return RechazosDefinitivos.FTTH_VLAN_CAMBIADA(registro.vlan, contrato.vlan_id);
       }
 
       const wanInject = this._buildWanInject(contrato, registro);
       if (wanInject.error) {
-        // Dato de configuración (credenciales/auth), no una falla transitoria: reintentar
-        // con los mismos datos produce el mismo rechazo.
-        return { clase: 'rechazado_definitivo', motivo: wanInject.error };
+        return RechazosDefinitivos.FTTH_CONFIG_WAN_INVALIDA(wanInject.error);
       }
 
       const olt  = await this._fetchOlt(registro.oltId, empresaId);
@@ -2804,6 +2795,11 @@ export class ProvisionFtthService {
   // `provisionarFtth` sigue hablando su propio contrato (`FtthProvisionResult`) — D-41: no
   // se toca su interior en esta ola, solo se traduce en el borde de ESTE método.
   //
+  // Los dos rechazos definitivos (sin registro, sin perfiles GPON) viven en el catálogo
+  // único `RechazosDefinitivos` — D-14, «la lista es explícita y corta» — no como literales
+  // sueltos aquí. Ese cambio de comportamiento (antes lanzaban excepción directo) está
+  // declarado en F-0.1 §9.1.
+  //
   // Precisión añadida sobre el criterio del outbox: `TIMEOUT_ONLINE` es `indeterminado`,
   // no `reintentable` — el nombre del propio estado ya dice que no se sabe si se aplicó
   // (VIO, E-0.3 D-18); reintentar a ciegas es lo que ensucia el plano físico. El resto de
@@ -2815,13 +2811,10 @@ export class ProvisionFtthService {
     try {
       const reg = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
       if (!reg) {
-        return { clase: 'rechazado_definitivo', motivo: 'No hay registro FTTH para este contrato — no se puede re-aplicar.' };
+        return RechazosDefinitivos.FTTH_SIN_REGISTRO();
       }
       if (reg.lineprofileId == null || reg.srvprofileId == null) {
-        return {
-          clase: 'rechazado_definitivo',
-          motivo: 'El registro no tiene perfiles GPON guardados — re-aprovisiona desde el modal del contrato.',
-        };
+        return RechazosDefinitivos.FTTH_SIN_PERFILES_GPON();
       }
       const dto: ProvisionarFtthDto = {
         contratoId,
