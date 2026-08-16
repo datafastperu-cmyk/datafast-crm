@@ -40,8 +40,14 @@ export class SchemaGuardModule implements OnApplicationBootstrap {
         );
         this.logger.error('══════════════════════════════════════════════');
       }
-    } catch {
-      // Si falla el check no bloqueamos el arranque
+    } catch (error) {
+      // No bloqueamos el arranque (PA-01/PA-05: este guardián es degradable, el Core no lo
+      // es) — pero callar el fallo es distinto de no bloquear. El propio silencio fue lo que
+      // ocultó `typeorm_metadata` ausente hasta la Ola 0 (2026-08-16, F-0.1 §5.1.1, hallazgo
+      // 2 — B-16, PENDIENTES.md): la próxima vez que `log()` falle por OTRA razón, esta línea
+      // es la única diferencia entre un fallo ruidoso y uno invisible (PF-4).
+      const razon = error instanceof Error ? error.message : String(error);
+      this.logger.error(`El guardián no pudo comprobar el esquema: ${razon}`);
     }
   }
 }

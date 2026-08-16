@@ -7,7 +7,7 @@
 > Formato de cada entrada: qué falta, **por qué importa** (la consecuencia real, no la
 > tarea) y cómo se comprueba. Una entrada sin consecuencia acaba siendo ignorada.
 >
-> Última actualización: 2026-08-10
+> Última actualización: 2026-08-16
 
 ---
 
@@ -190,6 +190,34 @@ Los registros anteriores al 05/08 dicen `factura: undefined`. Corregido para los
 ### 8. `AuditLog.id` cambió de `number` a `string`
 Por el UNION de la vista unificada. Se ajustó `AuditoriaTab`, pero no se auditó si algún
 otro consumidor asume numérico.
+
+### 34. B-16 — `SchemaGuardModule` tenía un `catch` mudo en el Core Indestructible
+**Por qué importa:** `SchemaGuardModule.onApplicationBootstrap()` es la alarma que debía
+avisar si una entidad tiene una columna que la BD no tiene — corre en cada arranque con
+`NODE_ENV=production`. Su `catch { }` estaba vacío: **«si falla el check no bloqueamos el
+arranque»** se implementó como «si falla, no se entera nadie». No bloquear el arranque es
+correcto (PA-01/PA-05, es un guardián degradable); callar no lo es (PF-4).
+
+**Cómo se encontró:** no por auditar el módulo — lo destapó la instalación limpia de la
+Ola 0 (2026-08-16, F-0.1 §5.1.1) al reproducir el mismo `schema:log` de TypeORM que usa
+`npm run db:check`. En cualquier instalación nueva, `typeorm_metadata` no existe todavía
+(solo la crea `synchronize()`, y aquí no se usa) y `log()` revienta — el catch se lo tragaba
+en silencio, así que **esta alarma nunca ha podido sonar en una instalación limpia**.
+
+**Corregido ya:** la causa puntual (se recrea la tabla de bookkeeping que falta, igual que
+`scripts/preparar-schema-log.ts`) y el silencio (el catch ahora hace
+`logger.error('El guardián no pudo comprobar el esquema: <razón>')`).
+
+**Lo que queda abierto, registrado como B-16 (Nivel B — POL-001 Anexo B):** `SchemaGuardModule`
+tiene **cero tests**. Nada impide que un `catch` mudo vuelva a escribirse aquí, ni que el
+mismo patrón exista en otro guardián de arranque sin revisar todavía.
+
+**Estado objetivo:** test que ejercite el módulo contra una instalación limpia real y falle si
+el `catch` no registra, más un barrido de los demás `onModuleInit`/`onApplicationBootstrap`
+del Core buscando el mismo patrón.
+
+**No se despliega suelto.** Nivel B no activa la excepción de R-1 (F-0.1 §8.1) —eso es solo
+para Nivel A—: viaja con la reconstrucción del Core, no como parche en caliente a la VPS.
 
 ---
 
@@ -831,6 +859,7 @@ desbordaban igual** (la previsualizacion habria mostrado el 3 de marzo como fech
 | **B-10** | PA-11 | Credenciales de connreq de GenieACS duplicadas en el ACS y en el .env, sin verificación de coincidencia. CCD y cron… |
 | **B-11** | PA-08 | Implementados y en producción, sin test que los ejercite |
 | **B-15** | PS-01 / OWASP | La aplicación se conecta a PostgreSQL como SUPERUSUARIO (datafast_db_user: rolsuper, rolbypassrls, dueña de las 111… |
+| **B-16** | PC-06 / PF-4 | `SchemaGuardModule` tenía un catch mudo (encontrado 16/08 por la Ola 0). Causa puntual y silencio ya corregidos; falta el test de regresión — ver entrada 34 |
 | **C-1** | PS-06 | forbidNonWhitelisted: false: los campos extra se descartan en silencio |
 | **C-2** | PA-06 | Solo en el plano de red; el financiero lanza excepciones HTTP a consumidores que a veces son máquinas |
 | **C-3** | PA-01 | El patrón existe y se aplica, pero nada obliga a implementarlo en un módulo nuevo |
@@ -839,8 +868,8 @@ desbordaban igual** (la previsualizacion habria mostrado el 3 de marzo como fech
 | **C-6** | PA-16 | Se cumple, sin mecanismo que lo impida |
 | **C-7** | DAT-001 §8.6 | Seis tablas de serie temporal sin política de retención ni particionado |
 
-**17 abiertas** · Nivel A: **0** · B-3 cerrada el 10/08 · Las marcadas arriba con entrada propia
-(20-29) llevan además su consecuencia y su forma de comprobarse.
+**18 abiertas** · Nivel A: **0** · B-3 cerrada el 10/08 · B-16 nueva (16/08) · Las marcadas arriba
+con entrada propia (20-29, 34) llevan además su consecuencia y su forma de comprobarse.
 
 ---
 
