@@ -5,6 +5,27 @@
 **Sustituye:** la recomendación circulada como «R-036 — Separar Identidad, Cuenta de Facturación,
 Suscripción y Servicio», cuya premisa era incorrecta (§2) y cuyo número ya está ocupado
 
+> ### ⚠ Nota de vigencia (2026-08-15) — §4.1 superseded en la cardinalidad
+>
+> **[ADR-036](ADR-036-benchmark-del-core.md) §4.1 supersede este ADR en un punto y solo en uno: la
+> cuenta de facturación es 1:1 con el CONTRATO, no una por cliente.** Decisión del propietario del
+> producto, 2026-08-15, y coincide con **A §13/§14** del corpus congelado.
+>
+> **Lo que motivó el cambio no fue un argumento mejor, sino leer la fuente.** Se descargó TMF637
+> v4.0.0 y TMF666 v5.0.0: `Product.billingAccount` es **referencia a un objeto único**, y
+> `BillingAccount` **no tiene ningún campo** que apunte al producto ni límite de cuentas por titular.
+> Es decir, **el estándar fija «un producto, una cuenta» y calla sobre cuántos productos comparten
+> cuenta** — luego **las dos posturas eran conformes** y la discusión no era de conformidad, sino de
+> negocio.
+>
+> **Lo que de este ADR sigue plenamente vigente:** todo lo demás, y en particular su aportación
+> central — que la cuenta es **entidad propia**, y que el **ciclo y el tipo de comprobante viven en
+> ella**. Los dos documentos siempre coincidieron en la entidad; discrepaban solo en la cardinalidad.
+>
+> **Y el caso inexpresable que justificó `BillingAccount` sigue resuelto:** *«boleta en casa y
+> factura en el negocio, mismo titular»* son **contratos distintos**, luego cuentas distintas, cada
+> una con su tipo de comprobante.
+
 ---
 
 ## 1. Problema

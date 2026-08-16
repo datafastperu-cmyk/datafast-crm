@@ -29,7 +29,15 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 | **POL-001** | Políticas Corporativas | Vigente | [POL-001-politicas-corporativas.md](POL-001-politicas-corporativas.md) |
 | **ADR-001…029** | Registros de Decisiones Arquitectónicas | Vigente | [ADR-000-registro-decisiones.md](ADR-000-registro-decisiones.md) |
 | **ADR-030** | Referencia externa por tipo de módulo | Vigente | [ADR-030-marco-referencia-tmforum.md](ADR-030-marco-referencia-tmforum.md) |
-| **ADR-035** | Modelo de facturación: se adopta el del sector y se clasifica cada divergencia | **Propuesta** | [ADR-035-modelo-facturacion-tmforum.md](ADR-035-modelo-facturacion-tmforum.md) |
+| **ADR-035** | Modelo de facturación: se adopta el del sector y se clasifica cada divergencia | **Propuesta** — §4.1 superseded por ADR-036 | [ADR-035-modelo-facturacion-tmforum.md](ADR-035-modelo-facturacion-tmforum.md) |
+| **ADR-036** | Benchmark del Core: qué se adopta de TM Forum, qué se adapta y qué sigue sin fuente | **Aceptada** | [ADR-036-benchmark-del-core.md](ADR-036-benchmark-del-core.md) |
+| **ADR-037** | Los estados de «no llegó a empezar»: `CANCELADO` en A §16 y `RECHAZADO` en C §5 | **Aceptada** — **modifica corpus congelado** | [ADR-037-estados-de-lo-que-no-empezo.md](ADR-037-estados-de-lo-que-no-empezo.md) |
+| **E-0.2** | Modelo de Información del Core — Cliente, Contrato, Cuenta, Servicio Contratado | ✅ **Vigente** v2.4 | [E-0.2-modelo-informacion-core.md](E-0.2-modelo-informacion-core.md) |
+| **E-0.3** | Contratos de Capacidad y Ejecución | ✅ **Vigente** v2.4 | [E-0.3-capacidades-y-ejecucion.md](E-0.3-capacidades-y-ejecucion.md) |
+| **E-0.4** | Fronteras de los Dominios Técnicos | ✅ **Vigente** v2.3 | [E-0.4-fronteras-dominios-tecnicos.md](E-0.4-fronteras-dominios-tecnicos.md) |
+| **F-0.0** | **Punto de entrada para implementar el Core** — se lee antes que nada | Vigente v1.0 | [F-0.0-punto-de-entrada.md](F-0.0-punto-de-entrada.md) |
+| **F-0.1** | Plan de Reestructuración del Core | ✅ **Ratificado por el propietario** v3.1 | [F-0.1-plan-de-reestructuracion.md](F-0.1-plan-de-reestructuracion.md) |
+| **—** | Verificación transversal de E-0.2/3/4 contra el cuerpo normativo | Control de conformidad — hallazgo, no norma | [E-0.2-4-verificacion-transversal.md](E-0.2-4-verificacion-transversal.md) |
 | **PLAN-001** | Plan de Trabajo | Vigente — **temporal** | [PLAN-001-plan-de-trabajo.md](PLAN-001-plan-de-trabajo.md) |
 | **EST-001** | Estándares Técnicos | Vigente | [EST-001-estandares-tecnicos.md](EST-001-estandares-tecnicos.md) |
 | **GUI-001** | Guías de Desarrollo | Vigente | [GUI-001-guias-desarrollo.md](GUI-001-guias-desarrollo.md) |
@@ -43,7 +51,13 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 | **RDM-001** | Roadmap del Producto | Vigente | [RDM-001-roadmap.md](RDM-001-roadmap.md) |
 | ~~**REC-001**~~ | ~~Evaluación de recomendaciones~~ | **⛔ Obsoleto** — su contenido está en POL-001, ADR-029 y ADR-030 | [REC-001-evaluacion-recomendaciones.md](REC-001-evaluacion-recomendaciones.md) |
 
-**Documentos vivos: 20.** Congelados u obsoletos: REC-001 + los tres cuerpos de evidencia (§5).
+**Documentos vivos:** los listados en §2 sin marca de obsoleto. **La cifra no se copia: se cuenta
+sobre la tabla** (§7.4 — una cifra citada de otro documento es una cita, no una medición).
+Congelados u obsoletos: REC-001 + los tres cuerpos de evidencia (§5).
+
+**Serie E-0.x.** E-0.2, E-0.3 y E-0.4 son los documentos de **diseño del Core** y ocupan el **nivel
+de Arquitectura** de la jerarquía (§4). Se apoyan en el corpus conceptual congelado A → E-0.1
+(`pdf/DATAFAST ERP.pdf`), que **no forma parte de este cuerpo normativo**: es su insumo.
 
 ## 3. Alcance de esta primera emisión — qué se entrega completo y qué no
 
@@ -64,7 +78,7 @@ En caso de contradicción entre documentos, prevalece el de mayor jerarquía:
 flowchart TD
     CON["**CON-001 · Constitución**<br/>Principios fundamentales — no negociables"]
     POL["**POL-001 · Políticas Corporativas**<br/>Reglas obligatorias del proyecto"]
-    ARQ["**Documentos de Arquitectura**<br/>AEM · ARS · DOM · DAT · INT · SEC"]
+    ARQ["**Documentos de Arquitectura**<br/>AEM · ARS · DOM · DAT · INT · SEC<br/>**E-0.2 · E-0.3 · E-0.4** (diseño del Core)"]
     ADR["**ADR**<br/>Decisiones puntuales con contexto"]
     EST["**EST-001 · Estándares Técnicos**<br/>Cómo se implementa"]
     GUI["**GUI-001 · Guías**<br/>Cómo se hace en la práctica"]

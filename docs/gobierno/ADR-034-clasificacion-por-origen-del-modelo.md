@@ -142,6 +142,11 @@ que alguien lo explota** — no hay ciclo de realimentación que lo corrija por 
 **No están en §3 a propósito.** Aquí la clasificación es norma para cuando se construyan, no
 descripción de nada.
 
+> **Enmienda 2026-08-15.** Se añaden **Direccionamiento (IPAM)** y **Gestión de CPE**, creados como
+> dominios propios en E-0.4 (D-28, D-32) y que hasta hoy no figuraban aquí — incumplimiento de
+> **PD-11**, detectado en la [verificación transversal](E-0.2-4-verificacion-transversal.md) como
+> hallazgo **F-7** y propuesto en **ADR-036 §4.6**.
+
 | Dominio | | Razón (§2.2) | Nota |
 |---|---|---|---|
 | **Facturación electrónica SUNAT** | 🔴 | **1 — interoperabilidad** | SUNAT rechaza el comprobante. **PD-12: el marco legal se fija antes del diseño** |
@@ -152,6 +157,8 @@ descripción de nada.
 | **Inventario / almacén** | 🟠 | — | Movimientos, valoración. **Nace degradado** (regla del CLAUDE.md) |
 | **Workflows** (motor genérico) | 🟠 | — | `sagas` no es un motor de workflow |
 | **Documentos** · **Calendario** · **BI** · **API Gateway** | 🟠 | — | Modelos consolidados |
+| **Direccionamiento (IPAM)** | 🟠 | — | *Enmienda 2026-08-15.* Creado como dominio propio en **E-0.4 D-28**, cerrando la excepción que E-0.1 §35 dejó abierta. Hay modelo maduro de gestión de direccionamiento y **desviarse solo nos cuesta a nosotros**: ninguna de las cuatro autoridades reclama nada aquí |
+| **Gestión de CPE (TR-069/TR-369)** | 🟠 | — | *Enmienda 2026-08-15.* Creado como dominio propio en **E-0.4 D-32**, resolviendo la duplicidad E-0.1 §6.3 / D-0.3 §3. **Ojo con el límite:** el ERP **ya conforma** con el protocolo (ADR-030 §2.2) — eso es 🔴 por interoperabilidad con el CPE. Lo que aquí se clasifica 🟠 es **el modelo del dominio**: qué posee, qué expone y cómo se sustituye el servidor de gestión |
 
 ---
 
