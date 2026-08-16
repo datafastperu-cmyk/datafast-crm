@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { analizarCodigo, clasificarRetorno, sinComentarios, type MetodoInfo } from './metodos-frontera';
 
 /**
  * E-0.2 — Auditoría de INTERACCIONES: la fotografía de cómo se hablan hoy los módulos.
@@ -59,6 +60,11 @@ const FAMILIA: Record<string, string> = {
 const familiaDe = (m: string) => (CORE.includes(m) ? 'Core' : FAMILIA[m] ?? 'Otro');
 
 // ── Recorrido ───────────────────────────────────────────────────────────────
+// Detección de métodos, endpoints y consumidores de eventos: en `metodos-frontera.ts`,
+// compartida con la barrera de E03-03 (Ola 1) — un solo instrumento midiendo lo mismo, mismo
+// criterio que unificó la detección de escritores en la Ola 0 (`escritores-tabla.ts`).
+const SRC_DIR = path.resolve('src');
+const { metodos, endpoints, consumidores } = analizarCodigo(SRC_DIR);
 const ficheros: string[] = [];
 (function recorrer(dir: string) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -68,70 +74,21 @@ const ficheros: string[] = [];
   }
 })('src');
 
-const sinComentarios = (s: string): string =>
-  s.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))   // conserva las líneas
-   .replace(/(^|[^:])\/\/.*$/gm, '$1');
-
 const moduloDe = (f: string): string =>
   (/src[\\/]modules[\\/]([^\\/]+)[\\/]/.exec(f) || [, 'common'])[1] as string;
 const relativo = (f: string) => path.relative('src', f).split(path.sep).join('/');
 
-// Nombres de evento declarados como constantes (`NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO`).
-// Buscar solo literales daba una foto falsa: los eventos vivos del ERP se nombran así, y el
-// informe llegó a decir que 23 eventos no los escuchaba nadie cuando sí tenían consumidor.
-const constanteEvento: Record<string, string> = {};
-for (const f of ficheros) {
-  const s = fs.readFileSync(f, 'utf8');
-  for (const bloque of s.matchAll(/export const (\w+)\s*=\s*\{([\s\S]*?)\n\}/g)) {
-    for (const [, campo, valor] of bloque[2].matchAll(/(\w+)\s*:\s*'([^']+)'/g)) {
-      constanteEvento[`${bloque[1]}.${campo}`] = valor;
-    }
-  }
-  for (const e of s.matchAll(/export enum (\w+)\s*\{([\s\S]*?)\n\}/g)) {
-    for (const [, campo, valor] of e[2].matchAll(/(\w+)\s*=\s*'([^']+)'/g)) {
-      constanteEvento[`${e[1]}.${campo}`] = valor;
-    }
-  }
-}
-/** Un nombre de evento: literal, o constante resuelta. `null` si no se puede resolver. */
-const resolverEvento = (bruto: string): string | null => {
-  const lit = /^['"]([^'"]+)['"]$/.exec(bruto.trim());
-  if (lit) return lit[1];
-  const ref = bruto.trim();
-  return constanteEvento[ref] ?? (/^\w+\.\w+$/.test(ref) ? `${ref} (no resuelto)` : null);
-};
+// `Metodo`, `metodos`, `endpoints` y `consumidores` los produce `analizarCodigo()` (arriba).
+type Metodo = MetodoInfo;
 
-// Entidad → tabla, para poder leer las escrituras por repositorio.
-const tablaDeEntidad: Record<string, string> = {};
-for (const f of ficheros) {
-  for (const [, tabla, clase] of fs.readFileSync(f, 'utf8')
-       .matchAll(/@Entity\('(\w+)'\)[\s\S]{0,300}?export class (\w+)/g)) {
-    tablaDeEntidad[clase] = tabla;
-  }
-}
-
-// ── Modelo ──────────────────────────────────────────────────────────────────
-interface Metodo {
-  clase: string; modulo: string; fichero: string; linea: number;
-  nombre: string; visibilidad: 'public' | 'private' | 'protected';
-  retorno: string;
-  llamadas: Array<{ clase: string; metodo: string }>;
-  escribe: Array<{ tabla: string; op: string }>;
-  emite: string[];
-  encola: string[];
-  escuchaEvento?: string;
-  procesaJob?: string;
-}
-
-const metodos: Metodo[] = [];
+// clase → módulo/fichero, por declaración `export class X`, sea o no la clase tiene métodos
+// que la barrera de indentación detecte. **Existen dos clases llamadas `AuditoriaService`**
+// (`modules/auditoria/auditoria.service.ts` y `modules/auth/auditoria.service.ts`) — una
+// ambigüedad real del código, no de este script. Con una sola clave por nombre, «gana la
+// última declaración en orden de recorrido», que es el criterio que este informe siempre usó;
+// se mantiene aquí explícito en vez de dejarlo como efecto colateral del orden de `metodos`.
 const moduloDeClase: Record<string, string> = {};
 const ficheroDeClase: Record<string, string> = {};
-const consumidores: Array<{ evento: string; clase: string; metodo: string; modulo: string }> = [];
-const endpoints: Array<{ modulo: string; verbo: string; ruta: string; controlador: string; metodo: string; delega: string[] }> = [];
-
-const OPS_ORM = 'save|insert|update|upsert|delete|remove|softDelete|softRemove|restore|increment|decrement';
-
-// Paso 1: clase → módulo (hace falta antes de resolver las llamadas).
 for (const f of ficheros) {
   const s = sinComentarios(fs.readFileSync(f, 'utf8'));
   for (const [, clase] of s.matchAll(/export class (\w+)/g)) {
@@ -140,154 +97,7 @@ for (const f of ficheros) {
   }
 }
 
-// Paso 2: métodos, con su extensión, y todo lo que ocurre dentro.
-for (const f of ficheros) {
-  const s = sinComentarios(fs.readFileSync(f, 'utf8'));
-  const mod = moduloDe(f);
-  const rel = relativo(f);
-  const lineaDe = (i: number) => s.slice(0, i).split('\n').length;
-
-  const clases = [...s.matchAll(/export class (\w+)/g)].map((m) => ({ nombre: m[1], desde: m.index! }));
-  if (!clases.length) continue;
-  const claseEn = (i: number) => {
-    let c = clases[0].nombre;
-    for (const k of clases) if (k.desde <= i) c = k.nombre; else break;
-    return c;
-  };
-
-  // Inyecciones del constructor: prop → clase de servicio, prop → tabla, prop → cola.
-  const propServicio: Record<string, string> = {};
-  const propTabla: Record<string, string> = {};
-  const propCola: Record<string, string> = {};
-  for (const ctor of s.matchAll(/constructor\s*\(([\s\S]*?)\)\s*\{/g)) {
-    // También los repositorios propios (`ContratoRepository`), no solo `Repository<T>`: sin
-    // esto `ContratosService.cambiarEstado()` figuraba escribiendo `clientes` pero no
-    // `servicios`, que es justo al revés de lo que ocurre.
-    for (const [, prop, clase] of ctor[1].matchAll(/(\w+)\s*:\s*(\w+(?:Service|Repository))\b/g)) {
-      propServicio[prop] = clase;
-    }
-    // (los repositorios se detectan a nivel de fichero, más abajo)
-    // Sin esto, `.add(` capturaba cualquier `Set.add()` y el informe se llenaba de basura.
-    // (nota: `@InjectQueue` sí vive siempre en el constructor)
-    for (const [, cola, prop] of ctor[1].matchAll(/@InjectQueue\(\s*(?:[A-Z_]+\.)?['"]?([\w.-]+)['"]?\s*\)[^,)]*?(\w+)\s*:\s*Queue/g)) {
-      propCola[prop] = cola;
-    }
-  }
-
-  // Un `Repository<T>` puede llegar por el constructor (`@InjectRepository`) o declararse como
-  // campo de clase e inicializarse en el cuerpo (`this.repo = ds.getRepository(Contrato)`), que
-  // es como lo hacen los repositorios propios. Buscar solo en el constructor dejaba fuera todas
-  // las escrituras de `ContratoRepository` — las más importantes del Core.
-  for (const [, prop, entidad] of s.matchAll(/(\w+)\s*:\s*Repository<(\w+)>/g)) {
-    if (tablaDeEntidad[entidad]) propTabla[prop] = tablaDeEntidad[entidad];
-  }
-
-  // Declaraciones de método a indentación 2. La extensión de cada uno llega hasta el siguiente.
-  const anclas: Array<{ nombre: string; vis: Metodo['visibilidad']; ini: number; abre: number; clase: string }> = [];
-  for (const m of s.matchAll(/^ {2}(?:(public|private|protected)\s+)?(?:async\s+)?(\w+)\s*\(/gm)) {
-    anclas.push({ nombre: m[2], vis: (m[1] as Metodo['visibilidad']) ?? 'public',
-                  ini: m.index!, abre: m.index! + m[0].length - 1, clase: claseEn(m.index!) });
-  }
-  // Métodos de la propia clase, para poder seguir `this._helper()`. Sin esto el árbol de un
-  // flujo se detiene en el primer método privado y un `provisionarFtth()` de 600 líneas
-  // aparece sin escribir nada.
-  const propiosDe: Record<string, Set<string>> = {};
-  for (const a of anclas) (propiosDe[a.clase] ??= new Set()).add(a.nombre);
-
-  for (let i = 0; i < anclas.length; i++) {
-    const a = anclas[i];
-    if (a.nombre === 'constructor') continue;
-    const fin = i + 1 < anclas.length ? anclas[i + 1].ini : s.length;
-    const cuerpo = s.slice(a.ini, fin);
-
-    // Tipo de retorno: tras el paréntesis que cierra los parámetros.
-    let prof = 0, j = a.abre;
-    for (; j < s.length; j++) { if (s[j] === '(') prof++; else if (s[j] === ')') { prof--; if (!prof) break; } }
-    const retorno = (/^\s*:\s*([\s\S]+?)\s*\{/.exec(s.slice(j + 1, j + 400)) || [, ''])[1]
-      .replace(/\s+/g, ' ').trim();
-
-    const met: Metodo = {
-      clase: claseEn(a.ini), modulo: mod, fichero: rel, linea: lineaDe(a.ini),
-      nombre: a.nombre, visibilidad: a.vis, retorno,
-      llamadas: [], escribe: [], emite: [], encola: [],
-    };
-
-    for (const c of cuerpo.matchAll(/\bthis\.(\w+)\.(\w+)\s*\(/g)) {
-      const clase = propServicio[c[1]];
-      if (clase) met.llamadas.push({ clase, metodo: c[2] });
-    }
-    for (const c of cuerpo.matchAll(/\bthis\.(\w+)\s*\(/g)) {
-      if (c[1] !== a.nombre && propiosDe[met.clase]?.has(c[1])) {
-        met.llamadas.push({ clase: met.clase, metodo: c[1] });
-      }
-    }
-    // El `(?<!\bFOR\s+)` evita leer `FOR UPDATE SKIP LOCKED` como una escritura a una tabla
-    // llamada `skip`.
-    for (const w of cuerpo.matchAll(/(?<!\bFOR\s+)\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\w+)/gi)) {
-      met.escribe.push({ tabla: w[2].toLowerCase(), op: w[1].toUpperCase().split(/\s+/)[0] });
-    }
-    for (const w of cuerpo.matchAll(new RegExp(`\\bthis\\.(\\w+)\\.(${OPS_ORM})\\(`, 'g'))) {
-      if (propTabla[w[1]]) met.escribe.push({ tabla: propTabla[w[1]], op: w[2] });
-    }
-    for (const w of cuerpo.matchAll(new RegExp(`getRepository\\((\\w+)\\)\\s*\\.\\s*(${OPS_ORM})\\(`, 'g'))) {
-      if (tablaDeEntidad[w[1]]) met.escribe.push({ tabla: tablaDeEntidad[w[1]], op: w[2] });
-    }
-    for (const e of cuerpo.matchAll(/\.emit\(\s*([^,)]+)/g)) {
-      const n = resolverEvento(e[1]);
-      if (n) met.emite.push(n);
-    }
-    for (const e of cuerpo.matchAll(/\bthis\.(\w+)\.add\(\s*(?:[A-Z_]+\.)?['"]?([\w.-]+)['"]?/g)) {
-      if (propCola[e[1]]) met.encola.push(`${e[2]} @ ${propCola[e[1]]}`);
-    }
-
-    // `@OnEvent('x')` va justo encima de la declaración.
-    const encima = s.slice(Math.max(0, a.ini - 200), a.ini);
-    const oe = /@OnEvent\(\s*([^,)]+)[\s\S]*$/.exec(encima);
-    const nombreOe = oe && resolverEvento(oe[1]);
-    if (nombreOe) {
-      met.escuchaEvento = nombreOe;
-      consumidores.push({ evento: nombreOe, clase: met.clase, metodo: met.nombre, modulo: mod });
-    }
-    // Quién procesa un trabajo se lee de su decorador, no de parecidos entre nombres.
-    const pr = /@Process\(\s*\{?\s*(?:name:\s*)?(?:[A-Z_]+\.)?['"]?([\w.-]+)['"]?[\s\S]*$/.exec(encima);
-    if (pr) met.procesaJob = pr[1];
-
-    metodos.push(met);
-  }
-
-  // Endpoints, con el método de servicio al que delegan.
-  const ctrl = /@Controller\('([^']*)'\)[\s\S]{0,200}?export class (\w+)/.exec(s);
-  if (ctrl) {
-    for (const m of s.matchAll(/@(Get|Post|Patch|Put|Delete)\(\s*'?([^')]*)'?\s*\)([\s\S]{0,600}?)\n {2}(?:async\s+)?(\w+)\s*\(/g)) {
-      const handler = metodos.find((x) => x.clase === ctrl[2] && x.nombre === m[4]);
-      endpoints.push({
-        modulo: mod, verbo: m[1].toUpperCase(),
-        ruta: `/${ctrl[1]}${m[2] ? '/' + m[2] : ''}`.replace(/\/+/g, '/'),
-        controlador: ctrl[2], metodo: m[4],
-        delega: [...new Set((handler?.llamadas ?? []).map((c) => `${c.clase}.${c.metodo}`))],
-      });
-    }
-  }
-}
-
 const buscar = (clase: string, metodo: string) => metodos.find((m) => m.clase === clase && m.nombre === metodo);
-
-// ── Clasificación del retorno (bloque 3) ────────────────────────────────────
-const desenvolver = (t: string) => (/^Promise<([\s\S]*)>$/.exec(t.trim()) || [, t])[1].trim();
-
-function clasificarRetorno(t: string): string {
-  if (!t) return 'sin anotar (inferido)';
-  const x = desenvolver(t);
-  if (/^void$/.test(x)) return 'void';
-  if (/^boolean$/.test(x)) return 'boolean';
-  if (/^(any|unknown)$/.test(x)) return 'sin tipar (any)';
-  if (/^ResultadoOperacion/.test(x)) return 'ResultadoOperacion';
-  if (/^(string|number)$/.test(x)) return x === 'string' ? 'string (id o texto)' : 'number';
-  if (/^\w+\[\]$|^Array</.test(x)) return 'colección';
-  if (/^\{/.test(x)) return 'objeto anónimo';
-  if (/\|\s*null$/.test(x)) return 'objeto o null';
-  return 'objeto';
-}
 
 // ── Informe ─────────────────────────────────────────────────────────────────
 const L: string[] = [];
