@@ -133,7 +133,7 @@ export class PortalPlanesService {
       Array<{ id: string; created_at: string }>
     >(
       `INSERT INTO portal_solicitud_plan
-         (empresa_id, cliente_id, contrato_id, plan_origen_id, plan_destino_id,
+         (empresa_id, cliente_id, servicio_id, plan_origen_id, plan_destino_id,
           precio_origen, precio_destino, nota_cliente)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id, created_at`,
@@ -182,7 +182,7 @@ export class PortalPlanesService {
               c.deuda_total            AS "deudaTotal",
               c.tipo_pago::text        AS "tipoPago"
          FROM portal_solicitud_plan s
-         JOIN servicios c  ON c.id  = s.contrato_id
+         JOIN servicios c  ON c.id  = s.servicio_id
          JOIN clientes  cl ON cl.id = s.cliente_id
          JOIN planes    po ON po.id = s.plan_origen_id
          JOIN planes    pd ON pd.id = s.plan_destino_id
@@ -262,7 +262,7 @@ export class PortalPlanesService {
          FROM portal_solicitud_plan s
          JOIN planes po ON po.id = s.plan_origen_id
          JOIN planes pd ON pd.id = s.plan_destino_id
-        WHERE s.contrato_id = $1 AND s.empresa_id = $2
+        WHERE s.servicio_id = $1 AND s.empresa_id = $2
           AND s.estado IN ('pendiente', 'aprobada')
         ORDER BY s.created_at DESC
         LIMIT 1`,

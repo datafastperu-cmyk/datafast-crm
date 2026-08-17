@@ -103,7 +103,7 @@ describe('Ola 2 · Ninguna consulta usa contrato_id contra una tabla ya renombra
   // (E-0.2-clasificacion-contrato-id.md) va renombrando. Nunca se adivina por regex.
   const TABLAS_RENOMBRADAS_A_SERVICIO_ID = [
     'comandos_red_pendientes', 'ordenes_trabajo', 'consumo_datos', 'consumo_snapshot',
-    'ips_asignadas', 'pe_acometida',
+    'ips_asignadas', 'pe_acometida', 'portal_solicitud_plan',
   ];
 
   const ES_LA_PROPIA_BARRERA = (f: string) => f.endsWith(path.basename(__filename).replace(/.js$/, '.ts'));
