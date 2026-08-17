@@ -169,7 +169,8 @@ describe('SmartoltService', () => {
     it('debe eliminar en SmartOLT y actualizar BD', async () => {
       mockOnuRepo.findById.mockResolvedValue(mockOnu);
       mockOnuRepo.findOltById.mockResolvedValue(mockOlt);
-      mockApi.eliminarProvision.mockResolvedValue(undefined);
+      // Ola 1, grupo 3b: eliminarProvision() habla ResultadoOperacion.
+      mockApi.eliminarProvision.mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' });
       mockDs.query.mockResolvedValue([]);
       mockOnuRepo.update.mockResolvedValue(undefined);
 

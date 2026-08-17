@@ -46,11 +46,11 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
     return out;
   };
 
-  // 15 = recongelado el 2026-08-16 tras el grupo 3a (VpnClienteService.revocar() ya no
-  // lanza ConflictException; SmartoltApiService.aprovisionarOnu() ya no lanza
-  // BadRequestException — bajó de 17). Desglose: 9 BadRequestException, 9 NotFoundException,
-  // 2 ConflictException (una operación puede lanzar más de una clase).
-  const TECHO_FRONTERA_CON_EXCEPCION_TRANSPORTE = 15;
+  // 14 = recongelado el 2026-08-16 tras el grupo 3b, sub-lote XuiLines+SmartoltApi
+  // (XuiLinesService.crearLineParaContrato() ya no lanza NotFoundException — bajó de 15).
+  // Desglose: 9 BadRequestException, 8 NotFoundException, 2 ConflictException (una operación
+  // puede lanzar más de una clase).
+  const TECHO_FRONTERA_CON_EXCEPCION_TRANSPORTE = 14;
 
   it('el número de operaciones de frontera que lanzan HttpException es exactamente el techo congelado', () => {
     const encontrados = hallazgos().map((h) => h.id).sort();
@@ -105,6 +105,14 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
     expect(h).toBeUndefined();
   });
 
+  // Regresión del grupo 3b, sub-lote XuiLines+SmartoltApi (2026-08-16):
+  // crearLineParaContrato() lanzaba NotFoundException si el contrato no existía. Ahora es
+  // `rechazado_definitivo`.
+  it('caso conocido: XuiLinesService.crearLineParaContrato() ya no lanza excepción de transporte', () => {
+    const h = hallazgos().find((x) => x.id === 'XuiLinesService.crearLineParaContrato');
+    expect(h).toBeUndefined();
+  });
+
   // ═══════════════════════════════════════════════════════════════════════
   // ANCHO — operaciones de frontera que NO hablan ResultadoOperacion, ni literalmente ni por
   // una extensión declarada (`EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION`,
@@ -117,10 +125,10 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
   // `ResultadoOperacion` no lleva a propósito — el registro declara esa excepción una vez, en
   // vez de que el medidor la adivine por el nombre del tipo (eso sería maquillarlo).
   // ═══════════════════════════════════════════════════════════════════════
-  // 83 = recongelado el 2026-08-16 tras el grupo 3a (88 → 84 automático por el
-  // literal `ResultadoOperacion` de los 4 métodos de VpnClienteService, − 1 más por el
-  // registro de extensiones transitorias reconociendo `aprovisionarOnu()`).
-  const TECHO_FRONTERA_SIN_RESULTADO_OPERACION = 83;
+  // 78 = recongelado el 2026-08-16 tras el grupo 3b, sub-lote XuiLines+SmartoltApi (83 → 78,
+  // los 4 métodos de XuiLinesService + SmartoltApiService.eliminarProvision hablan
+  // ResultadoOperacion literal, sin necesitar extensión transitoria).
+  const TECHO_FRONTERA_SIN_RESULTADO_OPERACION = 78;
 
   it('el ancho (frontera sin ResultadoOperacion, ni literal ni por extensión declarada) es exactamente el techo congelado', () => {
     const sinRO = operacionesSinResultadoOperacion(metodos).map((m) => `${m.clase}.${m.nombre}`).sort();

@@ -311,11 +311,24 @@ export class SmartoltApiService implements OnModuleInit {
   // ELIMINAR PROVISIÓN
   // ────────────────────────────────────────────────────────────
 
-  async eliminarProvision(oltId: string, onuId: string): Promise<void> {
-    this.assertNotDegraded();
-    this.logger.log(`Eliminando provisión ONU: ID=${onuId} en OLT=${oltId}`);
-    await this.delete(`/api/olt/${oltId}/onu/${onuId}`);
-    this.logger.log(`Provisión eliminada: ONU ${onuId}`);
+  // Ola 1, grupo 3b (2026-08-16). Único consumidor: ContratosService.desaprovisionarOlt(),
+  // ya envuelto en su propio try/catch que solo loguea ("nunca lanza — un fallo de OLT no
+  // debe bloquear la baja"). Corrección de clasificación: un 404 al ELIMINAR significa que
+  // la ONU ya no existe en SmartOLT — es el destino alcanzado, no un rechazo. clasificarError()
+  // no distingue el verbo HTTP y mapea 404 a rechazado_definitivo por defecto; aquí se corrige.
+  async eliminarProvision(oltId: string, onuId: string): Promise<ResultadoOperacion> {
+    try {
+      this.assertNotDegraded();
+      this.logger.log(`Eliminando provisión ONU: ID=${onuId} en OLT=${oltId}`);
+      await this.delete(`/api/olt/${oltId}/onu/${onuId}`);
+      this.logger.log(`Provisión eliminada: ONU ${onuId}`);
+      return { clase: 'aplicado', mensaje: `Provisión eliminada: ONU ${onuId}` };
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        return { clase: 'ya_en_destino', mensaje: `ONU ${onuId} ya no existía en SmartOLT.` };
+      }
+      return clasificarError(err);
+    }
   }
 
   async eliminarProvisionPorSerial(serial: string): Promise<void> {

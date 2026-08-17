@@ -15,7 +15,7 @@ import {
   AsociarOnuContratoDto, FilterOnuDto,
 } from './dto/smartolt.dto';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
-import { traducirAHttp } from '../../common/domain/resultado-operacion';
+import { traducirAHttp, esExito } from '../../common/domain/resultado-operacion';
 
 @Injectable()
 export class SmartoltService {
@@ -265,8 +265,15 @@ export class SmartoltService {
       throw new BadRequestException('El OLT no tiene SmartOLT ID configurado');
     }
 
-    // Eliminar de SmartOLT
-    await this.api.eliminarProvision(olt.smartoltId, onu.smartoltOnuId);
+    // Eliminar de SmartOLT. Ola 1, grupo 3b: eliminarProvision() habla ResultadoOperacion —
+    // este wrapper sigue hablando excepciones hacia su propio llamador (controller), igual
+    // que aprovisionarOnu() en el grupo 3a. ya_en_destino (la ONU ya no existía) cuenta como
+    // éxito: el resto del método (desasociar, actualizar estado) debe seguir corriendo.
+    const rEliminar = await this.api.eliminarProvision(olt.smartoltId, onu.smartoltOnuId);
+    if (!esExito(rEliminar)) {
+      const t = traducirAHttp(rEliminar);
+      throw new ServiceUnavailableException(t.error ? `${t.mensaje}: ${t.error}` : t.mensaje);
+    }
 
     // Desasociar del contrato
     await this.ds.query(

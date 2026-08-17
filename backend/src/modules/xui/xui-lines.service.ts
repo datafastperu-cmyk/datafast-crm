@@ -8,6 +8,7 @@ import { XuiApiService } from './xui-api.service';
 import { EditarXuiLineDto, FilterXuiLineDto } from './dto/xui-line.dto';
 import { encrypt, decrypt } from '../../common/utils/encryption.util';
 import { NOTIFICATION_EVENTS } from '../notificaciones/events/notification.events';
+import { ResultadoOperacion, clasificarError } from '../../common/domain/resultado-operacion';
 
 const MAX_INTENTOS_SYNC = 6;
 
@@ -34,78 +35,96 @@ export class XuiLinesService {
   // CREACIÓN — un line por contrato/servicio, con sufijo anti-duplicado
   // ────────────────────────────────────────────────────────────
 
-  async crearLineParaContrato(contratoId: string, empresaId: string): Promise<XuiLine | null> {
-    const [contrato] = await this.dataSource.query<any[]>(
-      `SELECT c.id, c.cliente_id AS "clienteId", c.plan_id AS "planId"
-       FROM servicios c WHERE c.id = $1 AND c.empresa_id = $2 AND c.deleted_at IS NULL`,
-      [contratoId, empresaId],
-    );
-    if (!contrato) throw new NotFoundException(`Contrato ${contratoId} no encontrado`);
+  // Ola 1, grupo 3b (2026-08-16). Único consumidor: ContratosService (fire-and-forget vía
+  // `setImmediate` en `create()`/`actualizarServicio()` — ningún llamador lee el `XuiLine`
+  // devuelto, se verificó antes de convertir). El local (fila creada/`ya_en_destino`) define
+  // `aplicado`: XUI IPTV está declarado módulo degradable (CLAUDE.md) — la sincronización HTTP
+  // sigue siendo best-effort con su propio contador de reintentos y el barrido de
+  // `xui-monitor.service.ts` (~10 min) como red de seguridad, sin cambiar ese diseño.
+  async crearLineParaContrato(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const [contrato] = await this.dataSource.query<any[]>(
+        `SELECT c.id, c.cliente_id AS "clienteId", c.plan_id AS "planId"
+         FROM servicios c WHERE c.id = $1 AND c.empresa_id = $2 AND c.deleted_at IS NULL`,
+        [contratoId, empresaId],
+      );
+      if (!contrato) {
+        return { clase: 'rechazado_definitivo', motivo: `Contrato ${contratoId} no encontrado` };
+      }
 
-    const [plan] = await this.dataSource.query<any[]>(
-      `SELECT id, cuenta_iptv AS "cuentaIptv", sesiones_iptv AS "sesionesIptv",
-              xui_bouquet_ids AS "xuiBouquetIds"
-       FROM planes WHERE id = $1 AND empresa_id = $2`,
-      [contrato.planId, empresaId],
-    );
-    if (!plan?.cuentaIptv) return null;
+      const [plan] = await this.dataSource.query<any[]>(
+        `SELECT id, cuenta_iptv AS "cuentaIptv", sesiones_iptv AS "sesionesIptv",
+                xui_bouquet_ids AS "xuiBouquetIds"
+         FROM planes WHERE id = $1 AND empresa_id = $2`,
+        [contrato.planId, empresaId],
+      );
+      if (!plan?.cuentaIptv) {
+        return { clase: 'no_aplica', mensaje: 'El plan del contrato no incluye IPTV.' };
+      }
 
-    const [cliente] = await this.dataSource.query<any[]>(
-      `SELECT numero_documento AS "numeroDocumento" FROM clientes WHERE id = $1 AND empresa_id = $2`,
-      [contrato.clienteId, empresaId],
-    );
-    if (!cliente?.numeroDocumento) {
-      this.logger.warn(`Cliente ${contrato.clienteId} sin numeroDocumento — no se puede crear line IPTV`);
-      return null;
-    }
+      const [cliente] = await this.dataSource.query<any[]>(
+        `SELECT numero_documento AS "numeroDocumento" FROM clientes WHERE id = $1 AND empresa_id = $2`,
+        [contrato.clienteId, empresaId],
+      );
+      if (!cliente?.numeroDocumento) {
+        this.logger.warn(`Cliente ${contrato.clienteId} sin numeroDocumento — no se puede crear line IPTV`);
+        return { clase: 'no_aplica', mensaje: 'El cliente no tiene número de documento — nada que crear.' };
+      }
 
-    // ── Lock pesimista sobre las filas existentes del cliente ──
-    // Serializa el cálculo del sufijo entre contratos del mismo cliente
-    // activándose en paralelo (ver punto 2 de la sección de resiliencia del plan).
-    return this.dataSource.transaction(async (manager) => {
-      const yaExiste = await manager
-        .getRepository(XuiLine)
-        .createQueryBuilder('l')
-        .setLock('pessimistic_write')
-        .where('l.contratoId = :contratoId AND l.empresaId = :empresaId', { contratoId, empresaId })
-        .andWhere('l.activo = true')
-        .getOne();
-      if (yaExiste) return yaExiste; // idempotencia: el hook ya corrió para este contrato
+      // ── Lock pesimista sobre las filas existentes del cliente ──
+      // Serializa el cálculo del sufijo entre contratos del mismo cliente
+      // activándose en paralelo (ver punto 2 de la sección de resiliencia del plan).
+      const { line, yaExistia } = await this.dataSource.transaction(async (manager) => {
+        const yaExiste = await manager
+          .getRepository(XuiLine)
+          .createQueryBuilder('l')
+          .setLock('pessimistic_write')
+          .where('l.contratoId = :contratoId AND l.empresaId = :empresaId', { contratoId, empresaId })
+          .andWhere('l.activo = true')
+          .getOne();
+        if (yaExiste) return { line: yaExiste, yaExistia: true }; // idempotencia: el hook ya corrió para este contrato
 
-      const existentes = await manager
-        .getRepository(XuiLine)
-        .createQueryBuilder('l')
-        .setLock('pessimistic_write')
-        .where('l.clienteId = :clienteId AND l.empresaId = :empresaId', { clienteId: contrato.clienteId, empresaId })
-        .getMany();
+        const existentes = await manager
+          .getRepository(XuiLine)
+          .createQueryBuilder('l')
+          .setLock('pessimistic_write')
+          .where('l.clienteId = :clienteId AND l.empresaId = :empresaId', { clienteId: contrato.clienteId, empresaId })
+          .getMany();
 
-      const siguienteSufijo = existentes.length + 1;
-      const base     = sanitizarCredencial(cliente.numeroDocumento);
-      const usuario  = siguienteSufijo === 1 ? base : `${base}${siguienteSufijo}`;
-      const password = usuario;
+        const siguienteSufijo = existentes.length + 1;
+        const base     = sanitizarCredencial(cliente.numeroDocumento);
+        const usuario  = siguienteSufijo === 1 ? base : `${base}${siguienteSufijo}`;
+        const password = usuario;
 
-      const nueva = manager.getRepository(XuiLine).create({
-        empresaId,
-        contratoId,
-        clienteId:     contrato.clienteId,
-        usuario,
-        password:      encrypt(password),
-        sufijo:        siguienteSufijo,
-        bouquetIds:    plan.xuiBouquetIds || [],
-        maxConexiones: plan.sesionesIptv || 1,
-        activo:        true,
-        estadoSync:    EstadoSyncXuiLine.PENDIENTE_CREACION,
+        const nueva = manager.getRepository(XuiLine).create({
+          empresaId,
+          contratoId,
+          clienteId:     contrato.clienteId,
+          usuario,
+          password:      encrypt(password),
+          sufijo:        siguienteSufijo,
+          bouquetIds:    plan.xuiBouquetIds || [],
+          maxConexiones: plan.sesionesIptv || 1,
+          activo:        true,
+          estadoSync:    EstadoSyncXuiLine.PENDIENTE_CREACION,
+        });
+
+        return { line: await manager.getRepository(XuiLine).save(nueva), yaExistia: false };
       });
 
-      return manager.getRepository(XuiLine).save(nueva);
-    }).then(async (line) => {
+      if (yaExistia) {
+        return { clase: 'ya_en_destino', mensaje: 'El contrato ya tiene un line IPTV activo.' };
+      }
+
       // Fuera de la transacción de BD: la llamada HTTP a XUI no bloquea
       // ni revierte el alta del contrato si falla (módulo degradable).
       await this.intentarSincronizarCreacion(line).catch((err) =>
         this.logger.warn(`Creación en XUI diferida para line ${line.id}: ${err.message}`),
       );
-      return line;
-    });
+      return { clase: 'aplicado', mensaje: `Line IPTV creado (sincronización con XUI en curso): ${line.usuario}` };
+    } catch (err) {
+      return clasificarError(err);
+    }
   }
 
   private async intentarSincronizarCreacion(line: XuiLine): Promise<void> {
@@ -180,14 +199,21 @@ export class XuiLinesService {
   // BAJA AUTOMÁTICA — cuando el contrato dueño cambia a plan sin IPTV
   // ────────────────────────────────────────────────────────────
 
-  async eliminarLineDeContrato(contratoId: string, empresaId: string): Promise<void> {
-    const line = await this.repo.findOne({ where: { contratoId, empresaId, activo: true } });
-    if (!line) return;
+  // Ola 1, grupo 3b. Consumida por ContratosService (fire-and-forget y como paso de saga
+  // con timeout en `cambiarEstado()` baja — ver F-0.1 §9.1 para la traducción de cada sitio).
+  async eliminarLineDeContrato(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const line = await this.repo.findOne({ where: { contratoId, empresaId, activo: true } });
+      if (!line) return { clase: 'no_aplica', mensaje: 'El contrato no tiene line IPTV activo.' };
 
-    await this.repo.update(line.id, { estadoSync: EstadoSyncXuiLine.PENDIENTE_ELIMINACION });
-    await this.intentarSincronizarEliminacion(line).catch((err) =>
-      this.logger.warn(`Eliminación en XUI diferida para line ${line.id}: ${err.message}`),
-    );
+      await this.repo.update(line.id, { estadoSync: EstadoSyncXuiLine.PENDIENTE_ELIMINACION });
+      await this.intentarSincronizarEliminacion(line).catch((err) =>
+        this.logger.warn(`Eliminación en XUI diferida para line ${line.id}: ${err.message}`),
+      );
+      return { clase: 'aplicado', mensaje: 'Line IPTV marcado para eliminación (sincronización con XUI en curso).' };
+    } catch (err) {
+      return clasificarError(err);
+    }
   }
 
   private async intentarSincronizarEliminacion(line: XuiLine): Promise<void> {
@@ -211,18 +237,38 @@ export class XuiLinesService {
   // de reconciliación de xui-monitor.service.ts la corrige (~10 min).
   // ────────────────────────────────────────────────────────────
 
-  async habilitarLineDeContrato(contratoId: string, empresaId: string): Promise<void> {
-    const line = await this.repo.findOne({ where: { contratoId, empresaId, activo: true } });
-    if (!line || line.habilitado) return;
-    if (line.xuiLineId) await this.xuiApi.enableLine(line.xuiLineId);
-    await this.repo.update(line.id, { habilitado: true });
+  // Ola 1, grupo 3b. Consumida por ContratosService.cambiarEstado() (reactivación),
+  // fire-and-forget con `.catch(logger.warn)` en el llamador — ese catch envolvía una
+  // excepción real de `xuiApi.enableLine()` sin capturar aquí dentro; se mueve el catch a
+  // este método para clasificar en vez de solo loguear. Mismo desenlace que antes: si XUI
+  // falla, el flag local NO se marca `habilitado` y el barrido de xui-monitor.service.ts
+  // (~10 min) reintenta — eso ya era el diseño, ahora es explícito en la clase devuelta.
+  async habilitarLineDeContrato(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const line = await this.repo.findOne({ where: { contratoId, empresaId, activo: true } });
+      if (!line) return { clase: 'no_aplica', mensaje: 'El contrato no tiene line IPTV activo.' };
+      if (line.habilitado) return { clase: 'ya_en_destino', mensaje: 'El line ya estaba habilitado.' };
+      if (line.xuiLineId) await this.xuiApi.enableLine(line.xuiLineId);
+      await this.repo.update(line.id, { habilitado: true });
+      return { clase: 'aplicado', mensaje: 'Line IPTV habilitado.' };
+    } catch (err) {
+      return clasificarError(err);
+    }
   }
 
-  async deshabilitarLineDeContrato(contratoId: string, empresaId: string): Promise<void> {
-    const line = await this.repo.findOne({ where: { contratoId, empresaId, activo: true } });
-    if (!line || !line.habilitado) return;
-    if (line.xuiLineId) await this.xuiApi.disableLine(line.xuiLineId);
-    await this.repo.update(line.id, { habilitado: false });
+  // Ola 1, grupo 3b. Simétrico a habilitarLineDeContrato() — mismo fix del catch movido
+  // aquí dentro y mismo desenlace preservado (flag local no se toca si XUI falla).
+  async deshabilitarLineDeContrato(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const line = await this.repo.findOne({ where: { contratoId, empresaId, activo: true } });
+      if (!line) return { clase: 'no_aplica', mensaje: 'El contrato no tiene line IPTV activo.' };
+      if (!line.habilitado) return { clase: 'ya_en_destino', mensaje: 'El line ya estaba deshabilitado.' };
+      if (line.xuiLineId) await this.xuiApi.disableLine(line.xuiLineId);
+      await this.repo.update(line.id, { habilitado: false });
+      return { clase: 'aplicado', mensaje: 'Line IPTV deshabilitado.' };
+    } catch (err) {
+      return clasificarError(err);
+    }
   }
 
   // ────────────────────────────────────────────────────────────

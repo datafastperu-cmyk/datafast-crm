@@ -16,6 +16,7 @@ import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { encrypt, decrypt } from '../../common/utils/encryption.util';
 import { getNextAvailableIp, getCidrRange, isValidIp } from '../../common/utils/ip.util';
+import { esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 import { WirelessService } from '../mikrotik/services/wireless.service';
 import { RouterConnectionPool, RouterCredentials } from '../mikrotik/services/connection-pool.service';
 import { PppoeService } from '../mikrotik/services/pppoe.service';
@@ -331,6 +332,7 @@ export class ContratosService {
     if (plan?.cuentaIptv) {
       setImmediate(() => {
         this.xuiLinesSvc.crearLineParaContrato(saved.id, user.empresaId)
+          .then((r) => { if (!esExito(r)) this.logger.warn(`XUI crearLineParaContrato (contrato ${saved.id}): ${mensajeDe(r)}`); })
           .catch((e: any) => this.logger.warn(`XUI crearLineParaContrato (contrato ${saved.id}): ${e?.message}`));
       });
     }
@@ -570,11 +572,13 @@ export class ContratosService {
       if (planViejo?.cuentaIptv && !planNuevo?.cuentaIptv) {
         setImmediate(() => {
           this.xuiLinesSvc.eliminarLineDeContrato(id, user.empresaId)
+            .then((r) => { if (!esExito(r)) this.logger.warn(`XUI eliminarLineDeContrato (contrato ${id}): ${mensajeDe(r)}`); })
             .catch((e: any) => this.logger.warn(`XUI eliminarLineDeContrato (contrato ${id}): ${e?.message}`));
         });
       } else if (!planViejo?.cuentaIptv && planNuevo?.cuentaIptv) {
         setImmediate(() => {
           this.xuiLinesSvc.crearLineParaContrato(id, user.empresaId)
+            .then((r) => { if (!esExito(r)) this.logger.warn(`XUI crearLineParaContrato (contrato ${id}): ${mensajeDe(r)}`); })
             .catch((e: any) => this.logger.warn(`XUI crearLineParaContrato (contrato ${id}): ${e?.message}`));
         });
       }
@@ -803,6 +807,7 @@ export class ContratosService {
 
       // ── Re-habilitar line IPTV (XUI ONE), simétrico a MikroTik ──
       this.xuiLinesSvc.habilitarLineDeContrato(id, user.empresaId)
+        .then((r) => { if (!esExito(r)) this.logger.warn(`cambiarEstado → XUI habilitarLine: ${mensajeDe(r)}`); })
         .catch((e: any) => this.logger.warn(`cambiarEstado → XUI habilitarLine: ${e?.message}`));
 
       // ── Notificación de reactivación ──────────────────────────
@@ -891,10 +896,17 @@ export class ContratosService {
         .then(() => this.sagaLog.registrarPaso(sagaBajaId, 4, 'eliminar_antena_ap', 'OK', undefined, Date.now() - t4))
         .catch((e: any) => { this.logger.warn(`cambiarEstado baja antena: ${e?.message}`); return this.sagaLog.registrarPaso(sagaBajaId, 4, 'eliminar_antena_ap', 'FAIL', e?.message, Date.now() - t4); });
 
-      // S5: Eliminar line IPTV (XUI ONE) — soft, no bloquea la baja
+      // S5: Eliminar line IPTV (XUI ONE) — soft, no bloquea la baja.
+      // eliminarLineDeContrato() habla ResultadoOperacion (Ola 1, grupo 3b) y ya no lanza por
+      // un fallo de XUI — el `.then` distingue éxito/fallo por la clase; el `.catch` que
+      // queda es para el timeout de `withTimeout` (15s), que sigue siendo un rechazo real.
       const t5 = Date.now();
       await withTimeout(this.xuiLinesSvc.eliminarLineDeContrato(id, user.empresaId), 15000, 'eliminar-line-iptv')
-        .then(() => this.sagaLog.registrarPaso(sagaBajaId, 5, 'eliminar_line_iptv', 'OK', undefined, Date.now() - t5))
+        .then((r) => {
+          if (esExito(r)) return this.sagaLog.registrarPaso(sagaBajaId, 5, 'eliminar_line_iptv', 'OK', undefined, Date.now() - t5);
+          this.logger.warn(`cambiarEstado baja XUI: ${mensajeDe(r)}`);
+          return this.sagaLog.registrarPaso(sagaBajaId, 5, 'eliminar_line_iptv', 'FAIL', mensajeDe(r), Date.now() - t5);
+        })
         .catch((e: any) => { this.logger.warn(`cambiarEstado baja XUI: ${e?.message}`); return this.sagaLog.registrarPaso(sagaBajaId, 5, 'eliminar_line_iptv', 'FAIL', e?.message, Date.now() - t5); });
 
       // Completar saga aunque algunos pasos de hardware hayan fallado
@@ -1131,6 +1143,7 @@ export class ContratosService {
 
       // ── Deshabilitar line IPTV (XUI ONE), simétrico a MikroTik ──
       this.xuiLinesSvc.deshabilitarLineDeContrato(id, user.empresaId)
+        .then((r) => { if (!esExito(r)) this.logger.warn(`cambiarEstado → XUI deshabilitarLine: ${mensajeDe(r)}`); })
         .catch((e: any) => this.logger.warn(`cambiarEstado → XUI deshabilitarLine: ${e?.message}`));
 
       // ── Notificación WhatsApp ────────────────────────────────
@@ -1814,12 +1827,19 @@ export class ContratosService {
 
     if (!row?.aprovisionado || !row?.onuId) return;
 
-    // SmartOLT: eliminar provisión via API
+    // SmartOLT: eliminar provisión via API. Ola 1, grupo 3b: eliminarProvision() habla
+    // ResultadoOperacion y ya no lanza — el try/catch se conserva de todas formas, porque
+    // el contrato documentado de este método ("Nunca lanza excepción: un fallo de OLT no
+    // debe bloquear la baja") no depende de que el dominio cumpla su propia promesa.
     if (row.smartoltOnuId && row.smartoltId) {
       try {
-        await this.smartoltApi.eliminarProvision(row.smartoltId, row.smartoltOnuId);
-        this.logger.log(`desaprovisionarOlt → ${contratoId} | ONU eliminada de SmartOLT: ${row.smartoltOnuId}`);
-      } catch (err) {
+        const r = await this.smartoltApi.eliminarProvision(row.smartoltId, row.smartoltOnuId);
+        if (esExito(r)) {
+          this.logger.log(`desaprovisionarOlt → ${contratoId} | ONU eliminada de SmartOLT: ${row.smartoltOnuId}`);
+        } else {
+          this.logger.warn(`desaprovisionarOlt → ${contratoId} | Error eliminando ONU de SmartOLT: ${mensajeDe(r)}`);
+        }
+      } catch (err: any) {
         this.logger.warn(`desaprovisionarOlt → ${contratoId} | Error eliminando ONU de SmartOLT: ${err?.message}`);
       }
     } else {

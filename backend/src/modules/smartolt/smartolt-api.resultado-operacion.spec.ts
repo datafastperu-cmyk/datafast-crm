@@ -49,3 +49,41 @@ describe('SmartoltApiService.aprovisionarOnu() — clasificación por rama', () 
     await expect(svc.aprovisionarOnu(payload)).resolves.toHaveProperty('clase');
   });
 });
+
+// Ola 1, grupo 3b (2026-08-16) — único llamador: ContratosService.desaprovisionarOlt().
+describe('SmartoltApiService.eliminarProvision() — clasificación por rama', () => {
+  const hacer = (over: Record<string, unknown> = {}) => {
+    const svc = Object.create(SmartoltApiService.prototype) as any;
+    svc.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    svc.assertNotDegraded = jest.fn();
+    svc.delete = jest.fn(async () => {});
+    Object.assign(svc, over);
+    return svc;
+  };
+
+  it('aplicado: provisión eliminada', async () => {
+    const svc = hacer();
+    const r = await svc.eliminarProvision('olt-1', 'onu-1');
+    expect(r.clase).toBe('aplicado');
+  });
+
+  // Corrección de clasificación (D-14): un 404 al ELIMINAR es el destino alcanzado, no un
+  // rechazo — clasificarError() por defecto lo mandaría a rechazado_definitivo porque no
+  // distingue el verbo HTTP.
+  it('ya_en_destino: la ONU ya no existía en SmartOLT (404)', async () => {
+    const svc = hacer({ delete: jest.fn(async () => { throw new NotFoundException('recurso no encontrado'); }) });
+    const r = await svc.eliminarProvision('olt-1', 'onu-1');
+    expect(r.clase).toBe('ya_en_destino');
+  });
+
+  it('reintentable: SmartOLT no disponible / error de red', async () => {
+    const svc = hacer({ delete: jest.fn(async () => { throw new ServiceUnavailableException('SmartOLT no disponible'); }) });
+    const r = await svc.eliminarProvision('olt-1', 'onu-1');
+    expect(r.clase).toBe('reintentable');
+  });
+
+  it('el error inesperado no lanza: cae en clasificarError vía el catch', async () => {
+    const svc = hacer({ assertNotDegraded: jest.fn(() => { throw new ServiceUnavailableException('Módulo SmartOLT no disponible'); }) });
+    await expect(svc.eliminarProvision('olt-1', 'onu-1')).resolves.toHaveProperty('clase');
+  });
+});
