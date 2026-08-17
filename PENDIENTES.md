@@ -371,6 +371,18 @@ Clasificación final — **DINERO** (propio lote, al final): `pagos`, `promesas_
 `portal_solicitud_plan` — 8 tablas, pasan a `servicio_id`. — **Sin tocar**:
 `notificaciones_logs`. Las 10 columnas sin FK (censo §3.2) siguen fuera de este lote.
 
+**`tickets` excluida al ejecutar, no en la clasificación previa (2026-08-17).** Al mirarla de
+cerca para renombrarla, `Ticket.categoria` incluye `CategoriaTicket.FACTURACION` junto a las
+categorías técnicas (SIN_INTERNET, LENTITUD, INTERMITENCIA, EQUIPO_DANADO, CAMBIO_PLAN,
+CAMBIO_DATOS, INSTALACION, TRASLADO, OTRO), y `contratoId` es un campo genérico
+(`nullable: true`) que el DTO puebla igual sin distinguir la categoría (`ticket.dto.ts`,
+`tickets.service.ts`, `ticket.repository.ts`). Un ticket de facturación es del acuerdo, uno
+técnico es del servicio — mismo patrón mixto que `notificaciones_logs`. Instrucción explícita
+del propietario: "si mezcla, la sacas de la ola y la reportas — no la fuerzas a un bando". Pasa
+a **excluida**, pendiente de una decisión de diseño propia (¿dos columnas, como
+`cargos_pendientes`?), no de un renombrado. Documentado en
+`E-0.2-clasificacion-contrato-id.md` v3.
+
 **Entregable 3 (primer renombrado real), 2026-08-17** — `comandos_red_pendientes.contrato_id`
 → `servicio_id`, migración `1791800000058-OutboxRedApuntaAlServicio.ts`. Elegida primero por
 instrucción explícita: es el caso ancla del censo y la que más consumidores tiene — si el
@@ -394,8 +406,50 @@ tocó — no es la columna con FK que cubre la clasificación, y tocarlo habría
 también sigue llamándose `contratoId` en su propia firma — resuelve contra `ftth_onu_registro`,
 tabla SIN FK (censo §3.2), de otro lote.
 
-**Quedan 7 tablas técnicas más** antes del lote de dinero: `tickets`, `ordenes_trabajo`,
-`consumo_datos`, `consumo_snapshot`, `ips_asignadas`, `pe_acometida`, `portal_solicitud_plan`.
+**⚠️ El punto ciego de la barrera — el JSONB, registrado explícitamente (2026-08-17).**
+`sql-nombra-servicios.spec.ts` lee texto SQL y tipos TypeScript; no puede ver dentro de un blob
+JSONB. El campo `contratoId` en `PayloadDesprovisionarRed`/`PayloadProvisionarRed` es, por
+diseño de la barrera, el **ÚNICO punto de toda la Ola 2 donde equivocarse no falla ruidoso** —
+todo lo demás (columna renombrada, tabla renombrada) rompe con un error de Postgres visible. Un
+JSONB mal escrito no rompe: guarda silenciosamente el significado equivocado.
+
+**Consecuencia concreta:** un comando encolado ANTES del renombrado de una tabla y ejecutado
+DESPUÉS lleva en su payload un `contratoId` cuyo significado ya cambió de sentido en el resto
+del sistema (o viceversa, si el payload se reescribe pero el consumidor todavía espera el
+significado viejo). El outbox es asíncrono por diseño — el desfase entre encolar y ejecutar es
+justo la ventana donde esto puede pasar.
+
+**Su propio lote debe decidirse ANTES de que la Ola 2 cierre, no después** — instrucción
+explícita del propietario. Qué hacer con comandos en vuelo (¿versionar el payload? ¿un campo de
+esquema? ¿drenar el outbox antes de cada rename técnico?) es una decisión de diseño del
+propietario, no algo que se resuelve por default en esta ola.
+
+**Las 7 tablas técnicas están HECHAS (2026-08-17).** `comandos_red_pendientes` (`1791800000058`),
+`ordenes_trabajo` (`1791800000059`), `consumo_datos`+`consumo_snapshot` (`1791800000060`, mismo
+commit — un solo fichero, `consumo-colector.service.ts`, las lee y escribe juntas),
+`ips_asignadas` (`1791800000061`), `pe_acometida` (`1791800000062` — incluye
+`ALTER INDEX uq_pe_acometida_contrato RENAME TO uq_pe_acometida_servicio`, el único índice de
+todo el lote cuyo propio nombre decía "contrato"), `portal_solicitud_plan` (`1791800000063`).
+`tickets` excluida (ver arriba). Un commit por tabla, cada uno con su barrido completo del
+código (no solo el módulo obvio) y su verificación en `sql-nombra-servicios.spec.ts`.
+
+**Falsos positivos reales encontrados y corregidos durante la ejecución** (no anécdotas — la
+barrera se endureció por ellos):
+- `portal-consumo.service.ts` filtraba `consumo_datos` por `contrato_id` — consumidor fuera del
+  módulo `outbox-red`/`portal-planes` obvio, encontrado por el barrido completo, corregido en el
+  mismo commit que `consumo_datos`.
+- `planta-externa-mapa.service.ts` hace JOIN de `pe_acometida` en la MISMA consulta que dos
+  alias con `contrato_id` legítimo y sin FK (`p.contrato_id` de la CTE `PUNTOS_SERVICIO`, columna
+  derivada de `servicios`; `f.contrato_id` de `ftth_onu_registro`, tabla sin FK). La barrera por
+  bloque-completo los marcaba como infractores. Se afinó a detección por alias (solo dispara si
+  `contrato_id` aparece sin calificar o calificado con el alias que la propia consulta le dio a
+  la tabla renombrada) — mismo commit que `pe_acometida`.
+
+**Parámetros/rutas HTTP deliberadamente sin renombrar** (frontera ya establecida en la Ola 1,
+reutilizada aquí): `:contratoId` en rutas del portal y de `planta-externa.controller.ts`,
+`AsignarPuertoDto.contratoId` (consumidor vivo en `ClienteDetalle.tsx`/`ClienteWizard.tsx`),
+parámetros de servicio que espejan esos DTOs. Cada decisión de frontera está comentada inline en
+el código donde se tomó.
 
 ---
 
@@ -526,6 +580,15 @@ como pasó con la deuda (A-4).
 
 **Cómo se comprueba:** `propiedad-tablas.spec.ts`. **Límite conocido: solo detecta SQL crudo**,
 no las escrituras por repositorio TypeORM — 15 es un suelo, no un total.
+
+**Caso nombrado, descubierto en Ola 2 (2026-08-17):** `comandos_red_pendientes` tiene DOS
+escritores. El dueño declarado es `outbox-red.service.ts` (`encolar()` y sus variantes), pero
+`mikrotik/reconciliacion.worker.ts` inserta y actualiza la tabla con SQL crudo, saltándose por
+completo la puerta del dueño — mismo patrón que ya causó el cert VPN huérfano del 28/07
+([[feedback_usar_flujo_de_negocio]]). Se descubrió al renombrar `contrato_id`→`servicio_id`: sin
+un grep explícito por el nombre de tabla en TODO `backend/src` (no solo el módulo obvio
+`outbox-red`), el segundo escritor se habría quedado con la columna vieja y roto en silencio.
+**No se corrigió** — es evidencia para la Ola 6, no un fix de la Ola 2.
 
 ### 24. B-2 — 19 tablas sin entidad TypeORM
 **Por qué importa:** un nombre de columna mal escrito dentro de un literal de plantilla es
