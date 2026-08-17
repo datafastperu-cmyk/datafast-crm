@@ -97,4 +97,19 @@ export const RechazosDefinitivos = {
     clase: 'rechazado_definitivo',
     motivo: detalle,
   }),
+
+  // ── Mikrotik (control de acceso) ────────────────────────────────────────
+  // Ola 1, grupo 3b — MikrotikService.crearReglasControl()
+
+  /** El contrato no tiene usuario PPPoE asignado — dato de configuración, no falla el router. */
+  MIKROTIK_SIN_USUARIO_PPPOE: (): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: 'El contrato no tiene usuario PPPoE asignado.',
+  }),
+
+  /** Amarre IP/MAC requiere ambos datos en el contrato; ninguno lo genera el router. */
+  MIKROTIK_SIN_IP_O_MAC: (ip: string | null | undefined, mac: string | null | undefined): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: `Amarre IP/MAC requiere IP (${ip ?? 'sin asignar'}) y MAC (${mac ?? 'sin asignar'}) configuradas en el contrato.`,
+  }),
 } as const;

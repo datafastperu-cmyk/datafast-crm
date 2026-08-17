@@ -39,7 +39,8 @@ import { AuditoriaService } from '../auth/auditoria.service';
 import { VpnClienteService } from '../openvpn/services/vpn-cliente.service';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 import { encrypt, decrypt } from '../../common/utils/encryption.util';
-import { esExito, mensajeDe } from '../../common/domain/resultado-operacion';
+import { ResultadoOperacion, esExito, mensajeDe, clasificarError } from '../../common/domain/resultado-operacion';
+import { RechazosDefinitivos } from '../../common/domain/rechazos-definitivos';
 
 import {
   CreateRouterDto,
@@ -1713,75 +1714,84 @@ export class MikrotikService implements OnModuleInit {
     }
   }
 
+  // Ola 1, grupo 3b (2026-08-16). Único consumidor: ContratosService.provisionarMikrotik().
+  // D-41: solo se toca el borde — PppoeService/ArpService/FirewallService no cambian.
   async crearReglasControl(
     creds: RouterCredentials,
     co: any,
     tipoControl: string,
-  ): Promise<void> {
-    const comment = `DATAFAST:${co.nombreCompleto}`;
-    if (tipoControl === 'pppoe') {
-      // Fix 3: error explícito en lugar de return silencioso
-      if (!co.usuarioPppoe)
-        throw new Error('El contrato no tiene usuario PPPoE asignado');
-      const password = co.passwordPppoe ? decrypt(co.passwordPppoe) : '';
-
-      // Asegurar el perfil ANTES del secret: el ERP inyecta su configuración canónica y
-      // no da por hecho que exista en el equipo (directriz de aprovisionamiento). Sin
-      // esto RouterOS rechaza el secret con "input does not match any value of profile",
-      // un mensaje que no dice qué perfil falta — y ningún plan puede activarse en un
-      // router donde nadie lo creó a mano (observado el 2026-07-29 al activar un plan de
-      // 20 Mbps cuyo perfil `plan-20mbps` no existía en el Router Malvinas).
-      const perfilPpp = co.pppProfile ?? 'default';
-      if (perfilPpp !== 'default') {
-        await this.pppoeSvc.crearPerfilSiNoExiste(creds, perfilPpp, {
-          // rate-limit de RouterOS: "subida/bajada" desde la perspectiva del cliente.
-          rateLimit: co.velocidadSubida && co.velocidadBajada
-            ? `${co.velocidadSubida}M/${co.velocidadBajada}M`
-            : undefined,
-        }).catch((e: any) =>
-          // No aborta: si ya existe con otra config o el router no deja crearlo, el
-          // `crear` de abajo dirá con claridad si el problema persiste.
-          this.logger.warn(`No se pudo asegurar el perfil "${perfilPpp}" en ${creds.ip}: ${e.message}`),
-        );
-      }
-
-      await this.pppoeSvc.crear(creds, {
-        name: co.usuarioPppoe,
-        password,
-        profile: perfilPpp,
-        service: 'pppoe',
-        remoteAddress: co.ipAsignada || undefined,
-        comment,
-        disabled: false,
-      });
-    } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
-      // Fix 3: error explícito en lugar de return silencioso
-      if (!co.ipAsignada || !co.macAddress)
-        throw new Error(
-          `Amarre IP/MAC requiere IP (${co.ipAsignada ?? 'sin asignar'}) y MAC (${co.macAddress ?? 'sin asignar'})`,
-        );
-      const iface = await this.arpSvc.detectarInterface(creds, co.ipAsignada);
-      if (!iface) throw new Error(`No se encontró interfaz para ${co.ipAsignada}`);
-      await this.arpSvc.crearArpEstatico(
-        creds,
-        co.ipAsignada,
-        co.macAddress,
-        iface,
-        comment,
-      );
-      if (tipoControl === 'amarre_ip_mac_dhcp') {
-        try {
-          await this.firewallSvc.crearDhcpBinding(creds, {
-            macAddress: co.macAddress,
-            ipAddress: co.ipAsignada,
-            hostname: co.nombreCompleto,
-            comment,
-          });
-        } catch (dhcpErr) {
-          await this.arpSvc.eliminarArpEstatico(creds, co.ipAsignada).catch(() => {});
-          throw dhcpErr;
+  ): Promise<ResultadoOperacion> {
+    try {
+      const comment = `DATAFAST:${co.nombreCompleto}`;
+      if (tipoControl === 'pppoe') {
+        if (!co.usuarioPppoe) {
+          return RechazosDefinitivos.MIKROTIK_SIN_USUARIO_PPPOE();
         }
+        const password = co.passwordPppoe ? decrypt(co.passwordPppoe) : '';
+
+        // Asegurar el perfil ANTES del secret: el ERP inyecta su configuración canónica y
+        // no da por hecho que exista en el equipo (directriz de aprovisionamiento). Sin
+        // esto RouterOS rechaza el secret con "input does not match any value of profile",
+        // un mensaje que no dice qué perfil falta — y ningún plan puede activarse en un
+        // router donde nadie lo creó a mano (observado el 2026-07-29 al activar un plan de
+        // 20 Mbps cuyo perfil `plan-20mbps` no existía en el Router Malvinas).
+        const perfilPpp = co.pppProfile ?? 'default';
+        if (perfilPpp !== 'default') {
+          await this.pppoeSvc.crearPerfilSiNoExiste(creds, perfilPpp, {
+            // rate-limit de RouterOS: "subida/bajada" desde la perspectiva del cliente.
+            rateLimit: co.velocidadSubida && co.velocidadBajada
+              ? `${co.velocidadSubida}M/${co.velocidadBajada}M`
+              : undefined,
+          }).catch((e: any) =>
+            // No aborta: si ya existe con otra config o el router no deja crearlo, el
+            // `crear` de abajo dirá con claridad si el problema persiste.
+            this.logger.warn(`No se pudo asegurar el perfil "${perfilPpp}" en ${creds.ip}: ${e.message}`),
+          );
+        }
+
+        await this.pppoeSvc.crear(creds, {
+          name: co.usuarioPppoe,
+          password,
+          profile: perfilPpp,
+          service: 'pppoe',
+          remoteAddress: co.ipAsignada || undefined,
+          comment,
+          disabled: false,
+        });
+        return { clase: 'aplicado', mensaje: 'Secret PPPoE creado.' };
+      } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
+        if (!co.ipAsignada || !co.macAddress) {
+          return RechazosDefinitivos.MIKROTIK_SIN_IP_O_MAC(co.ipAsignada, co.macAddress);
+        }
+        const iface = await this.arpSvc.detectarInterface(creds, co.ipAsignada);
+        if (!iface) {
+          return { clase: 'reintentable', motivo: `No se encontró interfaz para ${co.ipAsignada}` };
+        }
+        await this.arpSvc.crearArpEstatico(
+          creds,
+          co.ipAsignada,
+          co.macAddress,
+          iface,
+          comment,
+        );
+        if (tipoControl === 'amarre_ip_mac_dhcp') {
+          try {
+            await this.firewallSvc.crearDhcpBinding(creds, {
+              macAddress: co.macAddress,
+              ipAddress: co.ipAsignada,
+              hostname: co.nombreCompleto,
+              comment,
+            });
+          } catch (dhcpErr) {
+            await this.arpSvc.eliminarArpEstatico(creds, co.ipAsignada).catch(() => {});
+            throw dhcpErr;
+          }
+        }
+        return { clase: 'aplicado', mensaje: 'Amarre IP/MAC creado.' };
       }
+      return { clase: 'no_aplica', mensaje: `Tipo de control "${tipoControl}" no requiere reglas en el router.` };
+    } catch (err) {
+      return clasificarError(err);
     }
   }
 

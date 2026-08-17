@@ -1695,8 +1695,16 @@ export class ContratosService {
       );
     }
 
+    // Ola 1, grupo 3b: crearReglasControl() habla ResultadoOperacion — se traduce aquí
+    // preservando el mismo desenlace de antes (cualquier fallo aborta con throw); un
+    // rechazado_definitivo se traduce a BadRequestException, igual que las demás
+    // validaciones de este método.
     try {
-      await this.mikrotikSvc.crearReglasControl(creds, row, tipoControl);
+      const rCrear = await this.mikrotikSvc.crearReglasControl(creds, row, tipoControl);
+      if (!esExito(rCrear)) {
+        if (rCrear.clase === 'rechazado_definitivo') throw new BadRequestException(rCrear.motivo);
+        throw new Error(mensajeDe(rCrear));
+      }
       this.logger.log(`provisionarMikrotik → ${contratoId} | tipo_control=${tipoControl} completado en ${creds.ip}`);
     } catch (err) {
       this.logger.warn(`provisionarMikrotik → ${contratoId} | error en router ${creds.ip}: ${err?.message}`);
