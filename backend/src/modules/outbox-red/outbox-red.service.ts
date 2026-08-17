@@ -116,11 +116,11 @@ export class OutboxRedService {
 
   /**
    * Guarda un comando de red en la cola de reintentos.
-   * Idempotente: si ya existe PENDIENTE para (contratoId, accion), no duplica.
+   * Idempotente: si ya existe PENDIENTE para (servicioId, accion), no duplica.
    */
   async encolar(
     accion:     AccionRed,
-    contratoId: string,
+    servicioId: string,
     routerId:   string,
     payload:    PayloadSuspenderRed | PayloadReactivarRed | PayloadDesprovisionarRed | PayloadProvisionarRed,
   ): Promise<void> {
@@ -128,13 +128,13 @@ export class OutboxRedService {
     // registro, no hay router MikroTik). router_id es uuid → se persiste NULL.
     const routerIdVal = routerId && routerId !== 'none' ? routerId : null;
     await this.ds.query(`
-      INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
+      INSERT INTO comandos_red_pendientes (servicio_id, router_id, accion, payload)
       VALUES ($1, $2, $3, $4)
-      ON CONFLICT (contrato_id, accion) WHERE estado IN ('PENDIENTE', 'EN_PROCESO') DO NOTHING
-    `, [contratoId, routerIdVal, accion, JSON.stringify(payload)]);
+      ON CONFLICT (servicio_id, accion) WHERE estado IN ('PENDIENTE', 'EN_PROCESO') DO NOTHING
+    `, [servicioId, routerIdVal, accion, JSON.stringify(payload)]);
 
     this.logger.warn(
-      `[OutboxRed] ${accion} encolado → contrato=${contratoId} router=${routerId}`,
+      `[OutboxRed] ${accion} encolado → servicio=${servicioId} router=${routerId}`,
     );
   }
 
@@ -157,7 +157,7 @@ export class OutboxRedService {
    * encontraría el contrato vacío y no sabría ni qué IP limpiar ni dónde.
    */
   async encolarDesprovisionar(
-    contratoId: string,
+    servicioId: string,
     routerId:   string | null,
     datos: { ipAsignada?: string | null; usuarioPppoe?: string | null; motivo: string },
   ): Promise<void> {
@@ -166,12 +166,15 @@ export class OutboxRedService {
       // contrato que nunca llegó a aprovisionarse). Se dice, no se encola un comando
       // imposible de ejecutar.
       this.logger.log(
-        `[OutboxRed] DESPROVISIONAR omitido | contrato ${contratoId}: sin router asociado`,
+        `[OutboxRed] DESPROVISIONAR omitido | servicio ${servicioId}: sin router asociado`,
       );
       return;
     }
-    await this.encolar('DESPROVISIONAR', contratoId, routerId, {
-      contratoId,
+    // El campo `contratoId` del payload (PayloadDesprovisionarRed) queda fuera de este
+    // lote a propósito: vive dentro del JSONB `payload`, no es la columna con FK que la
+    // clasificación de la Ola 2 cubre — ver E-0.2-clasificacion-contrato-id.md.
+    await this.encolar('DESPROVISIONAR', servicioId, routerId, {
+      contratoId: servicioId,
       ipAsignada:   datos.ipAsignada   ?? null,
       usuarioPppoe: datos.usuarioPppoe ?? null,
       motivo:       datos.motivo,
@@ -179,27 +182,27 @@ export class OutboxRedService {
   }
 
   async encolarProvisionar(
-    contratoId: string,
+    servicioId: string,
     routerId:   string,
     payload:    PayloadProvisionarRed,
   ): Promise<void> {
-    await this.encolar('PROVISIONAR', contratoId, routerId, payload);
+    await this.encolar('PROVISIONAR', servicioId, routerId, payload);
   }
 
   async encolarAplicarProrroga(
-    contratoId: string,
+    servicioId: string,
     routerId:   string,
     payload:    PayloadAplicarProrroga,
   ): Promise<void> {
-    await this.encolar('APLICAR_PRORROGA', contratoId, routerId, payload);
+    await this.encolar('APLICAR_PRORROGA', servicioId, routerId, payload);
   }
 
   async encolarRevocarProrroga(
-    contratoId: string,
+    servicioId: string,
     routerId:   string,
     payload:    PayloadRevocarProrroga,
   ): Promise<void> {
-    await this.encolar('REVOCAR_PRORROGA', contratoId, routerId, payload);
+    await this.encolar('REVOCAR_PRORROGA', servicioId, routerId, payload);
   }
 
   // ── Ciclo de vida ONU (FTTH) ──────────────────────────────────
@@ -416,7 +419,7 @@ export class OutboxRedService {
                    LIMIT  10
                    FOR UPDATE SKIP LOCKED
                  )
-          RETURNING id, contrato_id, router_id, accion, payload, intentos, max_intentos
+          RETURNING id, servicio_id, router_id, accion, payload, intentos, max_intentos
         `, [this._dueño, String(OutboxRedService.CLAIM_TTL_SEGUNDOS)]));
 
         if (lote.length > 0) {
@@ -460,7 +463,7 @@ export class OutboxRedService {
                                ' | reclamo expirado (dueño=' || COALESCE(reclamado_por, '?') ||
                                '): estado indeterminado, reencolado'
       WHERE  estado = 'EN_PROCESO' AND claim_expira_en < NOW()
-      RETURNING id, accion, contrato_id, reclamado_por
+      RETURNING id, accion, servicio_id, reclamado_por
     `).catch((e) => {
       this.logger.warn(`[OutboxRed] barrerClaimsExpirados falló: ${e?.message}`);
       return [] as any[];
@@ -468,15 +471,15 @@ export class OutboxRedService {
 
     for (const h of huerfanos) {
       this.logger.error(
-        `[OutboxRed] Reclamo expirado → comando=${h.id} ${h.accion} contrato=${h.contrato_id} ` +
+        `[OutboxRed] Reclamo expirado → comando=${h.id} ${h.accion} servicio=${h.servicio_id} ` +
         `dueño=${h.reclamado_por} — reencolado (pudo haberse aplicado en hardware)`,
       );
       void this.eventos?.registrar({
         nivel:    'warn',
         origen:   'mikrotik',
         codigo:   'OUTBOX_CLAIM_EXPIRADO',
-        mensaje:  `Comando ${h.accion} quedó reclamado sin terminar (contrato ${h.contrato_id}, dueño ${h.reclamado_por}) — reencolado. Estado en hardware indeterminado.`,
-        contexto: { comandoId: h.id, accion: h.accion, contratoId: h.contrato_id, dueño: h.reclamado_por },
+        mensaje:  `Comando ${h.accion} quedó reclamado sin terminar (servicio ${h.servicio_id}, dueño ${h.reclamado_por}) — reencolado. Estado en hardware indeterminado.`,
+        contexto: { comandoId: h.id, accion: h.accion, servicioId: h.servicio_id, dueño: h.reclamado_por },
       });
     }
 
@@ -571,7 +574,7 @@ export class OutboxRedService {
           FROM servicios co
           LEFT JOIN routers ro ON ro.id = co.router_id
           WHERE co.id = $1
-        `, [cmd.contrato_id]).catch(() => [null]);
+        `, [cmd.servicio_id]).catch(() => [null]);
 
         const ip = payload.ipAsignada ?? contratoRow?.ipAsignada ?? null;
         const usuarioPppoe = payload.usuarioPppoe ?? contratoRow?.usuarioPppoe ?? null;
@@ -620,7 +623,7 @@ export class OutboxRedService {
         res = await this.firewallSvc.suspenderCliente(
           creds,
           p.ipAsignada,
-          cmd.contrato_id,
+          cmd.servicio_id,
           `Prorroga vencida — promesa:${p.promesaId}`,
         );
         if (esExito(res) && p.usuarioPppoe) {
@@ -644,7 +647,7 @@ export class OutboxRedService {
             `UPDATE servicios SET estado = 'suspendido', en_prorroga = FALSE, prorroga_hasta = NULL,
                     fecha_estado = NOW(), motivo_estado = 'Corte por prórroga incumplida'
              WHERE id = $1`,
-            [cmd.contrato_id],
+            [cmd.servicio_id],
           ).catch(() => {});
           await this.ds.query(
             `INSERT INTO servicios_historial
@@ -652,7 +655,7 @@ export class OutboxRedService {
              SELECT id, empresa_id, 'activo', 'suspendido',
                     'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida'
                FROM servicios WHERE id = $1`,
-            [cmd.contrato_id],
+            [cmd.servicio_id],
           ).catch(() => {});
         }
 
@@ -704,7 +707,7 @@ export class OutboxRedService {
       `, [cmd.id]);
       const detalle = res.clase === 'aplicado' ? '' : ` (${res.clase})`;
       this.logger.log(
-        `[OutboxRed] ✅ ${cmd.accion} ejecutado → contrato=${cmd.contrato_id} intento=${nuevosIntentos}${detalle}`,
+        `[OutboxRed] ✅ ${cmd.accion} ejecutado → servicio=${cmd.servicio_id} intento=${nuevosIntentos}${detalle}`,
       );
       return;
     }
@@ -720,14 +723,14 @@ export class OutboxRedService {
         WHERE id = $1
       `, [cmd.id, nuevosIntentos, res.motivo.slice(0, 500)]);
       this.logger.error(
-        `[OutboxRed] ${cmd.accion} rechazado de forma permanente → contrato=${cmd.contrato_id}: ${res.motivo}`,
+        `[OutboxRed] ${cmd.accion} rechazado de forma permanente → servicio=${cmd.servicio_id}: ${res.motivo}`,
       );
       void this.eventos?.registrar({
         nivel:    'error',
         origen:   'mikrotik',
         codigo:   'OUTBOX_RED_RECHAZO_PERMANENTE',
-        mensaje:  `Comando ${cmd.accion} rechazado de forma permanente (contrato ${cmd.contrato_id}): ${res.motivo}`,
-        contexto: { contratoId: cmd.contrato_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
+        mensaje:  `Comando ${cmd.accion} rechazado de forma permanente (servicio ${cmd.servicio_id}): ${res.motivo}`,
+        contexto: { servicioId: cmd.servicio_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
       });
       return;
     }
@@ -744,15 +747,15 @@ export class OutboxRedService {
         WHERE id = $1
       `, [cmd.id, nuevosIntentos, `INDETERMINADO: ${res.motivo}`.slice(0, 500)]);
       this.logger.error(
-        `[OutboxRed] ${cmd.accion} INDETERMINADO → contrato=${cmd.contrato_id}: ${res.motivo} ` +
+        `[OutboxRed] ${cmd.accion} INDETERMINADO → servicio=${cmd.servicio_id}: ${res.motivo} ` +
         `— pudo haberse aplicado en el hardware; verificar estado real`,
       );
       void this.eventos?.registrar({
         nivel:    'error',
         origen:   'mikrotik',
         codigo:   'OUTBOX_RED_INDETERMINADO',
-        mensaje:  `Comando ${cmd.accion} con resultado indeterminado (contrato ${cmd.contrato_id}, router ${cmd.router_id}): ${res.motivo}. La operación PUDO aplicarse — verificar el estado real en el router antes de asumir que no pasó nada.`,
-        contexto: { contratoId: cmd.contrato_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
+        mensaje:  `Comando ${cmd.accion} con resultado indeterminado (servicio ${cmd.servicio_id}, router ${cmd.router_id}): ${res.motivo}. La operación PUDO aplicarse — verificar el estado real en el router antes de asumir que no pasó nada.`,
+        contexto: { servicioId: cmd.servicio_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
       });
       return;
     }
@@ -776,15 +779,15 @@ export class OutboxRedService {
     if (nuevosIntentos === cmd.max_intentos) {
       this.logger.error(
         `[OutboxRed] ⚠️ ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos → ` +
-        `contrato=${cmd.contrato_id} router=${cmd.router_id} (sigue reintentando) | ${res.motivo}`,
+        `servicio=${cmd.servicio_id} router=${cmd.router_id} (sigue reintentando) | ${res.motivo}`,
       );
       const [row] = await this.ds.query<any[]>(
         `SELECT empresa_id FROM servicios WHERE id = $1 LIMIT 1`,
-        [cmd.contrato_id],
+        [cmd.servicio_id],
       ).catch(() => [null]);
 
       this.events.emit(NOTIFICATION_EVENTS.OUTBOX_RED_AGOTADO, {
-        contratoId:  cmd.contrato_id,
+        servicioId:  cmd.servicio_id,
         routerId:    cmd.router_id,
         accion:      cmd.accion,
         ultimoError: res.motivo.slice(0, 200),
@@ -794,12 +797,12 @@ export class OutboxRedService {
       void this.eventos?.registrar({
         origen:   'mikrotik',
         codigo:   'OUTBOX_RED_AGOTADO',
-        mensaje:  `Comando ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (contrato ${cmd.contrato_id}, router ${cmd.router_id}): ${res.motivo}`,
-        contexto: { contratoId: cmd.contrato_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
+        mensaje:  `Comando ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (servicio ${cmd.servicio_id}, router ${cmd.router_id}): ${res.motivo}`,
+        contexto: { servicioId: cmd.servicio_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
       });
     } else {
       this.logger.warn(
-        `[OutboxRed] Reintento ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${res.motivo}`,
+        `[OutboxRed] Reintento ${nuevosIntentos} → servicio=${cmd.servicio_id}: ${res.motivo}`,
       );
     }
   }
@@ -817,25 +820,29 @@ export class OutboxRedService {
     // de lock leído como veredicto → trabajo descartado).
     let res: ResultadoOperacion;
     try {
+      // El parámetro de estos métodos de ProvisionFtthService sigue llamándose
+      // `contratoId` en su propia firma — resuelve contra `ftth_onu_registro`, tabla SIN
+      // FK real (censo E-0.2 §3.2), fuera del alcance de este lote. Aquí solo cambia de
+      // dónde sale el valor: la columna ya renombrada de este outbox.
       if (cmd.accion === 'SUSPENDER_ONU') {
-        res = await this.ftthSvc.suspenderPorContrato(cmd.contrato_id, empresaId);
+        res = await this.ftthSvc.suspenderPorContrato(cmd.servicio_id, empresaId);
       } else if (cmd.accion === 'REACTIVAR_ONU') {
-        res = await this.ftthSvc.rehabilitarPorContrato(cmd.contrato_id, empresaId);
+        res = await this.ftthSvc.rehabilitarPorContrato(cmd.servicio_id, empresaId);
       } else if (cmd.accion === 'ACTUALIZAR_WAN_ONU') {
         // Ola 1 (2026-08-16): actualizarWan ya habla ResultadoOperacion — la traducción
         // ad-hoc que vivía aquí (r.skipped/r.actualizado/r.error) se retiró. Dos
         // clasificaciones cambiaron al mudarse al dominio: ver el comentario de
         // ProvisionFtthService.actualizarWan().
-        res = await this.ftthSvc.actualizarWan(cmd.contrato_id, empresaId);
+        res = await this.ftthSvc.actualizarWan(cmd.servicio_id, empresaId);
       } else if (cmd.accion === 'ACTIVAR_CARRIL_TR069') {
-        res = await this.ftthSvc.activarCarrilPorContrato(cmd.contrato_id, empresaId);
+        res = await this.ftthSvc.activarCarrilPorContrato(cmd.servicio_id, empresaId);
       } else if (cmd.accion === 'REAPROVISIONAR_ONU') {
         // Ola 1 (2026-08-16): reaplicar ya habla ResultadoOperacion — la traducción
         // `r.estado === 'activo' ? aplicado : reintentable` se retiró. Ver el comentario
         // de ProvisionFtthService.reaplicar() para la precisión de TIMEOUT_ONLINE.
-        res = await this.ftthSvc.reaplicar(cmd.contrato_id, empresaId);
+        res = await this.ftthSvc.reaplicar(cmd.servicio_id, empresaId);
       } else {
-        res = await this.ftthSvc.desaprovisionarPorContrato(cmd.contrato_id, empresaId);
+        res = await this.ftthSvc.desaprovisionarPorContrato(cmd.servicio_id, empresaId);
       }
     } catch (err) {
       // Red de seguridad: cualquier método que todavía lance en vez de devolver.
@@ -851,7 +858,7 @@ export class OutboxRedService {
         [cmd.id],
       );
       const detalle = res.clase === 'aplicado' ? '' : ` (${res.clase})`;
-      this.logger.log(`[OutboxRed] ✅ ${cmd.accion} → contrato=${cmd.contrato_id}${detalle}`);
+      this.logger.log(`[OutboxRed] ✅ ${cmd.accion} → servicio=${cmd.servicio_id}${detalle}`);
       return;
     }
 
@@ -864,14 +871,14 @@ export class OutboxRedService {
         [cmd.id, nuevosIntentos, res.motivo.slice(0, 500)],
       );
       this.logger.error(
-        `[OutboxRed] ${cmd.accion} rechazado de forma permanente → contrato=${cmd.contrato_id}: ${res.motivo}`,
+        `[OutboxRed] ${cmd.accion} rechazado de forma permanente → servicio=${cmd.servicio_id}: ${res.motivo}`,
       );
       void this.eventos?.registrar({
         nivel:    'error',
         origen:   'olt',
         codigo:   'OUTBOX_ONU_RECHAZO_PERMANENTE',
-        mensaje:  `Comando ONU ${cmd.accion} rechazado de forma permanente (contrato ${cmd.contrato_id}): ${res.motivo}`,
-        contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
+        mensaje:  `Comando ONU ${cmd.accion} rechazado de forma permanente (servicio ${cmd.servicio_id}): ${res.motivo}`,
+        contexto: { servicioId: cmd.servicio_id, accion: cmd.accion, intentos: nuevosIntentos },
       });
       return;
     }
@@ -890,15 +897,15 @@ export class OutboxRedService {
         [cmd.id, nuevosIntentos, `INDETERMINADO: ${res.motivo}`.slice(0, 500)],
       );
       this.logger.error(
-        `[OutboxRed] ${cmd.accion} INDETERMINADO → contrato=${cmd.contrato_id}: ${res.motivo} ` +
+        `[OutboxRed] ${cmd.accion} INDETERMINADO → servicio=${cmd.servicio_id}: ${res.motivo} ` +
         `— pudo haberse aplicado en el hardware; verificar estado real`,
       );
       void this.eventos?.registrar({
         nivel:    'error',
         origen:   'olt',
         codigo:   'OUTBOX_ONU_INDETERMINADO',
-        mensaje:  `Comando ONU ${cmd.accion} con resultado indeterminado (contrato ${cmd.contrato_id}): ${res.motivo}. La operación PUDO aplicarse — verificar el estado real en la OLT antes de asumir que no pasó nada.`,
-        contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
+        mensaje:  `Comando ONU ${cmd.accion} con resultado indeterminado (servicio ${cmd.servicio_id}): ${res.motivo}. La operación PUDO aplicarse — verificar el estado real en la OLT antes de asumir que no pasó nada.`,
+        contexto: { servicioId: cmd.servicio_id, accion: cmd.accion, intentos: nuevosIntentos },
       });
       return;
     }
@@ -913,14 +920,14 @@ export class OutboxRedService {
       [cmd.id, nuevosIntentos, res.motivo.slice(0, 500)],
     );
     this.logger.warn(
-      `[OutboxRed] Reintento ONU ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${res.motivo}`,
+      `[OutboxRed] Reintento ONU ${nuevosIntentos} → servicio=${cmd.servicio_id}: ${res.motivo}`,
     );
     if (nuevosIntentos === cmd.max_intentos) {
       void this.eventos?.registrar({
         origen:   'olt',
         codigo:   'OUTBOX_ONU_AGOTADO',
-        mensaje:  `Comando ONU ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (contrato ${cmd.contrato_id}): ${res.motivo}`,
-        contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
+        mensaje:  `Comando ONU ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (servicio ${cmd.servicio_id}): ${res.motivo}`,
+        contexto: { servicioId: cmd.servicio_id, accion: cmd.accion, intentos: nuevosIntentos },
       });
     }
   }

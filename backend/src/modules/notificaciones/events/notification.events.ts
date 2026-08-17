@@ -176,7 +176,8 @@ export interface EventNotificacionIptvLineCreada {
 }
 
 export interface EventOutboxRedAgotado {
-  contratoId:  string;
+  /** El Servicio Contratado (tabla `servicios`), nunca el acuerdo — Ola 2, entregable 3. */
+  servicioId:  string;
   routerId:    string;
   accion:      string;
   ultimoError: string;

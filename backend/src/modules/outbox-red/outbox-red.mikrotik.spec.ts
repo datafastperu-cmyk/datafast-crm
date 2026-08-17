@@ -57,7 +57,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
     const dsMock = {
       query: jest.fn(async (sql: string, params?: any[]) => {
         queries.push({ sql, params });
-        if (/RETURNING id, contrato_id, router_id, accion, payload, intentos, max_intentos/.test(sql)) {
+        if (/RETURNING id, servicio_id, router_id, accion, payload, intentos, max_intentos/.test(sql)) {
           return [filasReclamo, filasReclamo.length];
         }
         if (/FROM\s+routers\s+WHERE\s+id/i.test(sql)) {
@@ -100,7 +100,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
 
   it('SUSPENDER: éxito → EJECUTADO', async () => {
     const svc = await crearServicio();
-    filasReclamo = [{ id: 1, contrato_id: 'c-1', router_id: 'r-1', accion: 'SUSPENDER',
+    filasReclamo = [{ id: 1, servicio_id: 'c-1', router_id: 'r-1', accion: 'SUSPENDER',
       payload: { ipAsignada: '10.0.0.5', clienteId: 'c-1' }, intentos: 0, max_intentos: 12 }];
 
     await svc.procesarPendientes();
@@ -111,7 +111,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
 
   it('REACTIVAR: éxito → EJECUTADO', async () => {
     const svc = await crearServicio();
-    filasReclamo = [{ id: 2, contrato_id: 'c-1', router_id: 'r-1', accion: 'REACTIVAR',
+    filasReclamo = [{ id: 2, servicio_id: 'c-1', router_id: 'r-1', accion: 'REACTIVAR',
       payload: { ipAsignada: '10.0.0.5', usuarioPppoe: 'u1' }, intentos: 0, max_intentos: 12 }];
 
     await svc.procesarPendientes();
@@ -123,7 +123,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
 
   it('PROVISIONAR: PPPoE + Simple Queue → EJECUTADO', async () => {
     const svc = await crearServicio();
-    filasReclamo = [{ id: 3, contrato_id: 'c-1', router_id: 'r-1', accion: 'PROVISIONAR',
+    filasReclamo = [{ id: 3, servicio_id: 'c-1', router_id: 'r-1', accion: 'PROVISIONAR',
       payload: { usuarioPppoe: 'u1', passwordPppoe: 'p', ipAsignada: '10.0.0.5',
         clienteId: 'c-1', downloadMbps: 10, uploadMbps: 5 },
       intentos: 0, max_intentos: 12 }];
@@ -141,7 +141,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
     const svc = await crearServicio();
     contratoRow = { usuarioPppoe: 'u1', ipAsignada: '10.0.0.5', macAddress: null, tipoAuth: 'pppoe', tipoControl: null };
     firewallSvc.reactivarCliente.mockResolvedValue({ clase: 'indeterminado', motivo: 'Timeout de comando en 10.0.0.1 (20s)' });
-    filasReclamo = [{ id: 4, contrato_id: 'c-1', router_id: 'r-1', accion: 'DESPROVISIONAR',
+    filasReclamo = [{ id: 4, servicio_id: 'c-1', router_id: 'r-1', accion: 'DESPROVISIONAR',
       payload: {}, intentos: 0, max_intentos: 12 }];
 
     await svc.procesarPendientes();
@@ -156,7 +156,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
   it('rechazado_definitivo (fabricado): AGOTADO + evento OUTBOX_RED_RECHAZO_PERMANENTE', async () => {
     const svc = await crearServicio();
     firewallSvc.suspenderCliente.mockResolvedValue({ clase: 'rechazado_definitivo', motivo: 'motivo-fabricado' });
-    filasReclamo = [{ id: 5, contrato_id: 'c-1', router_id: 'r-1', accion: 'SUSPENDER',
+    filasReclamo = [{ id: 5, servicio_id: 'c-1', router_id: 'r-1', accion: 'SUSPENDER',
       payload: { ipAsignada: '10.0.0.5', clienteId: 'c-1' }, intentos: 0, max_intentos: 12 }];
 
     await svc.procesarPendientes();
@@ -173,7 +173,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
   it('indeterminado: PENDIENTE con prefijo INDETERMINADO + evento OUTBOX_RED_INDETERMINADO', async () => {
     const svc = await crearServicio();
     firewallSvc.reactivarCliente.mockResolvedValue({ clase: 'indeterminado', motivo: 'Timeout de comando en 10.0.0.1 (20s)' });
-    filasReclamo = [{ id: 6, contrato_id: 'c-1', router_id: 'r-1', accion: 'REACTIVAR',
+    filasReclamo = [{ id: 6, servicio_id: 'c-1', router_id: 'r-1', accion: 'REACTIVAR',
       payload: { ipAsignada: '10.0.0.5' }, intentos: 0, max_intentos: 12 }];
 
     await svc.procesarPendientes();
@@ -191,7 +191,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
   it('reintentable por debajo de max_intentos: PENDIENTE, sin notificación de visibilidad', async () => {
     const svc = await crearServicio();
     firewallSvc.suspenderCliente.mockResolvedValue({ clase: 'reintentable', motivo: 'Timeout conectando a 10.0.0.1:8728' });
-    filasReclamo = [{ id: 7, contrato_id: 'c-1', router_id: 'r-1', accion: 'SUSPENDER',
+    filasReclamo = [{ id: 7, servicio_id: 'c-1', router_id: 'r-1', accion: 'SUSPENDER',
       payload: { ipAsignada: '10.0.0.5', clienteId: 'c-1' }, intentos: 0, max_intentos: 12 }];
 
     await svc.procesarPendientes();
@@ -206,7 +206,7 @@ describe('OutboxRedService — dispatcher mikrotik (ejecutarComando)', () => {
   it('reintentable al llegar a max_intentos: dispara el evento OUTBOX_RED_AGOTADO existente sin tocarlo', async () => {
     const svc = await crearServicio();
     firewallSvc.suspenderCliente.mockResolvedValue({ clase: 'reintentable', motivo: 'Timeout conectando a 10.0.0.1:8728' });
-    filasReclamo = [{ id: 8, contrato_id: 'c-1', router_id: 'r-1', accion: 'SUSPENDER',
+    filasReclamo = [{ id: 8, servicio_id: 'c-1', router_id: 'r-1', accion: 'SUSPENDER',
       payload: { ipAsignada: '10.0.0.5', clienteId: 'c-1' }, intentos: 2, max_intentos: 3 }];
 
     await svc.procesarPendientes();

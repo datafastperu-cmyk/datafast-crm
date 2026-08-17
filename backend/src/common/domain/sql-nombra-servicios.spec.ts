@@ -80,3 +80,59 @@ describe('Fase 3a · El SQL nombra la tabla por lo que guarda', () => {
     expect(manifiesto).toMatch(/^\s*servicios_historial:/m);
   });
 });
+
+/**
+ * Ola 2 (2026-08-17) — el SEGUNDO modo de fallo, distinto del que vigila la fase 3a de
+ * arriba. Aquella barrera vigila una tabla que ya no existe (`relation contratos does
+ * not exist` — ruidoso). Esta vigila una COLUMNA que ya no existe en una tabla que
+ * SIGUE existiendo: desde que la clasificación aprobada (`E-0.2-clasificacion-contrato-
+ * id.md`) empieza a renombrar `contrato_id` → `servicio_id` en las tablas TÉCNICAS, un
+ * `contrato_id` olvidado en una consulta contra esa misma tabla falla con "column does
+ * not exist" — ruidoso también, pero solo si esa rama del código llega a ejecutarse. El
+ * primer renombrado real (`comandos_red_pendientes`) va en el mismo lote que esta
+ * ampliación, no después — instrucción explícita del propietario.
+ *
+ * NO se confunde con `servicios.contrato_id`: esa columna es real y permanente desde la
+ * fase 3b (el FK genuino al acuerdo) — `FacturaRepository.contratoDe()` la lee a
+ * propósito. Por eso esta barrera no busca "`contrato_id` cerca de `servicios`" (eso
+ * marcaría ese caso legítimo como infractor): busca `contrato_id` dentro del MISMO
+ * literal SQL que referencia una tabla que este registro declara ya renombrada.
+ */
+describe('Ola 2 · Ninguna consulta usa contrato_id contra una tabla ya renombrada a servicio_id', () => {
+  // Registro DECLARADO — crece con cada tabla técnica que la clasificación aprobada
+  // (E-0.2-clasificacion-contrato-id.md) va renombrando. Nunca se adivina por regex.
+  const TABLAS_RENOMBRADAS_A_SERVICIO_ID = ['comandos_red_pendientes'];
+
+  const ES_LA_PROPIA_BARRERA = (f: string) => f.endsWith(path.basename(__filename).replace(/.js$/, '.ts'));
+
+  // Un literal SQL en este código siempre vive entre backticks — se escanea cada bloque
+  // por separado (no el fichero entero) para no confundir una tabla renombrada en una
+  // consulta con un `contrato_id` legítimo de OTRA consulta en el mismo fichero (caso
+  // real: outbox-red.service.ts tiene comandos_red_pendientes en casi todo el archivo Y
+  // un `ftth_onu_registro.contrato_id` legítimo, sin FK, fuera de este lote).
+  const bloquesSql = (contenido: string): string[] => contenido.match(/`[^`]*`/gs) ?? [];
+
+  it('ningún literal SQL mezcla una tabla ya renombrada con la columna vieja `contrato_id`', () => {
+    const infractores: string[] = [];
+    for (const f of ficheros) {
+      if (ES_LA_PROPIA_BARRERA(f)) continue;
+      const contenido = fs.readFileSync(f, 'utf8');
+      for (const bloque of bloquesSql(contenido)) {
+        for (const tabla of TABLAS_RENOMBRADAS_A_SERVICIO_ID) {
+          const tieneLaTabla = new RegExp(`\\b(?:FROM|JOIN|UPDATE|INTO)\\s+${tabla}\\b`, 'i').test(bloque);
+          const tieneColumnaVieja = /\bcontrato_id\b/.test(bloque);
+          if (tieneLaTabla && tieneColumnaVieja) {
+            infractores.push(`${path.relative(SRC, f)} (${tabla})`);
+          }
+        }
+      }
+    }
+    expect(infractores).toEqual([]);
+  });
+
+  it('el registro de tablas renombradas no está vacío una vez que Ola 2 empieza a tocar código', () => {
+    // Si esto llega a 0 con la Ola 2 ya en marcha, es que se renombró una tabla sin
+    // declararla aquí — la barrera dejaría de vigilar la que más importa comprobar.
+    expect(TABLAS_RENOMBRADAS_A_SERVICIO_ID.length).toBeGreaterThan(0);
+  });
+});

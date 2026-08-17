@@ -539,7 +539,7 @@ export class NotificationEventListener implements OnModuleInit {
   @OnEvent(NOTIFICATION_EVENTS.OUTBOX_RED_AGOTADO, { async: true })
   async onOutboxRedAgotado(event: EventOutboxRedAgotado): Promise<void> {
     this.logger.warn(
-      `[EVENT] 🚨 Recibido OUTBOX_RED_AGOTADO → contrato=${event.contratoId} ` +
+      `[EVENT] 🚨 Recibido OUTBOX_RED_AGOTADO → servicio=${event.servicioId} ` +
       `| accion=${event.accion} | empresa=${event.empresaId ?? '?'}`,
     );
     await this.encolar('outbox_red_agotado', {

@@ -109,7 +109,7 @@ describe('OutboxRedService — reclamo atómico', () => {
     // del UPDATE como un array de filas, iterará sobre [array, número] y ejecutará
     // basura: aquí eso se manifiesta como que NO se consulta el router del comando.
     filasReclamo = [{
-      id: 29, contrato_id: 'c-1', router_id: 'r-1',
+      id: 29, servicio_id: 'c-1', router_id: 'r-1',
       accion: 'PROVISIONAR', payload: {}, intentos: 0, max_intentos: 12,
     }];
 

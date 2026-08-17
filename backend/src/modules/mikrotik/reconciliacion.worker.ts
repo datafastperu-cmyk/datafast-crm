@@ -164,10 +164,10 @@ export class ReconciliacionWorker implements OnModuleInit {
         VALUES ($1, $2, 'PPPOE_AUSENTE', $3, $4, 'DETECTADO')
       `, [co.id, router.id, co.usuarioPppoe, co.ipAsignada ?? null]);
 
-      // No encolar si ya existe un PROVISIONAR PENDIENTE para este contrato
+      // No encolar si ya existe un PROVISIONAR PENDIENTE para este servicio
       const [yaEncolado] = await this.ds.query<any[]>(`
         SELECT id FROM comandos_red_pendientes
-        WHERE  contrato_id = $1
+        WHERE  servicio_id = $1
           AND  accion      = 'PROVISIONAR'
           AND  estado      = 'PENDIENTE'
         LIMIT 1
@@ -202,9 +202,9 @@ export class ReconciliacionWorker implements OnModuleInit {
       });
 
       await this.ds.query(`
-        INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
+        INSERT INTO comandos_red_pendientes (servicio_id, router_id, accion, payload)
         VALUES ($1, $2, 'PROVISIONAR', $3)
-        ON CONFLICT (contrato_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
+        ON CONFLICT (servicio_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
       `, [co.id, router.id, payload]);
 
       await this.ds.query(
@@ -262,7 +262,7 @@ export class ReconciliacionWorker implements OnModuleInit {
     for (const co of faltantesFirewall) {
       const [yaEncolado] = await this.ds.query<any[]>(`
         SELECT id FROM comandos_red_pendientes
-        WHERE  contrato_id = $1
+        WHERE  servicio_id = $1
           AND  accion      = 'SUSPENDER'
           AND  estado      = 'PENDIENTE'
         LIMIT 1
@@ -285,9 +285,9 @@ export class ReconciliacionWorker implements OnModuleInit {
       `, [co.id, router.id, co.usuarioPppoe ?? null, co.ipAsignada]);
 
       await this.ds.query(`
-        INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
+        INSERT INTO comandos_red_pendientes (servicio_id, router_id, accion, payload)
         VALUES ($1, $2, 'SUSPENDER', $3)
-        ON CONFLICT (contrato_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
+        ON CONFLICT (servicio_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
       `, [co.id, router.id, payload]);
 
       await this.ds.query(

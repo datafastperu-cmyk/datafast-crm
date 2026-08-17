@@ -347,23 +347,55 @@ sistema"* — hoy no lo tiene, con conteo verificado, no supuesto.
 `promesas_pago`— sigue aplazado: son 374 sitios y nadie los pide todavía"* — subconjunto de lo
 que el censo cuantifica completo.
 
-**Entregable 2 (clasificación), 2026-08-17, aprobado el censo — sin migración, sin código** —
-`docs/gobierno/inventario/E-0.2-clasificacion-contrato-id.md`. Aplica el criterio de
-arquitectura del propietario a las **12 columnas con FK real** (censo §3.1): **DINERO**
-(`promesas_pago`, `pagos`, `cargos_pendientes` — mantienen `contrato_id`, apuntan al acuerdo
-real) vs. **TÉCNICA** (`comandos_red_pendientes`, `tickets`, `ordenes_trabajo`,
-`consumo_datos`, `consumo_snapshot`, `ips_asignadas`, `pe_acometida` — pasan a `servicio_id`).
-**2 quedan sin clasificar, con motivo, para decisión del propietario**: `notificaciones_logs`
-(mezcla notificaciones de dinero y técnicas sin columna que las distinga) y
-`portal_solicitud_plan` (su propia migración documenta que toca precio/prorrateo Y cola de
-MikroTik a la vez). **Las 10 columnas sin FK (censo §3.2) quedan fuera de este lote a
-propósito** — es un problema de integridad, no de nombre, con su propia decisión pendiente.
+**Entregable 2 (clasificación), 2026-08-17, aprobado el censo — sin migración, sin código en su
+momento** — `docs/gobierno/inventario/E-0.2-clasificacion-contrato-id.md`, **con tres
+correcciones del propietario sobre la primera versión**:
+1. `cargos_pendientes` necesita **LAS DOS** columnas (`tipo` es mora | reconexión — la mora es
+   del acuerdo, la reconexión es de UN servicio; con solo `contrato_id` se pierde qué conexión
+   la generó), no solo `contrato_id` como se propuso al inicio. `pagos`/`promesas_pago` sí van
+   solo con `contrato_id` — un pago o una promesa es contra la deuda, sin dimensión de servicio.
+2. Las 3 de DINERO (`pagos`, `promesas_pago`, `cargos_pendientes`) **no son un renombrado**:
+   hoy guardan `servicios.id`, tienen que pasar a guardar `contratos.id` — es TRADUCCIÓN DE
+   VALORES (el mapa existe: `servicios.contrato_id`), con dos obligaciones: recuento de deuda
+   antes/después por contrato (si cambia un céntimo, se revierte — VIO aplicado a una
+   migración) y **nunca en el mismo commit que un lote técnico**. Van last, en su propio lote.
+3. `portal_solicitud_plan` → **TÉCNICA** (el plan y sus condiciones viven en el Servicio
+   Contratado, E02-11/D-3; que toque la cola de MikroTik lo confirma). `notificaciones_logs`
+   → **NO SE TOCA en esta ola** (es un log, su `contrato_id` no sostiene ningún invariante de
+   negocio).
 
-**Ninguna migración escrita todavía.** Antes de la primera: cada tabla se renombra ENTERA en un
-solo commit (columna + entidad + consultas + DTOs + eventos) y `sql-nombra-servicios.spec.ts`
-se amplía en el MISMO commit del primer renombrado — tiene que vigilar el nuevo modo de fallo
-(una consulta con `contrato_id` en el nombre pero `JOIN`/`FROM servicios` real), no solo la
-tabla vieja.
+Clasificación final — **DINERO** (propio lote, al final): `pagos`, `promesas_pago` (solo
+`contrato_id`, traducido), `cargos_pendientes` (`servicio_id` + `contrato_id`, las dos). —
+**TÉCNICA** (primero, renombrado puro): `comandos_red_pendientes`, `tickets`,
+`ordenes_trabajo`, `consumo_datos`, `consumo_snapshot`, `ips_asignadas`, `pe_acometida`,
+`portal_solicitud_plan` — 8 tablas, pasan a `servicio_id`. — **Sin tocar**:
+`notificaciones_logs`. Las 10 columnas sin FK (censo §3.2) siguen fuera de este lote.
+
+**Entregable 3 (primer renombrado real), 2026-08-17** — `comandos_red_pendientes.contrato_id`
+→ `servicio_id`, migración `1791800000058-OutboxRedApuntaAlServicio.ts`. Elegida primero por
+instrucción explícita: es el caso ancla del censo y la que más consumidores tiene — si el
+criterio falla en algún sitio, falla ahí. Tocado en el MISMO commit: entidad
+(`ComandoRedPendiente.servicioId`), todas las consultas de `outbox-red.service.ts`
+(`encolar()`, `encolarDesprovisionar/Provisionar/AplicarProrroga/RevocarProrroga`, el RETURNING
+del reclamo atómico, `_barrerClaims()`, `ejecutarComando()`/`ejecutarComandoOnu()` completos),
+el segundo escritor directo (`mikrotik/reconciliacion.worker.ts`, insertaba con SQL crudo
+saltándose `encolar()` — se habría quedado con la columna vieja si no se buscaba explícitamente
+fuera de `outbox-red`), y el evento `EventOutboxRedAgotado.contratoId` → `servicioId` con su
+único consumidor (`notification-event.listener.ts`). `sql-nombra-servicios.spec.ts` ampliado en
+el MISMO commit con un registro declarado de tablas renombradas (hoy: 1) y una barrera que
+detecta `contrato_id` dentro del mismo literal SQL que una tabla ya renombrada — sin confundir
+el `servicios.contrato_id` legítimo (FK real al acuerdo, fase 3b) con el defecto que vigila.
+
+**Fuera de alcance a propósito, documentado en el propio código**: el campo `contratoId` DENTRO
+del JSONB `payload` de cada comando (`PayloadDesprovisionarRed`/`PayloadProvisionarRed`) no se
+tocó — no es la columna con FK que cubre la clasificación, y tocarlo habría ensanchado el lote a
+`ContratosService` y otros llamadores sin necesidad. El parámetro de
+`ProvisionFtthService.suspenderPorContrato()`/etc. (consumidos por `ejecutarComandoOnu()`)
+también sigue llamándose `contratoId` en su propia firma — resuelve contra `ftth_onu_registro`,
+tabla SIN FK (censo §3.2), de otro lote.
+
+**Quedan 7 tablas técnicas más** antes del lote de dinero: `tickets`, `ordenes_trabajo`,
+`consumo_datos`, `consumo_snapshot`, `ips_asignadas`, `pe_acometida`, `portal_solicitud_plan`.
 
 ---
 

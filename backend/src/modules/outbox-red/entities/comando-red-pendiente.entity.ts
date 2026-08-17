@@ -30,8 +30,9 @@ export class ComandoRedPendiente {
   @PrimaryGeneratedColumn({ type: 'int' })
   id: number;
 
-  @Column({ name: 'contrato_id', type: 'uuid' })
-  contratoId: string;
+  /** El Servicio Contratado (tabla `servicios`), nunca el acuerdo — Ola 2, entregable 3. */
+  @Column({ name: 'servicio_id', type: 'uuid' })
+  servicioId: string;
 
   /**
    * Nulable desde `1791400000000`: hay comandos que no van contra un router concreto
