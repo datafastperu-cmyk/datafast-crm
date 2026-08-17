@@ -253,9 +253,21 @@ silencio es intencional. `marcarUsoTr069()`, `limpiarWizardsAbandonados()` y
 `revocarPorToken()` entran en este barrido — ninguno queda fuera de alcance. Más el test de
 regresión sobre `schema-guard.module.ts` que ya estaba previsto.
 
-**No se ejecuta el barrido en esta entrada** — queda registrado con el alcance ampliado, como
-tarea propia. No se despliega suelto: nivel B no activa la excepción de R-1 (F-0.1 §8.1) —eso
-es solo para Nivel A—, viaja con la reconstrucción del Core.
+**Inventario ejecutado 2026-08-17** (Ola 1 cerrada, sin tocar esquema aún):
+`docs/gobierno/inventario/POL-001-B16-barrido-catch-mudo.md`. **106 sitios** en
+`backend/src/` (23 `catch {}` vacíos + 83 `.catch(() => {})`), clasificados por módulo — **solo
+inventario, cero correcciones aplicadas**, exactamente como quedó decidido arriba (no se
+despliega suelto). Confirma que `limpiarWizardsAbandonados()` (§ variante del grupo 3a, arriba)
+es real y sigue viva. **5 sitios adicionales marcados de revisión prioritaria** fuera de los ya
+conocidos: 3 en `notificaciones/services/gateway-mensajeria.service.ts` (`decrypt()` de
+apiKey/apiSecret/smtpClave — si el descifrado falla, la credencial queda `''` y se ve igual que
+"sin configurar", no como "config corrupta"), 1 en `licencia/licencia.service.ts:319` (lectura
+de JWT con fallback a `return ''` — un fallo de BD se ve igual que "sin licencia"), y 2 en
+`openvpn/services/vpn-cliente.service.ts:891/893` (parseo de CCD para calcular IPs VPN en uso —
+CLAUDE.md declara ese ciclo de vida crítico; un parseo fallido puede leer una IP asignada como
+libre). **La mitad del alcance —`ResultadoOperacion` descartado sin comprobar clase— sigue sin
+ejecutarse**: es un barrido semántico distinto, de tamaño comparable, no un grep de texto.
+Clasificar cuáles de los 106 se corrigen y en qué ola es una decisión aparte, todavía sin tomar.
 
 ---
 
@@ -286,6 +298,60 @@ aparte, no una corrección de una línea.
 `success:false` nunca sale con HTTP 2xx, o bien todo consumidor frontend de `ProvisionResult`
 lee `.success` antes de celebrar) y verificarla con un test que ejercite el caso `exitoso:false`
 del router multi-proveedor.
+
+---
+
+### 36. R-6 activado — 4 casos que `ResultadoOperacion` no cubre por diseño, bloqueantes de la Ola 3
+**Registrado 2026-08-17, corrección de cierre de la Ola 1 (F-0.1 v3.15).** Al cerrar el grupo 4
+(los últimos 4 de las 26 capacidades), el registro de extensiones transitorias llegó a 5
+entradas, 4 con `retiro: 'Sin fecha'` — una condición de cierre vacía no es una condición, es
+deuda permanente con otro nombre. Corregido: separadas en dos registros
+(`backend/src/common/analisis/metodos-frontera.ts`) — `EXTENSIONES_TRANSITORIAS_RESULTADO_
+OPERACION` (1 entrada real, retiro: Ola 3) y `CASOS_FUERA_DE_D14_RESULTADO_OPERACION` (4
+entradas, sin campo `retiro`).
+
+**Por qué importa:** las 4 no son identificadores de proveedor en tránsito — son evidencia de
+que D-14 (E-0.3 §10) no define el resultado de una **consulta** (`refrescarWifi()`), de un
+**éxito parcial** (`setWifi()`/`setWifiAmbasBandas()`: `ok/applied/total/fallidas`, ninguna de
+las seis clases dice "3 de 5"), ni de un **payload compartido entre dos bordes** distintos
+(`activarCarril()`: panel operador + portal del abonado). F-0.1 §9.1 ya había anticipado el
+hueco sin caso concreto ("33 consultas... queda como hueco de diseño R-6"); el grupo 4 lo
+materializó con nombre y archivo.
+
+**R-6 (F-0.1 §8): "si aparece un caso que el diseño no cubre, se detiene y se abre revisión".**
+No lo resuelve el arquitecto ni la Ola 2 — es una decisión de arquitectura del propietario.
+Registrado en la tabla de olas de F-0.1 §9 como precondición de la **Ola 3**, junto a D-41.
+
+**Cómo se comprueba:** `extensiones-transitorias.spec.ts` — dos techos separados (1 y 4), y una
+prueba explícita de que `EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION` nunca vuelve a aceptar
+un `retiro: 'Sin fecha'`.
+
+---
+
+### 37. Censo de `contrato_id` — Ola 2, entregable 1 (E02-09 no se cumple hoy)
+**Entregado 2026-08-17, sin tocar código ni esquema** —
+`docs/gobierno/inventario/E-0.2-censo-contrato-id.md`. Confirma con evidencia de migraciones y
+código que `contrato_id` tiene **dos significados reales** hoy: `servicios.id` (22 columnas de
+BD + 28+ ficheros TypeScript — el dominante, incluido el outbox: `comandos_red_pendientes.
+contrato_id` apunta físicamente a `servicios` desde la fase 3a) y `contratos.id`, el acuerdo
+real creado en la fase 3b (2 columnas, 1 solo resolutor legítimo:
+`FacturaRepository.contratoDe()`).
+
+**Por qué importa:** es la precondición explícita de la Ola 2 (F-0.1 §9: "ninguna operación
+técnica se dirige a un `contrato_id`" ambiguo) y mide directamente **E02-09**
+(`E-0.2-modelo-informacion-core.md`): *"`contrato_id` tiene un único significado en todo el
+sistema"* — hoy no lo tiene, con conteo verificado, no supuesto.
+
+**Deuda ya reconocida por el propio repo, citada en el censo, no inventada aquí:** la migración
+`1791800000055-FacturaApuntaAlServicio.ts` ya decía *"El resto —`pagos`, `cargos_pendientes`,
+`promesas_pago`— sigue aplazado: son 374 sitios y nadie los pide todavía"* — subconjunto de lo
+que el censo cuantifica completo.
+
+**El censo NO propone modelo destino** (instrucción explícita) — no dice si las 22 tablas deben
+migrar su FK al `contratos` real, quedarse en `servicios`, o replicar el patrón de `facturas`
+(la única tabla ya correctamente separada: `servicio_id` + `contrato_id`, dos columnas, dos
+significados). Esa decisión es la que sigue a este entregable, **antes de que la Ola 2 avance a
+cualquier migración**.
 
 ---
 
