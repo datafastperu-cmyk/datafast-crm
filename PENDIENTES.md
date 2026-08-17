@@ -328,8 +328,8 @@ un `retiro: 'Sin fecha'`.
 
 ---
 
-### 37. Censo de `contrato_id` — Ola 2, entregable 1 (E02-09 no se cumple hoy)
-**Entregado 2026-08-17, sin tocar código ni esquema** —
+### 37. Censo y clasificación de `contrato_id` — Ola 2, entregables 1 y 2 (E02-09 no se cumple hoy)
+**Entregable 1 (censo), 2026-08-17, sin tocar código ni esquema** —
 `docs/gobierno/inventario/E-0.2-censo-contrato-id.md`. Confirma con evidencia de migraciones y
 código que `contrato_id` tiene **dos significados reales** hoy: `servicios.id` (22 columnas de
 BD + 28+ ficheros TypeScript — el dominante, incluido el outbox: `comandos_red_pendientes.
@@ -347,11 +347,23 @@ sistema"* — hoy no lo tiene, con conteo verificado, no supuesto.
 `promesas_pago`— sigue aplazado: son 374 sitios y nadie los pide todavía"* — subconjunto de lo
 que el censo cuantifica completo.
 
-**El censo NO propone modelo destino** (instrucción explícita) — no dice si las 22 tablas deben
-migrar su FK al `contratos` real, quedarse en `servicios`, o replicar el patrón de `facturas`
-(la única tabla ya correctamente separada: `servicio_id` + `contrato_id`, dos columnas, dos
-significados). Esa decisión es la que sigue a este entregable, **antes de que la Ola 2 avance a
-cualquier migración**.
+**Entregable 2 (clasificación), 2026-08-17, aprobado el censo — sin migración, sin código** —
+`docs/gobierno/inventario/E-0.2-clasificacion-contrato-id.md`. Aplica el criterio de
+arquitectura del propietario a las **12 columnas con FK real** (censo §3.1): **DINERO**
+(`promesas_pago`, `pagos`, `cargos_pendientes` — mantienen `contrato_id`, apuntan al acuerdo
+real) vs. **TÉCNICA** (`comandos_red_pendientes`, `tickets`, `ordenes_trabajo`,
+`consumo_datos`, `consumo_snapshot`, `ips_asignadas`, `pe_acometida` — pasan a `servicio_id`).
+**2 quedan sin clasificar, con motivo, para decisión del propietario**: `notificaciones_logs`
+(mezcla notificaciones de dinero y técnicas sin columna que las distinga) y
+`portal_solicitud_plan` (su propia migración documenta que toca precio/prorrateo Y cola de
+MikroTik a la vez). **Las 10 columnas sin FK (censo §3.2) quedan fuera de este lote a
+propósito** — es un problema de integridad, no de nombre, con su propia decisión pendiente.
+
+**Ninguna migración escrita todavía.** Antes de la primera: cada tabla se renombra ENTERA en un
+solo commit (columna + entidad + consultas + DTOs + eventos) y `sql-nombra-servicios.spec.ts`
+se amplía en el MISMO commit del primer renombrado — tiene que vigilar el nuevo modo de fallo
+(una consulta con `contrato_id` en el nombre pero `JOIN`/`FROM servicios` real), no solo la
+tabla vieja.
 
 ---
 
