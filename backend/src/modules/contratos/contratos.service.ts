@@ -270,7 +270,7 @@ export class ContratosService {
         await qr.manager.save(
           qr.manager.create(IpAsignada, {
             empresaId: user.empresaId, segmentoId: dto.segmentoId,
-            contratoId: saved.id, ipAddress: ipAsignada,
+            servicioId: saved.id, ipAddress: ipAsignada,
             tipo: 'cliente', activa: true,
           }),
         );
@@ -466,7 +466,7 @@ export class ContratosService {
       try {
         // Liberar IP vieja DENTRO de la TX: si falla el resto, el rollback la reactiva
         if (existing.ipAsignada && existing.segmentoId) {
-          await qr.manager.update(IpAsignada, { contratoId: id, activa: true }, { activa: false, liberadaEn: new Date() });
+          await qr.manager.update(IpAsignada, { servicioId: id, activa: true }, { activa: false, liberadaEn: new Date() });
         }
         newIp = dto.ipManual?.trim()
           ? dto.ipManual.trim()
@@ -487,7 +487,7 @@ export class ContratosService {
           qr.manager.create(IpAsignada, {
             empresaId:   user.empresaId,
             segmentoId:  dto.segmentoId!,
-            contratoId:  id,
+            servicioId:  id,
             ipAddress:   newIp,
             tipo:        'cliente',
             activa:      true,
@@ -521,7 +521,7 @@ export class ContratosService {
           qr.manager.create(IpAsignada, {
             empresaId:  user.empresaId,
             segmentoId: dto.segmentoId,
-            contratoId: id,
+            servicioId: id,
             ipAddress:  newIp,
             tipo:       'cliente',
             activa:     true,

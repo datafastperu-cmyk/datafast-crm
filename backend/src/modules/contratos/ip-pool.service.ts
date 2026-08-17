@@ -52,7 +52,7 @@ export class IpPoolService {
   async asignarSiguienteIpDisponible(
     segmentoId: string,
     empresaId: string,
-    contratoId?: string,
+    servicioId?: string,
   ): Promise<{ ip: string; asignacionId: string }> {
     // Usar transacción para evitar race conditions en asignación concurrente
     return this.ds.transaction(async (manager) => {
@@ -106,7 +106,7 @@ export class IpPoolService {
       const asignacion = manager.getRepository(IpAsignada).create({
         empresaId,
         segmentoId,
-        contratoId,
+        servicioId,
         ipAddress: siguienteIp,
         tipo: 'cliente',
         activa: true,
@@ -115,7 +115,7 @@ export class IpPoolService {
       const saved = await manager.getRepository(IpAsignada).save(asignacion);
 
       this.logger.log(
-        `IP asignada: ${siguienteIp} → segmento ${segmento.nombre} | contrato: ${contratoId}`,
+        `IP asignada: ${siguienteIp} → segmento ${segmento.nombre} | servicio: ${servicioId}`,
       );
 
       return { ip: siguienteIp, asignacionId: saved.id };
@@ -127,7 +127,7 @@ export class IpPoolService {
     ip: string,
     segmentoId: string,
     empresaId: string,
-    contratoId?: string,
+    servicioId?: string,
   ): Promise<{ ip: string; asignacionId: string }> {
     return this.ds.transaction(async (manager) => {
       const segmento = await manager
@@ -153,12 +153,12 @@ export class IpPoolService {
 
       if (enUso) {
         throw new ConflictException(
-          `La IP ${ip} ya está asignada${enUso.contratoId ? ` al contrato ${enUso.contratoId}` : ''}`,
+          `La IP ${ip} ya está asignada${enUso.servicioId ? ` al servicio ${enUso.servicioId}` : ''}`,
         );
       }
 
       const asignacion = manager.getRepository(IpAsignada).create({
-        empresaId, segmentoId, contratoId,
+        empresaId, segmentoId, servicioId,
         ipAddress: ip, tipo: 'cliente', activa: true,
       });
       const saved = await manager.getRepository(IpAsignada).save(asignacion);
@@ -168,14 +168,14 @@ export class IpPoolService {
     });
   }
 
-  // ── Liberar IP al dar de baja un contrato ──────────────────
-  async liberarIp(contratoId: string, empresaId: string): Promise<void> {
+  // ── Liberar IP al dar de baja un servicio ──────────────────
+  async liberarIp(servicioId: string, empresaId: string): Promise<void> {
     const resultado = await this.ipRepo.update(
-      { contratoId, empresaId, activa: true },
+      { servicioId, empresaId, activa: true },
       { activa: false, liberadaEn: new Date() },
     );
     if (resultado.affected) {
-      this.logger.log(`${resultado.affected} IP(s) liberadas | contrato: ${contratoId}`);
+      this.logger.log(`${resultado.affected} IP(s) liberadas | servicio: ${servicioId}`);
     }
   }
 

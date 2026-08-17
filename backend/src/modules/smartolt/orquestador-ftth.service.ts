@@ -163,7 +163,7 @@ export class OrquestadorFtthService {
 
           // Registrar en BD
           await this.ds.query(`
-            INSERT INTO ips_asignadas (empresa_id, segmento_id, contrato_id, ip_address, tipo, activa)
+            INSERT INTO ips_asignadas (empresa_id, segmento_id, servicio_id, ip_address, tipo, activa)
             VALUES ($1, $2, $3, $4, 'cliente', true)
             ON CONFLICT DO NOTHING
           `, [user.empresaId, dto.segmentoId, dto.contratoId, ip]);

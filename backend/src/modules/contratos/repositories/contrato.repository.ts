@@ -246,8 +246,8 @@ export class ContratoRepository {
     return this.ipRepo.save(this.ipRepo.create(d));
   }
 
-  async liberarIp(contratoId: string): Promise<void> {
-    await this.ipRepo.update({ contratoId, activa:true }, { activa:false, liberadaEn:new Date() });
+  async liberarIp(servicioId: string): Promise<void> {
+    await this.ipRepo.update({ servicioId, activa:true }, { activa:false, liberadaEn:new Date() });
   }
 
   async ipYaAsignada(ip: string, segmentoId: string): Promise<boolean> {

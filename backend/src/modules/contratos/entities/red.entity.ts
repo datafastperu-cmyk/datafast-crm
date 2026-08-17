@@ -94,8 +94,9 @@ export class IpAsignada {
   @Column({ name: 'segmento_id' })
   segmentoId: string;
 
-  @Column({ name: 'contrato_id', nullable: true })
-  contratoId: string;
+  /** El Servicio Contratado (tabla `servicios`), nunca el acuerdo — Ola 2. */
+  @Column({ name: 'servicio_id', nullable: true })
+  servicioId: string;
 
   @Column({ name: 'ip_address', type: 'inet' })
   ipAddress: string;
