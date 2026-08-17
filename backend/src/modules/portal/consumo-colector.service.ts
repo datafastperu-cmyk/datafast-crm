@@ -37,8 +37,8 @@ interface FilaRouter {
   timeout_conexion: number | null;
 }
 
-interface FilaContrato {
-  contrato_id: string; cliente_id: string; empresa_id: string; nombre_queue: string;
+interface FilaServicio {
+  servicio_id: string; cliente_id: string; empresa_id: string; nombre_queue: string;
 }
 
 interface Snapshot { rx: number; tx: number }
@@ -124,8 +124,8 @@ export class ConsumoColectorService implements OnModuleInit {
   ): Promise<{ escritos: number; omitidos: number }> {
     if (!router.ip) return { escritos: 0, omitidos: 0 };
 
-    const contratos = await this.dataSource.query<FilaContrato[]>(
-      `SELECT id AS contrato_id, cliente_id, empresa_id, nombre_queue
+    const contratos = await this.dataSource.query<FilaServicio[]>(
+      `SELECT id AS servicio_id, cliente_id, empresa_id, nombre_queue
          FROM servicios
         WHERE router_id = $1 AND deleted_at IS NULL AND nombre_queue IS NOT NULL`,
       [router.id],
@@ -150,7 +150,7 @@ export class ConsumoColectorService implements OnModuleInit {
       if (q?.name) porNombre.set(String(q.name), q as Record<string, string>);
     }
 
-    const previos = await this.snapshots(contratos.map((c) => c.contrato_id));
+    const previos = await this.snapshots(contratos.map((c) => c.servicio_id));
     const ahora = new Date();
     const fecha = ahora.toISOString().slice(0, 10);
     const hora  = ahora.getUTCHours();
@@ -165,7 +165,7 @@ export class ConsumoColectorService implements OnModuleInit {
       const actual = this.parsearBytes(queue.bytes);
       if (!actual) continue;
 
-      const previo = previos.get(contrato.contrato_id);
+      const previo = previos.get(contrato.servicio_id);
       await this.guardarSnapshot(contrato, actual);
 
       if (!previo) {
@@ -206,48 +206,48 @@ export class ConsumoColectorService implements OnModuleInit {
     return actual >= previo ? actual - previo : actual;
   }
 
-  private async snapshots(contratoIds: string[]): Promise<Map<string, Snapshot>> {
+  private async snapshots(servicioIds: string[]): Promise<Map<string, Snapshot>> {
     const filas = await this.dataSource.query<
-      Array<{ contrato_id: string; rx_bytes: string; tx_bytes: string }>
+      Array<{ servicio_id: string; rx_bytes: string; tx_bytes: string }>
     >(
-      `SELECT contrato_id, rx_bytes, tx_bytes FROM consumo_snapshot
-        WHERE contrato_id = ANY($1::uuid[])`,
-      [contratoIds],
+      `SELECT servicio_id, rx_bytes, tx_bytes FROM consumo_snapshot
+        WHERE servicio_id = ANY($1::uuid[])`,
+      [servicioIds],
     );
     return new Map(
-      filas.map((f) => [f.contrato_id, { rx: Number(f.rx_bytes), tx: Number(f.tx_bytes) }]),
+      filas.map((f) => [f.servicio_id, { rx: Number(f.rx_bytes), tx: Number(f.tx_bytes) }]),
     );
   }
 
-  private async guardarSnapshot(contrato: FilaContrato, valores: Snapshot): Promise<void> {
+  private async guardarSnapshot(contrato: FilaServicio, valores: Snapshot): Promise<void> {
     await this.dataSource.query(
-      `INSERT INTO consumo_snapshot (contrato_id, empresa_id, rx_bytes, tx_bytes, leido_en)
+      `INSERT INTO consumo_snapshot (servicio_id, empresa_id, rx_bytes, tx_bytes, leido_en)
        VALUES ($1, $2, $3, $4, now())
-       ON CONFLICT (contrato_id) DO UPDATE
+       ON CONFLICT (servicio_id) DO UPDATE
          SET rx_bytes = EXCLUDED.rx_bytes,
              tx_bytes = EXCLUDED.tx_bytes,
              leido_en = EXCLUDED.leido_en`,
-      [contrato.contrato_id, contrato.empresa_id, valores.rx, valores.tx],
+      [contrato.servicio_id, contrato.empresa_id, valores.rx, valores.tx],
     );
   }
 
-  // Idempotente por (contrato, fecha, hora): dos corridas en la misma hora SUMAN sus
+  // Idempotente por (servicio, fecha, hora): dos corridas en la misma hora SUMAN sus
   // deltas en la misma fila en vez de duplicarla. La unicidad ya existía en el esquema.
   private async acumular(
-    contrato: FilaContrato,
+    contrato: FilaServicio,
     fecha: string,
     hora: number,
     delta: Snapshot,
   ): Promise<void> {
     await this.dataSource.query(
       `INSERT INTO consumo_datos
-         (empresa_id, contrato_id, cliente_id, fecha, hora, rx_bytes, tx_bytes, fuente)
+         (empresa_id, servicio_id, cliente_id, fecha, hora, rx_bytes, tx_bytes, fuente)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'mikrotik')
-       ON CONFLICT (contrato_id, fecha, hora) DO UPDATE
+       ON CONFLICT (servicio_id, fecha, hora) DO UPDATE
          SET rx_bytes = consumo_datos.rx_bytes + EXCLUDED.rx_bytes,
              tx_bytes = consumo_datos.tx_bytes + EXCLUDED.tx_bytes`,
       [
-        contrato.empresa_id, contrato.contrato_id, contrato.cliente_id,
+        contrato.empresa_id, contrato.servicio_id, contrato.cliente_id,
         fecha, hora, delta.rx, delta.tx,
       ],
     );

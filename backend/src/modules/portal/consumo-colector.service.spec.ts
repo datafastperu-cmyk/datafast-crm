@@ -21,7 +21,7 @@ const ROUTER = {
 };
 
 const CONTRATO = {
-  contrato_id: 'contrato-1', cliente_id: 'cliente-1',
+  servicio_id: 'contrato-1', cliente_id: 'cliente-1',
   empresa_id: 'empresa-1', nombre_queue: 'q-cliente-1',
 };
 
@@ -43,7 +43,7 @@ function colectorCon({ snapshotPrevio, bytesQueue }: Escenario) {
       return Promise.resolve(
         snapshotPrevio
           ? [{
-              contrato_id: CONTRATO.contrato_id,
+              servicio_id: CONTRATO.servicio_id,
               rx_bytes: String(snapshotPrevio.rx),
               tx_bytes: String(snapshotPrevio.tx),
             }]
@@ -152,7 +152,7 @@ describe('ConsumoColectorService', () => {
     await svc.recolectar();
 
     const insert = consumoEscrito()!;
-    expect(insert.sql).toContain('ON CONFLICT (contrato_id, fecha, hora) DO UPDATE');
+    expect(insert.sql).toContain('ON CONFLICT (servicio_id, fecha, hora) DO UPDATE');
     expect(insert.sql).toContain('consumo_datos.rx_bytes + EXCLUDED.rx_bytes');
   });
 

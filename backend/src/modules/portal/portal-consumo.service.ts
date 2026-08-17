@@ -58,7 +58,7 @@ export class PortalConsumoService {
               SUM(rx_bytes)::bigint::text AS rx,
               SUM(tx_bytes)::bigint::text AS tx
          FROM consumo_datos
-        WHERE contrato_id = $1 AND cliente_id = $2 AND empresa_id = $3
+        WHERE servicio_id = $1 AND cliente_id = $2 AND empresa_id = $3
           AND fecha BETWEEN $4 AND $5
         GROUP BY fecha
         ORDER BY fecha ASC`,
