@@ -101,7 +101,7 @@ describe('Fase 3a · El SQL nombra la tabla por lo que guarda', () => {
 describe('Ola 2 · Ninguna consulta usa contrato_id contra una tabla ya renombrada a servicio_id', () => {
   // Registro DECLARADO — crece con cada tabla técnica que la clasificación aprobada
   // (E-0.2-clasificacion-contrato-id.md) va renombrando. Nunca se adivina por regex.
-  const TABLAS_RENOMBRADAS_A_SERVICIO_ID = ['comandos_red_pendientes'];
+  const TABLAS_RENOMBRADAS_A_SERVICIO_ID = ['comandos_red_pendientes', 'ordenes_trabajo'];
 
   const ES_LA_PROPIA_BARRERA = (f: string) => f.endsWith(path.basename(__filename).replace(/.js$/, '.ts'));
 
