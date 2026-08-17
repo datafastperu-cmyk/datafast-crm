@@ -110,9 +110,11 @@ export class PlantaExternaPuertosService {
         return this.explicarAsignacionFallida(em, empresaId, puertoId, contratoId);
       }
 
+      // `contratoId` es el nombre del parámetro (contrato de la API con el frontend, sin
+      // tocar en este lote); la entidad guarda `servicioId` — Ola 2.
       await em.insert(PeAcometida, {
         empresaId,
-        contratoId,
+        servicioId: contratoId,
         napPuertoId: puertoId,
         longitudM: longitudM ?? null,
       });
@@ -153,10 +155,10 @@ export class PlantaExternaPuertosService {
         where: { napPuertoId: puertoId, empresaId },
       });
 
-      // Mismo contrato → la operación ya estaba hecha. Es ÉXITO idempotente: un
+      // Mismo servicio → la operación ya estaba hecha. Es ÉXITO idempotente: un
       // reintento del cliente o del orquestador no debe leerse como fallo (fue lo que
       // produjo 1788 reintentos contra el MA5800 el 28/07).
-      if (acometida?.contratoId === contratoId) {
+      if (acometida?.servicioId === contratoId) {
         return {
           clase: 'ya_en_destino',
           mensaje: `El puerto ${puerto.numero} ya estaba asignado a este contrato.`,

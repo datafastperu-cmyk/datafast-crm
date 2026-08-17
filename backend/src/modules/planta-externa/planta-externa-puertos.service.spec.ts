@@ -103,7 +103,7 @@ describe('PlantaExternaPuertosService', () => {
 
       expect(r.clase).toBe('aplicado');
       expect(insert).toHaveBeenCalledWith(PeAcometida, expect.objectContaining({
-        contratoId: CONTRATO,
+        servicioId: CONTRATO,
         napPuertoId: PUERTO,
         empresaId: EMPRESA,
       }));
@@ -112,7 +112,7 @@ describe('PlantaExternaPuertosService', () => {
     it('pierde la carrera (0 filas) → NO crea acometida', async () => {
       query.mockResolvedValueOnce([]);
       findOne.mockResolvedValueOnce({ id: PUERTO, numero: 3, estado: PuertoEstado.OCUPADO });
-      findOne.mockResolvedValueOnce({ contratoId: 'otro-contrato' });
+      findOne.mockResolvedValueOnce({ servicioId: 'otro-contrato' });
 
       const r = await service.asignarPuerto({
         empresaId: EMPRESA, puertoId: PUERTO, contratoId: CONTRATO, usuarioId: USUARIO,
@@ -132,7 +132,7 @@ describe('PlantaExternaPuertosService', () => {
       // `ocupar` declara `hacia: null` y la decisión llega hasta aquí.
       query.mockResolvedValueOnce([]);
       findOne.mockResolvedValueOnce({ id: PUERTO, numero: 3, estado: PuertoEstado.OCUPADO });
-      findOne.mockResolvedValueOnce({ contratoId: 'otro-contrato' });
+      findOne.mockResolvedValueOnce({ servicioId: 'otro-contrato' });
 
       const r = await service.asignarPuerto({
         empresaId: EMPRESA, puertoId: PUERTO, contratoId: CONTRATO, usuarioId: USUARIO,
@@ -146,7 +146,7 @@ describe('PlantaExternaPuertosService', () => {
       // días (incidente 2026-07-28). Aquí el reintento es éxito y se detiene solo.
       query.mockResolvedValueOnce([]);
       findOne.mockResolvedValueOnce({ id: PUERTO, numero: 3, estado: PuertoEstado.OCUPADO });
-      findOne.mockResolvedValueOnce({ contratoId: CONTRATO });
+      findOne.mockResolvedValueOnce({ servicioId: CONTRATO });
 
       const r = await service.asignarPuerto({
         empresaId: EMPRESA, puertoId: PUERTO, contratoId: CONTRATO, usuarioId: USUARIO,

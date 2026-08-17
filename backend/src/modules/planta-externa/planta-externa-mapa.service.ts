@@ -363,7 +363,7 @@ export class PlantaExternaMapaService {
               -- tiene lo que está viendo antes de mandar a alguien a la calle.
               EXTRACT(EPOCH FROM (now() - inv.updated_at))::int / 60 AS medido_hace_min
          FROM punto_servicio p
-         LEFT JOIN pe_acometida a ON a.contrato_id = p.contrato_id AND a.deleted_at IS NULL
+         LEFT JOIN pe_acometida a ON a.servicio_id = p.contrato_id AND a.deleted_at IS NULL
          -- Estado físico del enlace, tal como lo reporta la OLT. El cruce pasa por
          -- sn_onu_normalizado porque el registro guarda el serial de la etiqueta
          -- (HWTC…) y el inventario el que emite el hardware (4857…): el mismo equipo en
@@ -433,7 +433,7 @@ export class PlantaExternaMapaService {
          LEFT JOIN olt_onu_inventario inv
                 ON sn_onu_normalizado(inv.sn) = sn_onu_normalizado(f.sn)
          LEFT JOIN pe_acometida acom
-                ON acom.contrato_id = co.id AND acom.deleted_at IS NULL
+                ON acom.servicio_id = co.id AND acom.deleted_at IS NULL
          LEFT JOIN pe_nap_puerto ap ON ap.id  = acom.nap_puerto_id
          LEFT JOIN pe_nap        nap ON nap.id = ap.nap_id
         WHERE co.id = $1 AND co.empresa_id = $2 AND co.deleted_at IS NULL`,

@@ -101,7 +101,7 @@ export class PlantaExternaTrazaService {
    */
   async trazarContrato(
     empresaId: string,
-    contratoId: string,
+    servicioId: string,
     rxPowerDbm?: number | null,
     grafoPrecargado?: Grafo,
   ): Promise<ResultadoTraza> {
@@ -109,8 +109,8 @@ export class PlantaExternaTrazaService {
 
     const [acometida] = await this.ds.query(
       `SELECT * FROM pe_acometida
-        WHERE contrato_id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
-      [contratoId, empresaId],
+        WHERE servicio_id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+      [servicioId, empresaId],
     );
 
     if (!acometida) {

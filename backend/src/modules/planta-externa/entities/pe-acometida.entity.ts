@@ -30,8 +30,8 @@ export interface EvidenciaAcometida {
 // ─── Acometida (última milla) ───────────────────────────────────
 // Tabla: pe_acometida
 //
-// Los índices únicos parciales `uq_pe_acometida_puerto` y `uq_pe_acometida_contrato`
-// son la garantía REAL de exclusividad: un puerto, un contrato. El UPDATE condicional
+// Los índices únicos parciales `uq_pe_acometida_puerto` y `uq_pe_acometida_servicio`
+// son la garantía REAL de exclusividad: un puerto, un servicio. El UPDATE condicional
 // del servicio es la primera defensa; los índices son la que no depende de que ese
 // UPDATE esté bien escrito hoy y siga estándolo dentro de dos años.
 @Entity('pe_acometida')
@@ -41,8 +41,9 @@ export class PeAcometida extends BaseModel {
   @Column({ name: 'empresa_id', type: 'uuid' })
   empresaId: string;
 
-  @Column({ name: 'contrato_id', type: 'uuid' })
-  contratoId: string;
+  /** El Servicio Contratado (tabla `servicios`), nunca el acuerdo — Ola 2. */
+  @Column({ name: 'servicio_id', type: 'uuid' })
+  servicioId: string;
 
   @Column({ name: 'nap_puerto_id', type: 'uuid' })
   napPuertoId: string;

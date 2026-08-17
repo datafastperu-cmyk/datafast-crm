@@ -103,7 +103,7 @@ describe('Ola 2 · Ninguna consulta usa contrato_id contra una tabla ya renombra
   // (E-0.2-clasificacion-contrato-id.md) va renombrando. Nunca se adivina por regex.
   const TABLAS_RENOMBRADAS_A_SERVICIO_ID = [
     'comandos_red_pendientes', 'ordenes_trabajo', 'consumo_datos', 'consumo_snapshot',
-    'ips_asignadas',
+    'ips_asignadas', 'pe_acometida',
   ];
 
   const ES_LA_PROPIA_BARRERA = (f: string) => f.endsWith(path.basename(__filename).replace(/.js$/, '.ts'));
@@ -115,6 +115,19 @@ describe('Ola 2 · Ninguna consulta usa contrato_id contra una tabla ya renombra
   // un `ftth_onu_registro.contrato_id` legítimo, sin FK, fuera de este lote).
   const bloquesSql = (contenido: string): string[] => contenido.match(/`[^`]*`/gs) ?? [];
 
+  // Dentro de UN MISMO bloque puede convivir la tabla renombrada con `contrato_id`
+  // legítimo de OTRA tabla sin renombrar — caso real: planta-externa-mapa.service.ts
+  // hace JOIN de `pe_acometida` en la misma consulta que el alias `p` (CTE
+  // PUNTOS_SERVICIO, columna propia sin FK) y el alias `f` (ftth_onu_registro, sin
+  // FK, fuera de este lote), ambos calificados con SU PROPIO alias. Por eso no basta
+  // con "el bloque contiene contrato_id en algún lado": solo es infracción si
+  // `contrato_id` aparece SIN calificar (pertenece a la tabla referenciada sin alias)
+  // o calificado con el alias que ESTE bloque le dio justo a la tabla renombrada.
+  const PALABRAS_RESERVADAS = new Set([
+    'on', 'where', 'and', 'or', 'set', 'left', 'right', 'inner', 'outer', 'join',
+    'group', 'order', 'limit', 'as',
+  ]);
+
   it('ningún literal SQL mezcla una tabla ya renombrada con la columna vieja `contrato_id`', () => {
     const infractores: string[] = [];
     for (const f of ficheros) {
@@ -122,9 +135,20 @@ describe('Ola 2 · Ninguna consulta usa contrato_id contra una tabla ya renombra
       const contenido = fs.readFileSync(f, 'utf8');
       for (const bloque of bloquesSql(contenido)) {
         for (const tabla of TABLAS_RENOMBRADAS_A_SERVICIO_ID) {
-          const tieneLaTabla = new RegExp(`\\b(?:FROM|JOIN|UPDATE|INTO)\\s+${tabla}\\b`, 'i').test(bloque);
-          const tieneColumnaVieja = /\bcontrato_id\b/.test(bloque);
-          if (tieneLaTabla && tieneColumnaVieja) {
+          const refTabla = bloque.match(
+            new RegExp(`\\b(?:FROM|JOIN|UPDATE|INTO)\\s+${tabla}\\b(?:\\s+(?:AS\\s+)?(\\w+))?`, 'i'),
+          );
+          if (!refTabla) continue;
+          const alias = refTabla[1] && !PALABRAS_RESERVADAS.has(refTabla[1].toLowerCase())
+            ? refTabla[1]
+            : null;
+
+          const columnaSinCalificar = /(?<!\.)\bcontrato_id\b/.test(bloque);
+          const columnaConAliasDeEstaTabla = alias
+            ? new RegExp(`\\b${alias}\\.contrato_id\\b`).test(bloque)
+            : false;
+
+          if (columnaSinCalificar || columnaConAliasDeEstaTabla) {
             infractores.push(`${path.relative(SRC, f)} (${tabla})`);
           }
         }

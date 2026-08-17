@@ -393,7 +393,7 @@ export class PlantaExternaController {
     // estado LEGÍTIMO —todo cliente WISP lo está— y tratarlo como error obligaría al
     // frontend a distinguir "no tiene" de "falló la consulta" por el status code.
     const acometida = await this.ds.getRepository(PeAcometida).findOne({
-      where: { contratoId, empresaId: user.empresaId, deletedAt: IsNull() },
+      where: { servicioId: contratoId, empresaId: user.empresaId, deletedAt: IsNull() },
     });
     if (!acometida) return null;
 
