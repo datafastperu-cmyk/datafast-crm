@@ -21,6 +21,7 @@ import { WirelessService }       from '../mikrotik/services/wireless.service';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 import { IsBoolean, IsEnum, IsIP, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { encrypt, decrypt }      from '../../common/utils/encryption.util';
+import { esExito, mensajeDe }    from '../../common/domain/resultado-operacion';
 
 // ─── DTOs / respuestas ────────────────────────────────────────────
 
@@ -748,14 +749,17 @@ export class MonitoreoService {
     let ok = 0;
     const errores: { contrato: string; mac: string; error: string }[] = [];
 
+    // Ola 1, grupo 3b: agregarMacAccessList() habla ResultadoOperacion y ya no lanza — se
+    // traduce sin try/catch, mismo desenlace de antes (contar éxitos/errores, seguir con
+    // el resto del lote aunque uno falle).
     for (const c of contratos) {
-      try {
-        await this.wirelessSvc.agregarMacAccessList(creds, c.mac, `DATAFAST:${c.nombre}`);
+      const r = await this.wirelessSvc.agregarMacAccessList(creds, c.mac, `DATAFAST:${c.nombre}`);
+      if (esExito(r)) {
         ok++;
         this.logger.log(`[repararAntenaAP] ${d.nombreEmisor} | MAC ${c.mac} → ${c.nombre} ✓`);
-      } catch (err: any) {
-        errores.push({ contrato: c.numeroContrato, mac: c.mac, error: err.message });
-        this.logger.warn(`[repararAntenaAP] ${d.nombreEmisor} | MAC ${c.mac} error: ${err.message}`);
+      } else {
+        errores.push({ contrato: c.numeroContrato, mac: c.mac, error: mensajeDe(r) });
+        this.logger.warn(`[repararAntenaAP] ${d.nombreEmisor} | MAC ${c.mac} error: ${mensajeDe(r)}`);
       }
     }
 

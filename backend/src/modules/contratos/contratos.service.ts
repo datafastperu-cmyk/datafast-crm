@@ -1904,14 +1904,15 @@ export class ContratosService {
       version:         'v6',
     };
 
-    try {
-      await this.wirelessSvc.agregarMacAccessList(creds, row.macAddress, `DATAFAST:${row.nombreCompleto}`);
+    // Ola 1, grupo 3b: agregarMacAccessList() habla ResultadoOperacion y ya no lanza — se
+    // traduce sin try/catch, mismo desenlace de antes (nunca bloquea, siempre informa).
+    const rMac = await this.wirelessSvc.agregarMacAccessList(creds, row.macAddress, `DATAFAST:${row.nombreCompleto}`);
+    if (esExito(rMac)) {
       this.logger.log(`registrarEnAccessListAntena → ${contratoId} | MAC ${row.macAddress} registrada en AP ${row.ipAddress}`);
       return { ok: true };
-    } catch (err) {
-      this.logger.warn(`registrarEnAccessListAntena → ${contratoId} | error al registrar MAC en AP: ${err?.message}`);
-      return { ok: false, advertencia: `MAC ${row.macAddress} no registrada en AP ${row.ipAddress}: ${err?.message}` };
     }
+    this.logger.warn(`registrarEnAccessListAntena → ${contratoId} | error al registrar MAC en AP: ${mensajeDe(rMac)}`);
+    return { ok: false, advertencia: `MAC ${row.macAddress} no registrada en AP ${row.ipAddress}: ${mensajeDe(rMac)}` };
   }
 
   async eliminarDeAccessListAntena(contratoId: string): Promise<void> {
@@ -1958,20 +1959,21 @@ export class ContratosService {
       version:         'v6',
     };
 
-    try {
-      const removed = await this.wirelessSvc.eliminarMacAccessList(creds, row.macAddress);
-      if (removed > 0) {
-        this.logger.log(
-          `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} removida de AP ${row.ipAddress} (${removed} entrada(s))`,
-        );
-      } else {
-        this.logger.warn(
-          `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} no encontrada en Access List del AP ${row.ipAddress} — posiblemente ya fue removida o nunca existió`,
-        );
-      }
-    } catch (err) {
+    // Ola 1, grupo 3b: eliminarMacAccessList() habla ResultadoOperacion y ya no lanza — se
+    // traduce sin try/catch. ya_en_destino sustituye al "removed === 0" que antes se leía
+    // como advertencia de "no encontrada" con el mismo mensaje.
+    const rMac = await this.wirelessSvc.eliminarMacAccessList(creds, row.macAddress);
+    if (rMac.clase === 'aplicado') {
+      this.logger.log(
+        `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} removida de AP ${row.ipAddress}`,
+      );
+    } else if (rMac.clase === 'ya_en_destino') {
       this.logger.warn(
-        `eliminarDeAccessListAntena → ${contratoId} | error al remover MAC ${row.macAddress} del AP ${row.ipAddress}: ${err?.message}`,
+        `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} no encontrada en Access List del AP ${row.ipAddress} — posiblemente ya fue removida o nunca existió`,
+      );
+    } else {
+      this.logger.warn(
+        `eliminarDeAccessListAntena → ${contratoId} | error al remover MAC ${row.macAddress} del AP ${row.ipAddress}: ${mensajeDe(rMac)}`,
       );
     }
   }
