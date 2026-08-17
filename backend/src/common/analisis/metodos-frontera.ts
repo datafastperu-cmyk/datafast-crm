@@ -254,7 +254,7 @@ export function operacionesDeFrontera(metodos: MetodoInfo[]): MetodoInfo[] {
 }
 
 /**
- * Registro DECLARADO de extensiones locales y transitorias de `ResultadoOperacion`
+ * Registro DECLARADO de extensiones locales y TRANSITORIAS de `ResultadoOperacion`
  * (Ola 1, grupo 3a, 2026-08-16).
  *
  * Por qué existe: `clasificarRetorno()` reconoce el vocabulario de dominio por el NOMBRE del
@@ -269,13 +269,25 @@ export function operacionesDeFrontera(metodos: MetodoInfo[]): MetodoInfo[] {
  * La corrección NO es enseñarle el regex a reconocer `ResultadoAprovisionarOnu` — eso
  * maquillaría el medidor con una excepción ad-hoc que crece sin control la próxima vez que
  * alguien necesite lo mismo. La corrección es declarar la excepción AQUÍ, una vez, con su
- * fecha de retiro, y que el cómputo de «operaciones sin ResultadoOperacion» (usado por F-0.1
- * §9.1 para el ancho de E03-03) reste estas entradas explícitamente — la deuda queda CONTADA
- * (PF-3), no oculta y no comentada.
+ * condición real de retiro, y que el cómputo de «operaciones sin ResultadoOperacion» (usado
+ * por F-0.1 §9.1 para el ancho de E03-03) reste estas entradas explícitamente — la deuda
+ * queda CONTADA (PF-3), no oculta y no comentada.
  *
- * TÉCHO: cuántas extensiones siguen vivas. Solo puede BAJAR (cuando el binding de la Ola 3
- * retire una), nunca subir sin que la entrada se declare aquí primero. Ver
- * `extensiones-transitorias.spec.ts`.
+ * ESTE REGISTRO ES SOLO PARA DEUDA TRANSITORIA REAL — con condición de cierre verificable, no
+ * un campo `retiro: 'Sin fecha'`. Corrección del propietario (2026-08-17, cierre de la Ola 1):
+ * la regla de parada («para en la segunda o tercera entrada») existía y disparó en la CUARTA
+ * y QUINTA sin frenar a nadie — la memoria de quien escribe no hace cumplir un trinquete, solo
+ * una comprobación automática lo hace (PF-3). Cuatro entradas que llegaron a vivir aquí
+ * («activarCarril», «refrescarWifi», «setWifi», «setWifiAmbasBandas») NO son deuda transitoria
+ * — no tienen binding de módulo que vaya a poseer el payload algún día. Son evidencia de
+ * **R-6** (F-0.1 §8: «si aparece un caso que el diseño no cubre, se detiene y se abre
+ * revisión») y viven en `CASOS_FUERA_DE_D14_RESULTADO_OPERACION`, abajo — un registro
+ * DISTINTO, porque mezclarlos con deuda real es la misma dos-cifras-sobre-el-mismo-hecho que
+ * este registro existe para evitar.
+ *
+ * TÉCHO: cuántas extensiones transitorias siguen vivas. Solo puede BAJAR (cuando el binding de
+ * la Ola 3 retire `ResultadoAprovisionarOnu`), nunca subir sin que la entrada se declare aquí
+ * primero CON una condición de retiro real. Ver `extensiones-transitorias.spec.ts`.
  */
 export interface ExtensionTransitoria {
   /** Nombre de la clase `*Service` dueña del método. */
@@ -286,7 +298,8 @@ export interface ExtensionTransitoria {
   tipo: string;
   /** Dónde vive la declaración del tipo — para que quien retire la deuda sepa qué tocar. */
   archivo: string;
-  /** Hito que debe retirarla. No es una fecha: es la condición de cierre. */
+  /** Hito que debe retirarla. Condición de cierre verificable — nunca `'Sin fecha'`: eso no
+   *  es una condición, es admitir que la entrada es permanente con otro nombre. */
   retiro: string;
   /** Por qué no es directamente `ResultadoOperacion`. */
   razon: string;
@@ -301,50 +314,99 @@ export const EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION: ExtensionTransitoria[
     retiro: 'Ola 3 (cuando el binding del módulo posea el identificador y el Core deje de necesitarlo)',
     razon: 'Payload `onu` (el id que SmartOLT asigna) que el llamador realmente necesita — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
   },
+];
+
+/**
+ * Registro DECLARADO de casos que el vocabulario de `ResultadoOperacion` (D-14, E-0.3 §10) NO
+ * cubre por diseño — evidencia de **R-6** (F-0.1 §8), no deuda transitoria (Ola 1, grupo 4,
+ * corrección de cierre 2026-08-17).
+ *
+ * D-14 define el resultado de una CAPACIDAD MUTANTE — las seis clases responden «¿qué pasó al
+ * intentar cambiar algo en el hardware?». Tres formas distintas de no encajar ahí, cada una ya
+ * anticipada como hueco en F-0.1 §9.1 («33 consultas... queda como hueco de diseño R-6») pero
+ * sin un caso concreto hasta este grupo:
+ *  - **consulta**: el método no muta nada que un `reintentable` deba reintentar — es una
+ *    lectura. `refrescarWifi()` dispara un refresh y devuelve el estado leído; forzarlo a
+ *    `indeterminado`/`reintentable` fue una decisión de conversión, no una que D-14 prescriba.
+ *  - **éxito parcial**: ninguna de las seis clases dice «se aplicaron 3 de 5». `setWifi()`/
+ *    `setWifiAmbasBandas()` devuelven `ok/applied/total/fallidas` — un resultado que no es
+ *    aplicado-todo ni rechazado-nada.
+ *  - **payload multi-borde**: el mismo resultado lo consumen dos bordes con necesidades
+ *    distintas (panel operador, portal del abonado) — `activarCarril()` con su `estado`.
+ *
+ * NO se resuelve aquí. R-6 dice «se detiene y se abre revisión» — la revisión de qué
+ * vocabulario le corresponde a cada uno de estos tres casos es una decisión de arquitectura
+ * del propietario, registrada como bloqueante de la **Ola 3** (F-0.1 §9), no una que esta ola
+ * ni la Ola 2 puedan decidir sobre la marcha.
+ *
+ * TÉCHO: igual que el registro de arriba — solo puede BAJAR (cuando R-6 se resuelva y cada
+ * caso se reclasifique), nunca subir sin declararse aquí primero. Ver
+ * `extensiones-transitorias.spec.ts`.
+ */
+export interface CasoFueraDeD14 {
+  /** Nombre de la clase `*Service` dueña del método. */
+  clase: string;
+  /** Nombre del método cuyo retorno no encaja en D-14. */
+  metodo: string;
+  /** Nombre del tipo local (el que aparece en la firma). */
+  tipo: string;
+  /** Dónde vive la declaración del tipo. */
+  archivo: string;
+  /** Qué hueco de D-14 evidencia — no es una razón inline, es una de tres categorías nombradas. */
+  vacio: 'consulta' | 'exito_parcial' | 'payload_multi_borde';
+  /** Por qué este caso concreto cae en esa categoría. */
+  razon: string;
+}
+
+export const CASOS_FUERA_DE_D14_RESULTADO_OPERACION: CasoFueraDeD14[] = [
   {
     clase: 'ProvisionFtthService',
     metodo: 'activarCarril',
     tipo: 'ResultadoActivarCarril',
     archivo: 'backend/src/modules/olt-nativo/services/provision-ftth.service.ts',
-    retiro: 'Sin fecha — el payload `estado` lo consumen dos bordes reales (panel operador, portal del abonado), no un dato de transición',
-    razon: 'Payload `estado` (FtthCarrilEstado) que sus dos llamadores necesitan para construir su propia respuesta — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+    vacio: 'payload_multi_borde',
+    razon: 'El payload `estado` (FtthCarrilEstado) lo necesitan DOS bordes reales con contratos distintos (panel operador vía olt-nativo.controller.ts, portal del abonado vía PortalOnuService.conectar()) — D-14 no dice cómo un mismo ResultadoOperacion sirve a dos consumidores con necesidades distintas.',
   },
   {
     clase: 'OnuTr069DetalleService',
     metodo: 'refrescarWifi',
     tipo: 'ResultadoRefrescarWifi',
     archivo: 'backend/src/modules/olt-nativo/ztp/onu-tr069-detalle.service.ts',
-    retiro: 'Sin fecha — el payload `detalle` es la lectura que el portal muestra, no un dato de transición',
-    razon: 'Payload `detalle` (OnuTr069Detalle) que PortalOnuService.wifi() necesita para pintar la pantalla — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+    vacio: 'consulta',
+    razon: 'Dispara un refresh y devuelve la lectura resultante — no hay una mutación cuyo destino D-14 pueda clasificar como aplicado/rechazado/reintentable. Es exactamente el hueco de las 33 consultas que F-0.1 §9.1 dejó registrado sin caso concreto.',
   },
   {
     clase: 'OnuTr069DetalleService',
     metodo: 'setWifi',
     tipo: 'ResultadoAplicarWifi',
     archivo: 'backend/src/modules/olt-nativo/ztp/onu-tr069-detalle.service.ts',
-    retiro: 'Sin fecha — el payload ok/applied/total/fallidas lo consume el panel operador',
-    razon: 'Payload ok/applied/total/fallidas que olt-nativo.controller.ts devuelve tal cual al operador — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+    vacio: 'exito_parcial',
+    razon: 'ok/applied/total/fallidas — ninguna de las seis clases dice "3 de 5 aplicadas". D-14 no tiene vocabulario para éxito parcial.',
   },
   {
     clase: 'OnuTr069DetalleService',
     metodo: 'setWifiAmbasBandas',
     tipo: 'ResultadoAplicarWifi',
     archivo: 'backend/src/modules/olt-nativo/ztp/onu-tr069-detalle.service.ts',
-    retiro: 'Sin fecha — mismo motivo que setWifi()',
-    razon: 'Payload ok/applied/total/fallidas — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+    vacio: 'exito_parcial',
+    razon: 'Mismo motivo que setWifi(): ok/applied/total/fallidas es éxito parcial, sin clase que lo exprese.',
   },
 ];
 
 /**
  * Operaciones de frontera que NO hablan `ResultadoOperacion` — ni literalmente (el tipo
- * compartido) ni por una extensión DECLARADA en el registro de arriba. Es el «ancho» que
- * F-0.1 §9.1 recongela en cada lote de la Ola 1: la cuenta honesta, ya reconciliada contra la
- * deuda transitoria en vez de dejarla como una discrepancia sin explicar.
+ * compartido), ni por una extensión TRANSITORIA declarada, ni por un caso R-6 declarado. Es el
+ * «ancho» que F-0.1 §9.1 recongela en cada lote de la Ola 1: la cuenta honesta, ya reconciliada
+ * contra la deuda transitoria Y contra el hueco de diseño en vez de dejarlas como una
+ * discrepancia sin explicar. Los dos registros se restan aquí por la MISMA razón pero son
+ * conceptualmente distintos — uno es deuda con fecha de pago, el otro es una pregunta sin
+ * contestar (R-6); no comparten techo (ver `extensiones-transitorias.spec.ts`).
  */
 export function operacionesSinResultadoOperacion(metodos: MetodoInfo[]): MetodoInfo[] {
-  const declaradas = new Set(
-    EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION.map((e) => `${e.clase}.${e.metodo}`),
-  );
+  const declaradas = new Set([
+    ...EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION.map((e) => `${e.clase}.${e.metodo}`),
+    ...CASOS_FUERA_DE_D14_RESULTADO_OPERACION.map((e) => `${e.clase}.${e.metodo}`),
+  ]);
   return operacionesDeFrontera(metodos).filter((m) =>
     clasificarRetorno(m.retorno) !== 'ResultadoOperacion' &&
     !declaradas.has(`${m.clase}.${m.nombre}`),
