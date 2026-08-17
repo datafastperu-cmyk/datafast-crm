@@ -17,6 +17,7 @@ import { filasUpdateReturning }       from '../../common/utils/pg-result.util';
 import { JwtPayload }                 from '../../common/decorators/current-user.decorator';
 import { NOTIFICATION_EVENTS }        from '../notificaciones/events/notification.events';
 import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
+import { esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 
 export interface CrearPromesaDto {
   contratoId:       string;
@@ -185,18 +186,23 @@ export class PromesasPagoService {
     if (contrato.ip_asignada && contrato.router_id) {
       try {
         const creds = await this.buildCreds(contrato.router_id);
+        // Ola 1, grupo 3b: firewallSvc/pppoeSvc hablan ResultadoOperacion — se traduce a
+        // throw dentro de este mismo try para reusar el fallback a outbox del catch de abajo.
         // Para suspendido: primero limpiar address-lists de bloqueo, luego aplicar prorroga
         if (contrato.estado === 'suspendido') {
-          await this.firewallSvc.reactivarCliente(creds, contrato.ip_asignada);
+          const rLimpiar = await this.firewallSvc.reactivarCliente(creds, contrato.ip_asignada);
+          if (!esExito(rLimpiar)) throw new Error(mensajeDe(rLimpiar));
         }
-        await this.firewallSvc.aplicarProrroga(
+        const rProrroga = await this.firewallSvc.aplicarProrroga(
           creds,
           contrato.ip_asignada,
           `Promesa: ${contrato.nombre_cliente ?? contrato.cliente_id} | ${new Date().toLocaleDateString('es-PE')}`,
         );
+        if (!esExito(rProrroga)) throw new Error(mensajeDe(rProrroga));
         // Re-habilitar PPPoE de un contrato que estaba sin servicio
         if (['suspendido'].includes(contrato.estado) && contrato.usuario_pppoe) {
-          await this.pppoeSvc.setEstado(creds, contrato.usuario_pppoe, false);
+          const rPppoe = await this.pppoeSvc.setEstado(creds, contrato.usuario_pppoe, false);
+          if (!esExito(rPppoe)) throw new Error(mensajeDe(rPppoe));
         }
         await this.repo.update(promesa.id, {
           mikrotikAplicado:  true,
@@ -357,22 +363,27 @@ export class PromesasPagoService {
     if (promesa.ipClienteSnapshot && promesa.routerIdSnapshot) {
       try {
         const creds = await this.buildCreds(promesa.routerIdSnapshot);
+        // Ola 1, grupo 3b: firewallSvc/pppoeSvc hablan ResultadoOperacion — se traduce a
+        // throw para reusar el mismo catch (solo loguea, no hay outbox fallback aquí).
         if (debeRebloquear) {
           // Re-bloquear: agregar a morosos y quitar de prorroga
-          await this.firewallSvc.suspenderCliente(
+          const rBloq = await this.firewallSvc.suspenderCliente(
             creds,
             promesa.ipClienteSnapshot,
             promesa.contratoId,
             `Cancelación de promesa: ${motivo || promesa.motivo}`,
           );
+          if (!esExito(rBloq)) throw new Error(mensajeDe(rBloq));
           // Deshabilitar PPPoE si el servicio está realmente suspendido (antes: 'cortado')
           if (estadoRealActual === 'suspendido' && promesa.usuarioPppoeSnapshot) {
-            await this.pppoeSvc.setEstado(creds, promesa.usuarioPppoeSnapshot, true);
+            const rPppoe = await this.pppoeSvc.setEstado(creds, promesa.usuarioPppoeSnapshot, true);
+            if (!esExito(rPppoe)) throw new Error(mensajeDe(rPppoe));
           }
           this.logger.log(`[Promesa] Cancelada + re-bloqueado: ip=${promesa.ipClienteSnapshot} estado=${promesa.contratoEstadoPrevio}`);
         } else {
           // El contrato era activo antes — dejar libre (quitar prorroga)
-          await this.firewallSvc.reactivarCliente(creds, promesa.ipClienteSnapshot);
+          const rLibre = await this.firewallSvc.reactivarCliente(creds, promesa.ipClienteSnapshot);
+          if (!esExito(rLibre)) throw new Error(mensajeDe(rLibre));
           this.logger.log(`[Promesa] Cancelada + reactivarCliente: ip=${promesa.ipClienteSnapshot}`);
         }
       } catch (err: any) {
@@ -421,9 +432,12 @@ export class PromesasPagoService {
     if (promesa.ipClienteSnapshot && promesa.routerIdSnapshot) {
       try {
         const creds = await this.buildCreds(promesa.routerIdSnapshot);
-        await this.firewallSvc.reactivarCliente(creds, promesa.ipClienteSnapshot);
+        // Ola 1, grupo 3b: se traduce a throw para reusar el catch (fallback a outbox abajo).
+        const rReact = await this.firewallSvc.reactivarCliente(creds, promesa.ipClienteSnapshot);
+        if (!esExito(rReact)) throw new Error(mensajeDe(rReact));
         if (promesa.usuarioPppoeSnapshot) {
-          await this.pppoeSvc.setEstado(creds, promesa.usuarioPppoeSnapshot, false);
+          const rPppoe = await this.pppoeSvc.setEstado(creds, promesa.usuarioPppoeSnapshot, false);
+          if (!esExito(rPppoe)) throw new Error(mensajeDe(rPppoe));
         }
         this.logger.log(`[Promesa] Cumplida y reactivada — promesa=${promesa.id}`);
       } catch (err: any) {
@@ -492,10 +506,12 @@ export class PromesasPagoService {
       try {
         const creds = await this.buildCreds(p.routerIdSnapshot);
         const [cl] = await this.ds.query<any[]>('SELECT nombre_completo FROM clientes WHERE id = $1', [p.clienteId]);
-        await this.firewallSvc.aplicarProrroga(
+        // Ola 1, grupo 3b: se traduce a throw para reusar el catch (cuenta reintentos abajo).
+        const rProrroga = await this.firewallSvc.aplicarProrroga(
           creds, p.ipClienteSnapshot,
           `Promesa: ${cl?.nombre_completo ?? p.clienteId} | ${new Date().toLocaleDateString('es-PE')}`,
         );
+        if (!esExito(rProrroga)) throw new Error(mensajeDe(rProrroga));
         await this.repo.update(p.id, { mikrotikAplicado: true, mikrotikAplicadoEn: new Date() });
         this.logger.log(`[Promesa] Reintento MK exitoso — promesa=${p.id}`);
       } catch (err: any) {
@@ -655,15 +671,19 @@ export class PromesasPagoService {
 
     try {
       const creds = await this.buildCreds(promesa.routerIdSnapshot);
-      await this.firewallSvc.suspenderCliente(
+      // Ola 1, grupo 3b: se traduce a throw para reusar el catch (fallback a outbox abajo).
+      const rSusp = await this.firewallSvc.suspenderCliente(
         creds,
         promesa.ipClienteSnapshot,
         promesa.contratoId,
         `Prorroga vencida — promesa:${promesa.id}`,
       );
+      if (!esExito(rSusp)) throw new Error(mensajeDe(rSusp));
       if (promesa.usuarioPppoeSnapshot) {
-        await this.pppoeSvc.desconectarSesion(creds, promesa.usuarioPppoeSnapshot);
-        await this.pppoeSvc.setEstado(creds, promesa.usuarioPppoeSnapshot, true);
+        const rDesc = await this.pppoeSvc.desconectarSesion(creds, promesa.usuarioPppoeSnapshot);
+        if (!esExito(rDesc)) throw new Error(mensajeDe(rDesc));
+        const rEst = await this.pppoeSvc.setEstado(creds, promesa.usuarioPppoeSnapshot, true);
+        if (!esExito(rEst)) throw new Error(mensajeDe(rEst));
       }
       await this.finalizarCorteEnBd(promesa);
       this.logger.log(`[Promesa] Corte ejecutado — promesa=${promesa.id}`);

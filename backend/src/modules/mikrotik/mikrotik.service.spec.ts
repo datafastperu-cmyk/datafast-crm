@@ -67,8 +67,12 @@ const mockPool = {
   connectDirect: jest.fn(),
 };
 
+// Ola 1, grupo 3b (2026-08-17): FirewallService/PppoeService/QueueService hablan
+// ResultadoOperacion — RO_APLICADO es el valor por defecto neutro para los mocks que no
+// declaran un escenario de fallo explícito.
+const RO_APLICADO = { clase: 'aplicado' as const, mensaje: 'ok' };
 const mockPppoe = {
-  crear:                jest.fn().mockResolvedValue('*1'),
+  crear:                jest.fn().mockResolvedValue(RO_APLICADO),
   eliminar:             jest.fn(),
   setEstado:            jest.fn(),
   desconectarSesion:    jest.fn(),
@@ -83,7 +87,7 @@ const mockPppoe = {
 };
 
 const mockQueue = {
-  crearSimpleQueue:         jest.fn().mockResolvedValue('*2'),
+  crearSimpleQueue:         jest.fn().mockResolvedValue(RO_APLICADO),
   eliminarSimpleQueue:      jest.fn(),
   tienePcqConfigurado:      jest.fn().mockResolvedValue(true),
   configurarPcqCompleto:    jest.fn(),
@@ -226,8 +230,8 @@ describe('MikrotikService', () => {
   describe('provisionarCliente()', () => {
     it('debe crear PPPoE + SimpleQueue', async () => {
       mockRepo.findOne.mockResolvedValue(mockRouter);
-      mockPppoe.crear.mockResolvedValue('*1');
-      mockQueue.crearSimpleQueue.mockResolvedValue('*2');
+      mockPppoe.crear.mockResolvedValue(RO_APLICADO);
+      mockQueue.crearSimpleQueue.mockResolvedValue(RO_APLICADO);
       mockFirewall.configurarReglasControl.mockResolvedValue(undefined);
 
       const dto = {
@@ -253,7 +257,7 @@ describe('MikrotikService', () => {
       mockRepo.findOne.mockResolvedValue(mockRouter);
       mockQueue.tienePcqConfigurado.mockResolvedValue(false);
       mockQueue.configurarPcqCompleto.mockResolvedValue(undefined);
-      mockPppoe.crear.mockResolvedValue('*1');
+      mockPppoe.crear.mockResolvedValue(RO_APLICADO);
       mockFirewall.configurarReglasControl.mockResolvedValue(undefined);
 
       const dto = {
@@ -271,8 +275,9 @@ describe('MikrotikService', () => {
   describe('suspenderCliente()', () => {
     it('debe agregar IP a Address List y desconectar sesión PPPoE', async () => {
       mockRepo.findOne.mockResolvedValue(mockRouter);
-      mockFirewall.suspenderCliente.mockResolvedValue(undefined);
-      mockPppoe.desconectarSesion.mockResolvedValue(undefined);
+      // Ola 1, grupo 3b: FirewallService/PppoeService hablan ResultadoOperacion.
+      mockFirewall.suspenderCliente.mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' });
+      mockPppoe.desconectarSesion.mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' });
       mockEvents.emit.mockReturnValue(true);
 
       await service.suspenderCliente(
@@ -298,7 +303,8 @@ describe('MikrotikService', () => {
   describe('reactivarCliente()', () => {
     it('debe quitar IP de Address Lists y emitir evento', async () => {
       mockRepo.findOne.mockResolvedValue(mockRouter);
-      mockFirewall.reactivarCliente.mockResolvedValue(undefined);
+      // Ola 1, grupo 3b: reactivarCliente() habla ResultadoOperacion.
+      mockFirewall.reactivarCliente.mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' });
       mockEvents.emit.mockReturnValue(true);
 
       await service.reactivarCliente(

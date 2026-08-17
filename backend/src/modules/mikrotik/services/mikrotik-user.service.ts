@@ -15,6 +15,7 @@ import { RouterConnectionPool }     from './connection-pool.service';
 import { PppoeService }             from './pppoe.service';
 import { QueueService }             from './queue.service';
 import { encrypt }                  from '../../../common/utils/encryption.util';
+import { esExito, mensajeDe }       from '../../../common/domain/resultado-operacion';
 import {
   AuthType,
   CreateMikrotikUserDto,
@@ -130,7 +131,9 @@ export class MikrotikUserService {
     let mikrotikId = '';
     try {
       // ── PASO 1: crear en RouterOS ─────────────────────────
-      mikrotikId = await this.pppoeSvc.crear(creds, {
+      // Ola 1, grupo 3b: pppoeSvc.crear() habla ResultadoOperacion. El nombre identifica
+      // el secret igual de bien que el `.id` interno de RouterOS que ya no viaja de vuelta.
+      const rPaso1 = await this.pppoeSvc.crear(creds, {
         name:          username,
         password,
         profile,
@@ -139,6 +142,8 @@ export class MikrotikUserService {
         comment:       `CRM:${contrato.id.slice(0, 8)}`,
         disabled:      false,
       });
+      if (!esExito(rPaso1)) throw new Error(mensajeDe(rPaso1));
+      mikrotikId = username;
 
       // ── PASO 2: actualizar contrato en BD ─────────────────
       await qr.manager.update(Contrato, contrato.id, {
@@ -221,7 +226,8 @@ export class MikrotikUserService {
       });
 
       // ── PASO 2: Simple Queue ──────────────────────────────
-      queueId = await this.queueSvc.crearSimpleQueue(creds, {
+      // Ola 1, grupo 3b: crearSimpleQueue() habla ResultadoOperacion.
+      const rPaso2 = await this.queueSvc.crearSimpleQueue(creds, {
         name:         queueName,
         target:       ip,
         maxLimitDown: plan.velocidadBajada / 1000,
@@ -237,6 +243,8 @@ export class MikrotikUserService {
         priority: plan.prioridad,
         comment:  `CRM:${contrato.id.slice(0, 8)}`,
       });
+      if (!esExito(rPaso2)) throw new Error(mensajeDe(rPaso2));
+      queueId = queueName;
 
       // ── PASO 3: actualizar contrato ───────────────────────
       await qr.manager.update(Contrato, contrato.id, {
@@ -341,7 +349,8 @@ export class MikrotikUserService {
       });
 
       // ── PASO 3: Simple Queue ──────────────────────────────
-      queueId = await this.queueSvc.crearSimpleQueue(creds, {
+      // Ola 1, grupo 3b: crearSimpleQueue() habla ResultadoOperacion.
+      const rPaso3 = await this.queueSvc.crearSimpleQueue(creds, {
         name:         queueName,
         target:       ip,
         maxLimitDown: plan.velocidadBajada / 1000,
@@ -357,6 +366,8 @@ export class MikrotikUserService {
         priority: plan.prioridad,
         comment:  `CRM:${contrato.id.slice(0, 8)}`,
       });
+      if (!esExito(rPaso3)) throw new Error(mensajeDe(rPaso3));
+      queueId = queueName;
 
       // ── PASO 4: actualizar contrato ───────────────────────
       await qr.manager.update(Contrato, contrato.id, {

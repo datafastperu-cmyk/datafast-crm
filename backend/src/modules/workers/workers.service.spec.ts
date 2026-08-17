@@ -62,20 +62,22 @@ function createMockJob<T>(data: T, name = 'test-job') {
 }
 
 // ── Mocks de servicios ────────────────────────────────────────
+// Ola 1, grupo 3b (2026-08-17): FirewallService/PppoeService hablan ResultadoOperacion.
+const RO_APLICADO = { clase: 'aplicado' as const, mensaje: 'ok' };
 const mockFirewall = {
-  suspenderCliente:        jest.fn().mockResolvedValue(undefined),
-  reactivarCliente:        jest.fn().mockResolvedValue(undefined),
+  suspenderCliente:        jest.fn().mockResolvedValue(RO_APLICADO),
+  reactivarCliente:        jest.fn().mockResolvedValue(RO_APLICADO),
   configurarReglasControl: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockPppoe = {
-  desconectarSesion: jest.fn().mockResolvedValue(undefined),
-  crear:             jest.fn().mockResolvedValue('*1'),
+  desconectarSesion: jest.fn().mockResolvedValue(RO_APLICADO),
+  crear:             jest.fn().mockResolvedValue(RO_APLICADO),
   // Suspender ya no es solo desconectar la sesión: además DESHABILITA el secret
   // (`setEstado(creds, usuario, true)`). Sin esto el cliente se reconectaba al instante
   // — desconectar sin deshabilitar no suspende a nadie.
-  setEstado:         jest.fn().mockResolvedValue(undefined),
-  eliminar:          jest.fn().mockResolvedValue(undefined),
+  setEstado:         jest.fn().mockResolvedValue(RO_APLICADO),
+  eliminar:          jest.fn().mockResolvedValue(RO_APLICADO),
 };
 
 const mockWhatsapp = {

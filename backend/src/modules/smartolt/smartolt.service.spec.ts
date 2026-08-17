@@ -96,7 +96,8 @@ const mockDs = { query: jest.fn() };
 const mockEvents = { emit: jest.fn() };
 
 const mockMikrotikSvc = { findOne: jest.fn() };
-const mockPppoeSvc    = { crear: jest.fn().mockResolvedValue('*1') };
+// Ola 1, grupo 3b (2026-08-17): PppoeService.crear() habla ResultadoOperacion.
+const mockPppoeSvc    = { crear: jest.fn().mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' }) };
 const mockVelocidadOrc = { aplicarVelocidad: jest.fn().mockResolvedValue({ exitoso: true, estrategia: 'simple_queue', reglasCreadas: 1, detalle: 'ok' }) };
 const mockFirewallSvc  = { configurarReglasControl: jest.fn() };
 

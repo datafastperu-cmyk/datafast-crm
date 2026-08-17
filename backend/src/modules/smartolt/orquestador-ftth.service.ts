@@ -13,6 +13,7 @@ import { AuditoriaService }   from '../auth/auditoria.service';
 import { JwtPayload }         from '../../common/decorators/current-user.decorator';
 import { EstadoOnu }          from './entities/onu.entity';
 import { encrypt, decrypt }   from '../../common/utils/encryption.util';
+import { esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 
 import {
   FlujoComipletoFtthDto,
@@ -268,13 +269,17 @@ export class OrquestadorFtthService {
             version:         router.version_ros === 'v7' ? 'v7' : 'v6',
           };
 
-          await this.pppoeSvc.crear(creds, {
+          // Ola 1, grupo 3b: pppoeSvc.crear() habla ResultadoOperacion — se traduce a throw
+          // para que el ejecutor de la saga (que atrapa excepciones para marcar el paso
+          // 'error' y omitir los restantes) siga funcionando sin cambios.
+          const rPppoe = await this.pppoeSvc.crear(creds, {
             name:          ctx.usuarioPppoe,
             password,
             profile:       router.ppp_profile || 'default',
             remoteAddress: ctx.ipAsignada,
             comment:       `DATAFAST:${dto.contratoId}`,
           });
+          if (!esExito(rPppoe)) throw new Error(mensajeDe(rPppoe));
 
           return `PPPoE creado: ${ctx.usuarioPppoe} | IP remota: ${ctx.ipAsignada}`;
         },

@@ -44,6 +44,7 @@ import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { RedisLockService } from '../../common/redis/redis-lock.service';
 import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
 import { SQL_COMPROBANTE_VENCIDO } from '../facturacion/domain/mora';
+import { esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 
 // ─────────────────────────────────────────────────────────────
 // CobranzaScheduler — Encola los jobs en los momentos correctos
@@ -531,38 +532,42 @@ export class CobranzaWorker {
       // Lock distribuido: evita que aprovisionamiento y cobranza actúen
       // simultáneamente sobre el mismo router desde distintos procesos PM2.
       await this.redisLock.withLock(`router:${routerId}`, 35_000, async () => {
+        // Ola 1, grupo 3b: firewallSvc/pppoeSvc hablan ResultadoOperacion — ya no lanzan. El
+        // try/catch se reemplaza por esExito(), preservando los mismos flags/mensajes: sin
+        // esto, un fallo real quedaría leído como éxito (mikrotikFallido nunca se marca), la
+        // regresión silenciosa exacta que esta ola existe para impedir.
         // ── 2. Agregar a Address List morosos ───────────────
         await job.progress(20);
-        try {
-          await this.firewallSvc.suspenderCliente(
-            creds, ipAsignada, clienteId,
-            `Suspensión automática: ${nombreCliente ?? clienteId} | S/ ${deudaTotal} — ${new Date().toLocaleDateString('es-PE')}`,
-          );
+        const rSusp = await this.firewallSvc.suspenderCliente(
+          creds, ipAsignada, clienteId,
+          `Suspensión automática: ${nombreCliente ?? clienteId} | S/ ${deudaTotal} — ${new Date().toLocaleDateString('es-PE')}`,
+        );
+        if (esExito(rSusp)) {
           this.logger.log(`✓ IP ${ipAsignada} en lista morosos | router: ${router.ip_gestion}`);
-        } catch (err) {
+        } else {
           mikrotikFallido = true;
-          errores.push(`Firewall: ${err.message}`);
-          this.logger.error(`✗ Error Address List ${ipAsignada}: ${err.message}`);
+          errores.push(`Firewall: ${mensajeDe(rSusp)}`);
+          this.logger.error(`✗ Error Address List ${ipAsignada}: ${mensajeDe(rSusp)}`);
         }
 
         // ── 3. Desconectar sesión PPPoE activa ──────────────
         await job.progress(40);
-        try {
-          await this.pppoeSvc.desconectarSesion(creds, usuarioPppoe);
+        const rDesc = await this.pppoeSvc.desconectarSesion(creds, usuarioPppoe);
+        if (esExito(rDesc)) {
           this.logger.log(`✓ Sesión PPPoE desconectada: ${usuarioPppoe}`);
-        } catch (err) {
-          errores.push(`PPPoE disconnect: ${err.message}`);
-          this.logger.warn(`✗ No se pudo desconectar sesión ${usuarioPppoe}: ${err.message}`);
+        } else {
+          errores.push(`PPPoE disconnect: ${mensajeDe(rDesc)}`);
+          this.logger.warn(`✗ No se pudo desconectar sesión ${usuarioPppoe}: ${mensajeDe(rDesc)}`);
         }
 
         // ── 4. Deshabilitar PPPoE secret (impide reconexión) ─
-        try {
-          await this.pppoeSvc.setEstado(creds, usuarioPppoe, true);
+        const rEstado = await this.pppoeSvc.setEstado(creds, usuarioPppoe, true);
+        if (esExito(rEstado)) {
           this.logger.log(`✓ PPPoE secret deshabilitado: ${usuarioPppoe}`);
-        } catch (err) {
+        } else {
           mikrotikFallido = true;
-          errores.push(`PPPoE disable: ${err.message}`);
-          this.logger.warn(`✗ No se pudo deshabilitar PPPoE ${usuarioPppoe}: ${err.message}`);
+          errores.push(`PPPoE disable: ${mensajeDe(rEstado)}`);
+          this.logger.warn(`✗ No se pudo deshabilitar PPPoE ${usuarioPppoe}: ${mensajeDe(rEstado)}`);
         }
       }).catch((lockErr) => {
         // Si no adquirió el lock, loguear y continuar — el Outbox reintentará
@@ -742,14 +747,15 @@ export class CobranzaWorker {
         );
       } else {
 
+      // Ola 1, grupo 3b: firewallSvc/pppoeSvc hablan ResultadoOperacion — ya no lanzan.
       // ── 2. Quitar de Address Lists ─────────────────────
-      try {
-        await this.firewallSvc.reactivarCliente(creds, ipAsignada);
+      const rReact = await this.firewallSvc.reactivarCliente(creds, ipAsignada);
+      if (esExito(rReact)) {
         this.logger.log(`✓ IP ${ipAsignada} removida de listas de control`);
-      } catch (err) {
+      } else {
         mikrotikFallido = true;
-        errores.push(`Firewall: ${err.message}`);
-        this.logger.error(`✗ Error removiendo ${ipAsignada} de Address List: ${err.message}`);
+        errores.push(`Firewall: ${mensajeDe(rReact)}`);
+        this.logger.error(`✗ Error removiendo ${ipAsignada} de Address List: ${mensajeDe(rReact)}`);
       }
 
       // ── 2b. Habilitar PPPoE secret (permite reconexión) ──
@@ -759,13 +765,13 @@ export class CobranzaWorker {
       ).catch(() => [null]);
 
       if (conRow?.usuario_pppoe) {
-        try {
-          await this.pppoeSvc.setEstado(creds, conRow.usuario_pppoe, false);
+        const rHab = await this.pppoeSvc.setEstado(creds, conRow.usuario_pppoe, false);
+        if (esExito(rHab)) {
           this.logger.log(`✓ PPPoE secret habilitado: ${conRow.usuario_pppoe}`);
-        } catch (err) {
+        } else {
           mikrotikFallido = true;
-          errores.push(`PPPoE enable: ${err.message}`);
-          this.logger.warn(`✗ No se pudo habilitar PPPoE ${conRow.usuario_pppoe}: ${err.message}`);
+          errores.push(`PPPoE enable: ${mensajeDe(rHab)}`);
+          this.logger.warn(`✗ No se pudo habilitar PPPoE ${conRow.usuario_pppoe}: ${mensajeDe(rHab)}`);
         }
       }
 

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RouterConnectionPool, RouterCredentials } from './connection-pool.service';
+import { RouterConnectionPool, RouterCredentials, clasificarErrorMikrotik } from './connection-pool.service';
+import { ResultadoOperacion } from '../../../common/domain/resultado-operacion';
 
 export interface QueueParams {
   name:            string;
@@ -34,45 +35,52 @@ export class QueueService {
   // Método más simple: cola por IP de destino
   // ────────────────────────────────────────────────────────────
 
-  async crearSimpleQueue(creds: RouterCredentials, params: QueueParams): Promise<string> {
-    return this.pool.execute(creds, async (api) => {
-      const existing = await api.write('/queue/simple/print', [`?name=${params.name}`]);
+  // Ola 1, grupo 3b, bloque grande (2026-08-17). Consumida por OutboxRedService.
+  // ejecutarComando() (única vía — PROVISIONAR). Ninguna condición de rechazado_definitivo:
+  // upsert puro, igual que PppoeService.crear().
+  async crearSimpleQueue(creds: RouterCredentials, params: QueueParams): Promise<ResultadoOperacion> {
+    try {
+      await this.pool.execute(creds, async (api) => {
+        const existing = await api.write('/queue/simple/print', [`?name=${params.name}`]);
 
-      const target  = params.target.includes('/') ? params.target : `${params.target}/32`;
-      const maxLimit = `${params.maxLimitUp}M/${params.maxLimitDown}M`;
+        const target  = params.target.includes('/') ? params.target : `${params.target}/32`;
+        const maxLimit = `${params.maxLimitUp}M/${params.maxLimitDown}M`;
 
-      // Burst string: "burstLimit/burstThresh/burstTime" (subida/bajada separados por espacio)
-      const burstArgs: string[] = [];
-      if (params.burstLimitDown && params.burstLimitUp) {
-        burstArgs.push(`=burst-limit=${params.burstLimitUp}M/${params.burstLimitDown}M`);
-        burstArgs.push(`=burst-threshold=${params.burstThreshUp || params.maxLimitUp}M/${params.burstThreshDown || params.maxLimitDown}M`);
-        burstArgs.push(`=burst-time=${params.burstTimeUp || 8}/${params.burstTimeDown || 8}`);
-      }
+        // Burst string: "burstLimit/burstThresh/burstTime" (subida/bajada separados por espacio)
+        const burstArgs: string[] = [];
+        if (params.burstLimitDown && params.burstLimitUp) {
+          burstArgs.push(`=burst-limit=${params.burstLimitUp}M/${params.burstLimitDown}M`);
+          burstArgs.push(`=burst-threshold=${params.burstThreshUp || params.maxLimitUp}M/${params.burstThreshDown || params.maxLimitDown}M`);
+          burstArgs.push(`=burst-time=${params.burstTimeUp || 8}/${params.burstTimeDown || 8}`);
+        }
 
-      if (existing.length > 0) {
-        await api.write('/queue/simple/set', [
-          `=.id=${existing[0]['.id']}`,
+        if (existing.length > 0) {
+          await api.write('/queue/simple/set', [
+            `=.id=${existing[0]['.id']}`,
+            `=target=${target}`,
+            `=max-limit=${maxLimit}`,
+            ...burstArgs,
+            ...(params.comment ? [`=comment=${params.comment}`] : []),
+          ]);
+          this.logger.log(`Simple Queue actualizada: ${params.name} | ${maxLimit}`);
+          return;
+        }
+
+        await api.write('/queue/simple/add', [
+          `=name=${params.name}`,
           `=target=${target}`,
           `=max-limit=${maxLimit}`,
+          `=queue=default-small/default-small`,
           ...burstArgs,
           ...(params.comment ? [`=comment=${params.comment}`] : []),
         ]);
-        this.logger.log(`Simple Queue actualizada: ${params.name} | ${maxLimit}`);
-        return existing[0]['.id'];
-      }
 
-      const result = await api.write('/queue/simple/add', [
-        `=name=${params.name}`,
-        `=target=${target}`,
-        `=max-limit=${maxLimit}`,
-        `=queue=default-small/default-small`,
-        ...burstArgs,
-        ...(params.comment ? [`=comment=${params.comment}`] : []),
-      ]);
-
-      this.logger.log(`Simple Queue creada: ${params.name} | ${maxLimit} | target: ${target}`);
-      return result?.[0]?.ret || '';
-    });
+        this.logger.log(`Simple Queue creada: ${params.name} | ${maxLimit} | target: ${target}`);
+      });
+      return { clase: 'aplicado', mensaje: `Simple Queue ${params.name} configurada.` };
+    } catch (err) {
+      return clasificarErrorMikrotik(err);
+    }
   }
 
   async eliminarSimpleQueue(creds: RouterCredentials, name: string): Promise<void> {

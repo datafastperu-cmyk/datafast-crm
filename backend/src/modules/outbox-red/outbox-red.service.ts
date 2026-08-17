@@ -3,6 +3,7 @@ import {
   ResultadoOperacion,
   clasificarError,
   esExito,
+  mensajeDe,
 } from '../../common/domain/resultado-operacion';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
@@ -12,6 +13,7 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { FirewallService }   from '../mikrotik/services/firewall.service';
 import { PppoeService }      from '../mikrotik/services/pppoe.service';
 import { QueueService }      from '../mikrotik/services/queue.service';
+import { clasificarErrorMikrotik } from '../mikrotik/services/connection-pool.service';
 import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
 import { decrypt }           from '../../common/utils/encryption.util';
 import { filasUpdateReturning } from '../../common/utils/pg-result.util';
@@ -526,22 +528,33 @@ export class OutboxRedService {
     const creds = this.buildCreds(cmd.router_id, router);
     const payload = cmd.payload as any;
 
+    // Ola 1, grupo 3b (2026-08-17). Espeja exactamente ejecutarComandoOnu(): el resultado
+    // llega ya clasificado por el DOMINIO (FirewallService/PppoeService/QueueService hablan
+    // ResultadoOperacion), el outbox no vuelve a inferir reintentabilidad de una excepción
+    // sin tipar. Cada acción encadena sus pasos en el mismo orden que antes; el primero que
+    // no sea éxito detiene los pasos restantes de ESTE intento — mismo comportamiento que el
+    // try/catch original (abortar y reintentar el conjunto en el próximo ciclo), ahora con
+    // la clase correcta en vez de "lanzó algo". Las escrituras de mikrotik son idempotentes:
+    // repetir un paso ya aplicado en el reintento siguiente es un no-op.
+    let res: ResultadoOperacion;
     try {
       if (cmd.accion === 'SUSPENDER') {
-        await this.firewallSvc.suspenderCliente(
+        res = await this.firewallSvc.suspenderCliente(
           creds,
           payload.ipAsignada,
           payload.clienteId,
           `Mora reintento outbox — intento ${cmd.intentos + 1}`,
         );
-        if (payload.usuarioPppoe) {
-          await this.pppoeSvc.desconectarSesion(creds, payload.usuarioPppoe);
-          await this.pppoeSvc.setEstado(creds, payload.usuarioPppoe, true);
+        if (esExito(res) && payload.usuarioPppoe) {
+          res = await this.pppoeSvc.desconectarSesion(creds, payload.usuarioPppoe);
+          if (esExito(res)) {
+            res = await this.pppoeSvc.setEstado(creds, payload.usuarioPppoe, true);
+          }
         }
       } else if (cmd.accion === 'REACTIVAR') {
-        await this.firewallSvc.reactivarCliente(creds, payload.ipAsignada);
-        if (payload.usuarioPppoe) {
-          await this.pppoeSvc.setEstado(creds, payload.usuarioPppoe, false);
+        res = await this.firewallSvc.reactivarCliente(creds, payload.ipAsignada);
+        if (esExito(res) && payload.usuarioPppoe) {
+          res = await this.pppoeSvc.setEstado(creds, payload.usuarioPppoe, false);
         }
       } else if (cmd.accion === 'DESPROVISIONAR') {
         // El payload manda sobre el contrato. La saga de baja deja `ip_asignada` y
@@ -563,83 +576,91 @@ export class OutboxRedService {
         const ip = payload.ipAsignada ?? contratoRow?.ipAsignada ?? null;
         const usuarioPppoe = payload.usuarioPppoe ?? contratoRow?.usuarioPppoe ?? null;
 
-        // Limpiar address-lists morosos/prorroga (evita IPs huérfanas en el router).
-        // Se intenta aunque el contrato ya no exista: el borrado del cliente no debe
-        // dejar la IP colgada en el firewall.
+        // Limpiar address-lists morosos/prorroga (evita IPs huérfanas en el router) es
+        // best-effort: su fallo NO aborta la eliminación del PPPoE que sigue — el borrado
+        // del cliente no debe dejar la IP colgada en el firewall, pero tampoco al revés.
+        // Se intenta aunque el contrato ya no exista.
         if (ip) {
-          try {
-            await this.firewallSvc.reactivarCliente(creds, ip);
-          } catch (e: any) {
-            this.logger.warn(`[OutboxRed] DESPROVISIONAR address-list error: ${e?.message}`);
+          const rFw = await this.firewallSvc.reactivarCliente(creds, ip);
+          if (!esExito(rFw)) {
+            this.logger.warn(`[OutboxRed] DESPROVISIONAR address-list error: ${mensajeDe(rFw)}`);
           }
         }
 
         const rawTipo = contratoRow?.tipoAuth ?? contratoRow?.tipoControl ?? 'ninguna';
         const tipo    = rawTipo === 'pppoe_addresslist' ? 'pppoe' : rawTipo;
         if (usuarioPppoe && (tipo === 'pppoe' || !contratoRow)) {
-          await this.pppoeSvc.eliminar(creds, usuarioPppoe);
+          res = await this.pppoeSvc.eliminar(creds, usuarioPppoe);
+        } else {
+          res = { clase: 'no_aplica', mensaje: 'Sin usuario PPPoE que eliminar.' };
         }
       } else if (cmd.accion === 'APLICAR_PRORROGA') {
         const p = payload as PayloadAplicarProrroga;
-        await this.firewallSvc.aplicarProrroga(
+        res = await this.firewallSvc.aplicarProrroga(
           creds,
           p.ipAsignada,
           `Promesa: ${p.nombreCliente ?? p.promesaId} | ${new Date().toLocaleDateString('es-PE')}`,
         );
         // Si el contrato estaba sin servicio, re-habilitar el secret PPPoE. El snapshot del
         // estado previo decía 'cortado' hasta la fase 1; hoy esa situación es 'suspendido'.
-        if (p.usuarioPppoe && p.contratoEstadoPrevio === 'suspendido') {
-          await this.pppoeSvc.setEstado(creds, p.usuarioPppoe, false);
+        if (esExito(res) && p.usuarioPppoe && p.contratoEstadoPrevio === 'suspendido') {
+          res = await this.pppoeSvc.setEstado(creds, p.usuarioPppoe, false);
         }
-        // Marcar mikrotik_aplicado en la promesa
-        await this.ds.query(
-          `UPDATE promesas_pago SET mikrotik_aplicado = TRUE, mikrotik_aplicado_en = NOW()
-           WHERE id = $1`,
-          [p.promesaId],
-        ).catch(() => {});
+        if (esExito(res)) {
+          // Marcar mikrotik_aplicado en la promesa
+          await this.ds.query(
+            `UPDATE promesas_pago SET mikrotik_aplicado = TRUE, mikrotik_aplicado_en = NOW()
+             WHERE id = $1`,
+            [p.promesaId],
+          ).catch(() => {});
+        }
 
       } else if (cmd.accion === 'REVOCAR_PRORROGA') {
         const p = payload as PayloadRevocarProrroga;
-        await this.firewallSvc.suspenderCliente(
+        res = await this.firewallSvc.suspenderCliente(
           creds,
           p.ipAsignada,
           cmd.contrato_id,
           `Prorroga vencida — promesa:${p.promesaId}`,
         );
-        if (p.usuarioPppoe) {
-          await this.pppoeSvc.desconectarSesion(creds, p.usuarioPppoe);
-          await this.pppoeSvc.setEstado(creds, p.usuarioPppoe, true);
+        if (esExito(res) && p.usuarioPppoe) {
+          res = await this.pppoeSvc.desconectarSesion(creds, p.usuarioPppoe);
+          if (esExito(res)) {
+            res = await this.pppoeSvc.setEstado(creds, p.usuarioPppoe, true);
+          }
         }
-        // Marcar promesa como VENCIDA y el contrato como SUSPENDIDO.
-        //
-        // Escribía 'cortado' (retirado el 2026-08-09, fase 1). No era un estado distinto del
-        // servicio —el abonado está sin él en los dos— sino la CAUSA de haber llegado ahí, y su
-        // sitio es el historial. Ahora la causa viaja en 'origen'.
-        await this.ds.query(
-          `UPDATE promesas_pago SET estado = 'vencida', mikrotik_aplicado = TRUE, mikrotik_aplicado_en = NOW()
-           WHERE id = $1`,
-          [p.promesaId],
-        ).catch(() => {});
-        await this.ds.query(
-          `UPDATE servicios SET estado = 'suspendido', en_prorroga = FALSE, prorroga_hasta = NULL,
-                  fecha_estado = NOW(), motivo_estado = 'Corte por prórroga incumplida'
-           WHERE id = $1`,
-          [cmd.contrato_id],
-        ).catch(() => {});
-        await this.ds.query(
-          `INSERT INTO servicios_historial
-             (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
-           SELECT id, empresa_id, 'activo', 'suspendido',
-                  'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida'
-             FROM servicios WHERE id = $1`,
-          [cmd.contrato_id],
-        ).catch(() => {});
+        if (esExito(res)) {
+          // Marcar promesa como VENCIDA y el contrato como SUSPENDIDO.
+          //
+          // Escribía 'cortado' (retirado el 2026-08-09, fase 1). No era un estado distinto del
+          // servicio —el abonado está sin él en los dos— sino la CAUSA de haber llegado ahí, y su
+          // sitio es el historial. Ahora la causa viaja en 'origen'.
+          await this.ds.query(
+            `UPDATE promesas_pago SET estado = 'vencida', mikrotik_aplicado = TRUE, mikrotik_aplicado_en = NOW()
+             WHERE id = $1`,
+            [p.promesaId],
+          ).catch(() => {});
+          await this.ds.query(
+            `UPDATE servicios SET estado = 'suspendido', en_prorroga = FALSE, prorroga_hasta = NULL,
+                    fecha_estado = NOW(), motivo_estado = 'Corte por prórroga incumplida'
+             WHERE id = $1`,
+            [cmd.contrato_id],
+          ).catch(() => {});
+          await this.ds.query(
+            `INSERT INTO servicios_historial
+               (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
+             SELECT id, empresa_id, 'activo', 'suspendido',
+                    'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida'
+               FROM servicios WHERE id = $1`,
+            [cmd.contrato_id],
+          ).catch(() => {});
+        }
 
       } else if (cmd.accion === 'PROVISIONAR') {
         const p = payload as PayloadProvisionarRed;
 
         // Paso A: PPPoE (upsert — idempotente si ya existía de un intento previo)
-        await this.pppoeSvc.crear(creds, {
+        res = await this.pppoeSvc.crear(creds, {
           name:          p.usuarioPppoe,
           password:      p.passwordPppoe,
           profile:       p.perfilPppoe || 'default',
@@ -650,8 +671,8 @@ export class OutboxRedService {
         });
 
         // Paso B: Simple Queue (upsert — idempotente)
-        if (!p.tipoQueue || p.tipoQueue === 'simple_queue') {
-          await this.queueSvc.crearSimpleQueue(creds, {
+        if (esExito(res) && (!p.tipoQueue || p.tipoQueue === 'simple_queue')) {
+          res = await this.queueSvc.crearSimpleQueue(creds, {
             name:         p.usuarioPppoe,
             target:       `${p.ipAsignada}/32`,
             maxLimitDown: p.downloadMbps,
@@ -659,64 +680,127 @@ export class OutboxRedService {
             comment:      `DATAFAST:ClienteID:${p.clienteId}`,
           });
         }
+      } else {
+        // Acción no reconocida: mismo desenlace que antes (ningún branch la manejaba y
+        // caía directo a EJECUTADO) — ahora explícito en vez de implícito.
+        res = { clase: 'no_aplica', mensaje: `Acción no reconocida: ${cmd.accion}` };
       }
+    } catch (err) {
+      // Red de seguridad: cualquier llamada que todavía lance en vez de devolver (p.ej. las
+      // consultas de `this.ds.query` fuera de las capacidades convertidas). Se usa el
+      // clasificador de borde de mikrotik (no clasificarError() genérico) para no perder la
+      // distinción conexión-vs-comando también en este camino.
+      res = clasificarErrorMikrotik(err);
+    }
 
+    const nuevosIntentos = (cmd.intentos as number) + 1;
+
+    // ── Éxito: aplicado, ya_en_destino o no_aplica ──────────────────
+    if (esExito(res)) {
       await this.ds.query(`
         UPDATE comandos_red_pendientes
         SET    estado = 'EJECUTADO', ejecutado_en = NOW()
         WHERE  id = $1
       `, [cmd.id]);
-
+      const detalle = res.clase === 'aplicado' ? '' : ` (${res.clase})`;
       this.logger.log(
-        `[OutboxRed] ✅ ${cmd.accion} ejecutado → contrato=${cmd.contrato_id} intento=${cmd.intentos + 1}`,
+        `[OutboxRed] ✅ ${cmd.accion} ejecutado → contrato=${cmd.contrato_id} intento=${nuevosIntentos}${detalle}`,
       );
-    } catch (err: any) {
-      // Nunca se descarta: el comando queda PENDIENTE y se reintenta (cron cada 5 min
-      // + trigger inmediato al reconectar el router) hasta que se aplique en hardware.
-      // Un corte/reactivación es una obligación, no un "mejor esfuerzo": aunque el túnel
-      // VPN esté caído días, al volver el router los cambios se aplican automáticamente.
-      const nuevosIntentos = (cmd.intentos as number) + 1;
+      return;
+    }
 
-      // Vuelve a PENDIENTE: libera el reclamo para que el próximo ciclo lo reintente.
-      // Omitirlo dejaría el comando EN_PROCESO hasta que expire el TTL — 10 min de
-      // latencia extra en cada fallo transitorio.
+    // ── Rechazo definitivo: reintentar produce el mismo veredicto ───
+    // Ninguna de las 8 capacidades de este bloque tiene hoy una condición que produzca esta
+    // clase (ver F-0.1 §9.1) — la rama existe por completitud del patrón (D-14) y queda
+    // ejercitada por un resultado fabricado en outbox-red.mikrotik.spec.ts (PC-04).
+    if (res.clase === 'rechazado_definitivo') {
       await this.ds.query(`
         UPDATE comandos_red_pendientes
-        SET    estado = 'PENDIENTE', intentos = $2, ultimo_error = $3,
-               reclamado_por = NULL, reclamado_en = NULL, claim_expira_en = NULL
-        WHERE  id = $1
-      `, [cmd.id, nuevosIntentos, err.message?.slice(0, 500)]);
+        SET estado = 'AGOTADO', intentos = $2, ultimo_error = $3
+        WHERE id = $1
+      `, [cmd.id, nuevosIntentos, res.motivo.slice(0, 500)]);
+      this.logger.error(
+        `[OutboxRed] ${cmd.accion} rechazado de forma permanente → contrato=${cmd.contrato_id}: ${res.motivo}`,
+      );
+      void this.eventos?.registrar({
+        nivel:    'error',
+        origen:   'mikrotik',
+        codigo:   'OUTBOX_RED_RECHAZO_PERMANENTE',
+        mensaje:  `Comando ${cmd.accion} rechazado de forma permanente (contrato ${cmd.contrato_id}): ${res.motivo}`,
+        contexto: { contratoId: cmd.contrato_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
+      });
+      return;
+    }
 
-      // Notificación de visibilidad tras muchos reintentos (sigue reintentando).
-      if (nuevosIntentos === cmd.max_intentos) {
-        this.logger.error(
-          `[OutboxRed] ⚠️ ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos → ` +
-          `contrato=${cmd.contrato_id} router=${cmd.router_id} (sigue reintentando) | ${err.message}`,
-        );
-        const [row] = await this.ds.query<any[]>(
-          `SELECT empresa_id FROM servicios WHERE id = $1 LIMIT 1`,
-          [cmd.contrato_id],
-        ).catch(() => [null]);
+    // ── Indeterminado: pudo haberse aplicado ────────────────────────
+    // No se reintenta a ciegas. Se deja PENDIENTE —el trabajo no se abandona— pero se AUDITA
+    // para que el operador verifique el estado real, y el reintento queda a cargo del ciclo
+    // normal, no de un bucle inmediato (mismo criterio que la rama ONU).
+    if (res.clase === 'indeterminado') {
+      await this.ds.query(`
+        UPDATE comandos_red_pendientes
+        SET estado = 'PENDIENTE', intentos = $2, ultimo_error = $3,
+            reclamado_por = NULL, reclamado_en = NULL, claim_expira_en = NULL
+        WHERE id = $1
+      `, [cmd.id, nuevosIntentos, `INDETERMINADO: ${res.motivo}`.slice(0, 500)]);
+      this.logger.error(
+        `[OutboxRed] ${cmd.accion} INDETERMINADO → contrato=${cmd.contrato_id}: ${res.motivo} ` +
+        `— pudo haberse aplicado en el hardware; verificar estado real`,
+      );
+      void this.eventos?.registrar({
+        nivel:    'error',
+        origen:   'mikrotik',
+        codigo:   'OUTBOX_RED_INDETERMINADO',
+        mensaje:  `Comando ${cmd.accion} con resultado indeterminado (contrato ${cmd.contrato_id}, router ${cmd.router_id}): ${res.motivo}. La operación PUDO aplicarse — verificar el estado real en el router antes de asumir que no pasó nada.`,
+        contexto: { contratoId: cmd.contrato_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
+      });
+      return;
+    }
 
-        this.events.emit(NOTIFICATION_EVENTS.OUTBOX_RED_AGOTADO, {
-          contratoId:  cmd.contrato_id,
-          routerId:    cmd.router_id,
-          accion:      cmd.accion,
-          ultimoError: (err.message ?? 'Error desconocido').slice(0, 200),
-          empresaId:   row?.empresa_id ?? undefined,
-        } satisfies EventOutboxRedAgotado);
+    // ── Reintentable: obligación de volver a intentar ───────────────
+    // Nunca se descarta: el comando queda PENDIENTE y se reintenta (cron cada 5 min + trigger
+    // inmediato al reconectar el router) hasta que se aplique en hardware. Un corte/
+    // reactivación es una obligación, no un "mejor esfuerzo": aunque el túnel VPN esté caído
+    // días, al volver el router los cambios se aplican automáticamente.
+    await this.ds.query(`
+      UPDATE comandos_red_pendientes
+      SET    estado = 'PENDIENTE', intentos = $2, ultimo_error = $3,
+             reclamado_por = NULL, reclamado_en = NULL, claim_expira_en = NULL
+      WHERE  id = $1
+    `, [cmd.id, nuevosIntentos, res.motivo.slice(0, 500)]);
 
-        void this.eventos?.registrar({
-          origen:   'mikrotik',
-          codigo:   'OUTBOX_RED_AGOTADO',
-          mensaje:  `Comando ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (contrato ${cmd.contrato_id}, router ${cmd.router_id}): ${err.message}`,
-          contexto: { contratoId: cmd.contrato_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
-        });
-      } else {
-        this.logger.warn(
-          `[OutboxRed] Reintento ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${err.message}`,
-        );
-      }
+    // Notificación de visibilidad tras muchos reintentos (sigue reintentando). El evento
+    // OUTBOX_RED_AGOTADO se queda exactamente como estaba — nunca compite con
+    // OUTBOX_RED_RECHAZO_PERMANENTE de arriba: significan cosas distintas y ahora tienen
+    // nombres distintos (F-0.1 §9.1, "trampa 1").
+    if (nuevosIntentos === cmd.max_intentos) {
+      this.logger.error(
+        `[OutboxRed] ⚠️ ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos → ` +
+        `contrato=${cmd.contrato_id} router=${cmd.router_id} (sigue reintentando) | ${res.motivo}`,
+      );
+      const [row] = await this.ds.query<any[]>(
+        `SELECT empresa_id FROM servicios WHERE id = $1 LIMIT 1`,
+        [cmd.contrato_id],
+      ).catch(() => [null]);
+
+      this.events.emit(NOTIFICATION_EVENTS.OUTBOX_RED_AGOTADO, {
+        contratoId:  cmd.contrato_id,
+        routerId:    cmd.router_id,
+        accion:      cmd.accion,
+        ultimoError: res.motivo.slice(0, 200),
+        empresaId:   row?.empresa_id ?? undefined,
+      } satisfies EventOutboxRedAgotado);
+
+      void this.eventos?.registrar({
+        origen:   'mikrotik',
+        codigo:   'OUTBOX_RED_AGOTADO',
+        mensaje:  `Comando ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (contrato ${cmd.contrato_id}, router ${cmd.router_id}): ${res.motivo}`,
+        contexto: { contratoId: cmd.contrato_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
+      });
+    } else {
+      this.logger.warn(
+        `[OutboxRed] Reintento ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${res.motivo}`,
+      );
     }
   }
 

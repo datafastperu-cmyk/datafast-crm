@@ -33,13 +33,16 @@ describe('PromesasPagoService — guarda antes de cortar por prórroga vencida',
       findOne:   jest.fn().mockResolvedValue(null),
       increment: jest.fn().mockResolvedValue(undefined),
     };
-    const firewallSvc = { suspenderCliente: jest.fn().mockResolvedValue(undefined) };
+    const firewallSvc = { suspenderCliente: jest.fn().mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' }) };
 
     const svc = new PromesasPagoService(
       repo as never,
       { query } as never,
       firewallSvc as never,
-      { setEstado: jest.fn() } as never,
+      {
+        setEstado:         jest.fn().mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' }),
+        desconectarSesion: jest.fn().mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' }),
+      } as never,
       {
         encolar:                jest.fn().mockResolvedValue(undefined),
         encolarRevocarProrroga: jest.fn().mockResolvedValue(undefined),

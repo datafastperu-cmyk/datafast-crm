@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { RouterOSAPI } from 'node-routeros';
 import { decrypt } from '../../../common/utils/encryption.util';
+import { ResultadoOperacion, clasificarError } from '../../../common/domain/resultado-operacion';
 
 // ── Patch A: RouterOS v7 envía '!empty' en vez de '!done' cuando un /print filtrado
 // devuelve lista vacía. node-routeros no reconoce '!empty' → onUnknown() lanza
@@ -427,4 +428,36 @@ export class RouterConnectionPool implements OnModuleDestroy {
     }
     this.logger.log('Pool de conexiones RouterOS cerrado');
   }
+}
+
+/**
+ * Clasificador de borde para errores de `RouterConnectionPool.execute()` (Ola 1, grupo 3b,
+ * 2026-08-17). PA-03: un solo lugar — las capacidades de Firewall/Pppoe/Queue lo importan
+ * en vez de repetir esta distinción en cada una.
+ *
+ * `clasificarError()` (common/domain/resultado-operacion.ts) NO se toca: sin saber en qué
+ * fase ocurrió el timeout no puede decidir, e `indeterminado` es su default seguro para un
+ * timeout genérico (D-14 §2) — correcto para el caso sin más contexto. Aquí SÍ se conoce la
+ * forma exacta de los dos mensajes que este pool produce (ver `execute()` arriba — D-41: no
+ * se toca su lógica interna, solo se interpretan los dos mensajes que ya lanza):
+ *
+ * - `"Timeout conectando a IP:puerto"` — la sesión NUNCA se estableció, ningún comando
+ *   salió, nada pudo aplicarse en el router → `reintentable`. Es el caso dominante: un
+ *   túnel VPN caído días (el motivo por el que este outbox nunca descarta un corte/
+ *   reactivación, ver el comentario de `ejecutarComando` en outbox-red.service.ts) no
+ *   implica que ningún comando se haya enviado nunca.
+ * - `"Timeout de comando en IP (Ns)"` — el comando SÍ se envió y no hubo respuesta antes
+ *   del límite → `indeterminado` (D-14 §2): pudo haberse aplicado, no se sabe.
+ *
+ * Tratar ambos como indeterminado (lo que `clasificarError()` genérico haría) inundaría al
+ * operador de "verifica el hardware" sobre routers simplemente inalcanzables — el mismo
+ * defecto que leer un 409 como veredicto definitivo, en espejo: perder la distinción que la
+ * clase existe para conservar.
+ */
+export function clasificarErrorMikrotik(err: unknown): ResultadoOperacion {
+  const motivo = err instanceof Error ? err.message : String(err);
+  if (/timeout conectando a/i.test(motivo)) {
+    return { clase: 'reintentable', motivo };
+  }
+  return clasificarError(err);
 }

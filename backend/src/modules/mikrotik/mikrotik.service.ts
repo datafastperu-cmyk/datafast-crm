@@ -970,32 +970,37 @@ export class MikrotikService implements OnModuleInit {
     }
 
     // ── PASO A: Crear usuario PPPoE ────────────────────────
-    let ppppoeId = '';
-    try {
-      ppppoeId = await this.pppoeSvc.crear(creds, {
-        name: dto.usuarioPppoe,
-        password: dto.passwordPppoe,
-        profile: perfil,
-        service: 'pppoe',
-        remoteAddress: dto.ipAsignada,
-        comment: `DATAFAST:ClienteID:${dto.clienteId}`,
-        disabled: false,
-      });
-    } catch (errA: any) {
+    // Ola 1, grupo 3b: pppoeSvc.crear() habla ResultadoOperacion. El .id que RouterOS
+    // asigna ya no viaja de vuelta (E02-10/E04-10 — ver comentario en aprovisionarOnu()
+    // del grupo 3a) y aquí nadie lo necesitaba: el frontend no lee `ppppoeId`/`queueId`
+    // (verificado antes de convertir) y `eliminar()` re-busca por NOMBRE, no por id. El
+    // nombre es un identificador igual de válido para el operador — más, de hecho.
+    const rA = await this.pppoeSvc.crear(creds, {
+      name: dto.usuarioPppoe,
+      password: dto.passwordPppoe,
+      profile: perfil,
+      service: 'pppoe',
+      remoteAddress: dto.ipAsignada,
+      comment: `DATAFAST:ClienteID:${dto.clienteId}`,
+      disabled: false,
+    });
+    if (!esExito(rA)) {
       // Paso A falló antes de crear nada en hardware: no hay que compensar
       this.logger.error(
-        `[SAGA] Paso A (PPPoE) falló para ${dto.clienteId}: ${errA.message}`,
+        `[SAGA] Paso A (PPPoE) falló para ${dto.clienteId}: ${mensajeDe(rA)}`,
       );
-      throw errA;
+      throw new Error(mensajeDe(rA));
     }
+    const ppppoeId = dto.usuarioPppoe;
 
     // ── PASO B: Crear Queue de velocidad ───────────────────
     const hasSimpleQueue = dto.tipoQueue === 'simple_queue' || !dto.tipoQueue;
     let queueId = '';
+    let pasoBErrorMsg: string | null = null;
 
     try {
       if (hasSimpleQueue) {
-        queueId = await this.queueSvc.crearSimpleQueue(creds, {
+        const rB = await this.queueSvc.crearSimpleQueue(creds, {
           name: dto.usuarioPppoe,
           target: `${dto.ipAsignada}/32`,
           maxLimitDown: dto.downloadMbps,
@@ -1006,6 +1011,11 @@ export class MikrotikService implements OnModuleInit {
           burstTimeUp: dto.burstTiempoSegundos,
           comment: `DATAFAST:ClienteID:${dto.clienteId}`,
         });
+        if (esExito(rB)) {
+          queueId = dto.usuarioPppoe;
+        } else {
+          pasoBErrorMsg = mensajeDe(rB);
+        }
       } else if (dto.tipoQueue === 'queue_tree' || dto.tipoQueue === 'pcq') {
         const tienePcq = await this.queueSvc.tienePcqConfigurado(creds);
         if (!tienePcq) {
@@ -1017,26 +1027,30 @@ export class MikrotikService implements OnModuleInit {
         }
       }
     } catch (errB: any) {
+      pasoBErrorMsg = errB.message;
+    }
+
+    if (pasoBErrorMsg) {
       // ── COMPENSACIÓN: Paso B falló → revertir Paso A ────
       this.logger.error(
-        `[SAGA] Paso B (Queue) falló para ${dto.clienteId}: ${errB.message}. ` +
+        `[SAGA] Paso B (Queue) falló para ${dto.clienteId}: ${pasoBErrorMsg}. ` +
           `Compensando: eliminando PPPoE ${dto.usuarioPppoe}...`,
       );
-      try {
-        await this.pppoeSvc.eliminar(creds, dto.usuarioPppoe);
+      const rComp = await this.pppoeSvc.eliminar(creds, dto.usuarioPppoe);
+      if (esExito(rComp)) {
         this.logger.log(
           `[SAGA] Compensación OK: PPPoE ${dto.usuarioPppoe} eliminado en ${creds.ip}`,
         );
-      } catch (errComp: any) {
+      } else {
         // Compensación también falló: PPPoE queda huérfano en el router.
         // reparar() lo limpiará cuando el operador lo ejecute.
         this.logger.error(
-          `[SAGA] Compensación FALLÓ para ${dto.usuarioPppoe} en ${creds.ip}: ${errComp.message}. ` +
+          `[SAGA] Compensación FALLÓ para ${dto.usuarioPppoe} en ${creds.ip}: ${mensajeDe(rComp)}. ` +
             `PPPoE huérfano — usar "Reparar" para limpiar.`,
         );
       }
       throw new Error(
-        `Error al crear la cola de velocidad para ${dto.usuarioPppoe}: ${errB.message}. ` +
+        `Error al crear la cola de velocidad para ${dto.usuarioPppoe}: ${pasoBErrorMsg}. ` +
           `El usuario PPPoE fue eliminado del router (compensación aplicada).`,
       );
     }
@@ -1079,23 +1093,23 @@ export class MikrotikService implements OnModuleInit {
     this.assertNotDegraded();
     const creds = await this.getCredentials(routerId, user.empresaId);
 
+    // Ola 1, grupo 3b: firewallSvc/pppoeSvc hablan ResultadoOperacion — este método sigue
+    // hablando excepciones hacia su llamador (controller humano), así que se traduce aquí.
     // 1. Agregar a Address List morosos
-    await this.firewallSvc.suspenderCliente(
+    const rSusp = await this.firewallSvc.suspenderCliente(
       creds,
       dto.ipAsignada,
       dto.clienteId,
       `Suspensión manual: ${dto.nombreCliente ?? dto.clienteId} | ${dto.motivo ?? 'mora'} | ${new Date().toLocaleDateString('es-PE')}`,
     );
+    if (!esExito(rSusp)) throw new Error(mensajeDe(rSusp));
 
-    // 2. Desconectar sesión PPPoE activa si existe
+    // 2. Desconectar sesión PPPoE activa si existe (best-effort, como antes)
     if (dto.usuarioPppoe) {
-      await this.pppoeSvc
-        .desconectarSesion(creds, dto.usuarioPppoe)
-        .catch((err) =>
-          this.logger.warn(
-            `No se pudo desconectar sesión ${dto.usuarioPppoe}: ${err.message}`,
-          ),
-        );
+      const rDesc = await this.pppoeSvc.desconectarSesion(creds, dto.usuarioPppoe);
+      if (!esExito(rDesc)) {
+        this.logger.warn(`No se pudo desconectar sesión ${dto.usuarioPppoe}: ${mensajeDe(rDesc)}`);
+      }
     }
 
     // 3. Emitir evento para notificación al cliente
@@ -1134,8 +1148,10 @@ export class MikrotikService implements OnModuleInit {
     this.assertNotDegraded();
     const creds = await this.getCredentials(routerId, user.empresaId);
 
+    // Ola 1, grupo 3b: reactivarCliente() habla ResultadoOperacion — se traduce aquí.
     // Quitar de Address Lists de control
-    await this.firewallSvc.reactivarCliente(creds, dto.ipAsignada);
+    const rReact = await this.firewallSvc.reactivarCliente(creds, dto.ipAsignada);
+    if (!esExito(rReact)) throw new Error(mensajeDe(rReact));
 
     // Emitir evento para notificación
     this.events.emit(EVENT_CLIENTE_REACTIVADO, {

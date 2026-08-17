@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RouterConnectionPool, RouterCredentials } from './connection-pool.service';
+import { RouterConnectionPool, RouterCredentials, clasificarErrorMikrotik } from './connection-pool.service';
+import { ResultadoOperacion } from '../../../common/domain/resultado-operacion';
 
 // Lista de morosos: IPs bloqueadas por mora
 export const ADDRESS_LIST_MOROSOS = 'morosos_datafast';
@@ -26,66 +27,81 @@ export class FirewallService {
   // ADDRESS LISTS — Control de acceso por mora
   // ────────────────────────────────────────────────────────────
 
+  // Ola 1, grupo 3b, bloque grande (2026-08-17). Consumida por ContratosService.cambiarEstado()
+  // (síncrono — B-4, registrado y no resuelto aquí), OutboxRedService.ejecutarComando()
+  // (converge con la ruta ONU en el mismo lote), PromesasPagoService y CobranzaWorker.
+  // Ninguna condición de rechazado_definitivo: es escritura idempotente sin gate de datos.
+  //
   // ── Agregar IP a la lista de morosos (SUSPENDER) ──────────
   async suspenderCliente(
     creds:     RouterCredentials,
     ip:        string,
     clienteId: string,
     comment?:  string,
-  ): Promise<void> {
-    await this.pool.execute(creds, async (api) => {
-      // Verificar si ya está en la lista
-      const existing = await api.write('/ip/firewall/address-list/print', [
-        `?list=${ADDRESS_LIST_MOROSOS}`,
-        `?address=${ip}`,
-      ]);
-
-      if (existing.length > 0) {
-        this.logger.debug(`IP ${ip} ya en address-list ${ADDRESS_LIST_MOROSOS}`);
-        return;
-      }
-
-      // Quitar de prorroga si estaba ahí
-      const prorroga = await api.write('/ip/firewall/address-list/print', [
-        `?list=${ADDRESS_LIST_PRORROGA}`,
-        `?address=${ip}`,
-      ]);
-      for (const e of prorroga) {
-        await api.write('/ip/firewall/address-list/remove', [`=.id=${e['.id']}`]);
-      }
-
-      await api.write('/ip/firewall/address-list/add', [
-        `=list=${ADDRESS_LIST_MOROSOS}`,
-        `=address=${ip}`,
-        `=comment=${comment || `ClienteID:${clienteId}`}`,
-      ]);
-
-      this.logger.log(`IP suspendida: ${ip} → ${ADDRESS_LIST_MOROSOS} en ${creds.ip}`);
-
-      // También desconectar la sesión PPPoE activa del cliente
-      // (se hace en el servicio orquestador que llama tanto a PPPoE como a Firewall)
-    });
-  }
-
-  // ── Quitar IP de la lista de morosos (REACTIVAR) ──────────
-  async reactivarCliente(creds: RouterCredentials, ip: string): Promise<void> {
-    await this.pool.execute(creds, async (api) => {
-      // Quitar de TODAS las listas de control (incluye nombre legacy 'prorroga')
-      for (const lista of [ADDRESS_LIST_MOROSOS, ADDRESS_LIST_PRORROGA, 'prorroga']) {
-        const entries = await api.write('/ip/firewall/address-list/print', [
-          `?list=${lista}`,
+  ): Promise<ResultadoOperacion> {
+    try {
+      await this.pool.execute(creds, async (api) => {
+        // Verificar si ya está en la lista
+        const existing = await api.write('/ip/firewall/address-list/print', [
+          `?list=${ADDRESS_LIST_MOROSOS}`,
           `?address=${ip}`,
         ]);
 
-        for (const entry of entries) {
-          await api.write('/ip/firewall/address-list/remove', [
-            `=.id=${entry['.id']}`,
-          ]);
+        if (existing.length > 0) {
+          this.logger.debug(`IP ${ip} ya en address-list ${ADDRESS_LIST_MOROSOS}`);
+          return;
         }
-      }
 
-      this.logger.log(`IP reactivada: ${ip} en ${creds.ip}`);
-    });
+        // Quitar de prorroga si estaba ahí
+        const prorroga = await api.write('/ip/firewall/address-list/print', [
+          `?list=${ADDRESS_LIST_PRORROGA}`,
+          `?address=${ip}`,
+        ]);
+        for (const e of prorroga) {
+          await api.write('/ip/firewall/address-list/remove', [`=.id=${e['.id']}`]);
+        }
+
+        await api.write('/ip/firewall/address-list/add', [
+          `=list=${ADDRESS_LIST_MOROSOS}`,
+          `=address=${ip}`,
+          `=comment=${comment || `ClienteID:${clienteId}`}`,
+        ]);
+
+        this.logger.log(`IP suspendida: ${ip} → ${ADDRESS_LIST_MOROSOS} en ${creds.ip}`);
+
+        // También desconectar la sesión PPPoE activa del cliente
+        // (se hace en el servicio orquestador que llama tanto a PPPoE como a Firewall)
+      });
+      return { clase: 'aplicado', mensaje: `IP ${ip} suspendida.` };
+    } catch (err) {
+      return clasificarErrorMikrotik(err);
+    }
+  }
+
+  // ── Quitar IP de la lista de morosos (REACTIVAR) ──────────
+  async reactivarCliente(creds: RouterCredentials, ip: string): Promise<ResultadoOperacion> {
+    try {
+      await this.pool.execute(creds, async (api) => {
+        // Quitar de TODAS las listas de control (incluye nombre legacy 'prorroga')
+        for (const lista of [ADDRESS_LIST_MOROSOS, ADDRESS_LIST_PRORROGA, 'prorroga']) {
+          const entries = await api.write('/ip/firewall/address-list/print', [
+            `?list=${lista}`,
+            `?address=${ip}`,
+          ]);
+
+          for (const entry of entries) {
+            await api.write('/ip/firewall/address-list/remove', [
+              `=.id=${entry['.id']}`,
+            ]);
+          }
+        }
+
+        this.logger.log(`IP reactivada: ${ip} en ${creds.ip}`);
+      });
+      return { clase: 'aplicado', mensaje: `IP ${ip} reactivada.` };
+    } catch (err) {
+      return clasificarErrorMikrotik(err);
+    }
   }
 
   // ── Verificar si una IP está suspendida ────────────────────
@@ -113,30 +129,35 @@ export class FirewallService {
   }
 
   // ── Mover IP a prórroga (acceso completo hasta vencimiento) ──
-  async aplicarProrroga(creds: RouterCredentials, ip: string, comment?: string): Promise<void> {
-    await this.pool.execute(creds, async (api) => {
-      // Quitar de morosos
-      const morosos = await api.write('/ip/firewall/address-list/print', [
-        `?list=${ADDRESS_LIST_MOROSOS}`, `?address=${ip}`,
-      ]);
-      for (const e of morosos) {
-        await api.write('/ip/firewall/address-list/remove', [`=.id=${e['.id']}`]);
-      }
-
-      // Agregar a prórroga
-      const existing = await api.write('/ip/firewall/address-list/print', [
-        `?list=${ADDRESS_LIST_PRORROGA}`, `?address=${ip}`,
-      ]);
-      if (existing.length === 0) {
-        await api.write('/ip/firewall/address-list/add', [
-          `=list=${ADDRESS_LIST_PRORROGA}`,
-          `=address=${ip}`,
-          `=comment=${comment || 'Prorroga activa'}`,
+  async aplicarProrroga(creds: RouterCredentials, ip: string, comment?: string): Promise<ResultadoOperacion> {
+    try {
+      await this.pool.execute(creds, async (api) => {
+        // Quitar de morosos
+        const morosos = await api.write('/ip/firewall/address-list/print', [
+          `?list=${ADDRESS_LIST_MOROSOS}`, `?address=${ip}`,
         ]);
-      }
+        for (const e of morosos) {
+          await api.write('/ip/firewall/address-list/remove', [`=.id=${e['.id']}`]);
+        }
 
-      this.logger.log(`Prórroga aplicada: ${ip} en ${creds.ip}`);
-    });
+        // Agregar a prórroga
+        const existing = await api.write('/ip/firewall/address-list/print', [
+          `?list=${ADDRESS_LIST_PRORROGA}`, `?address=${ip}`,
+        ]);
+        if (existing.length === 0) {
+          await api.write('/ip/firewall/address-list/add', [
+            `=list=${ADDRESS_LIST_PRORROGA}`,
+            `=address=${ip}`,
+            `=comment=${comment || 'Prorroga activa'}`,
+          ]);
+        }
+
+        this.logger.log(`Prórroga aplicada: ${ip} en ${creds.ip}`);
+      });
+      return { clase: 'aplicado', mensaje: `Prórroga aplicada a ${ip}.` };
+    } catch (err) {
+      return clasificarErrorMikrotik(err);
+    }
   }
 
   // ── Configurar/reparar las 2 reglas de control (idempotente) ───────────

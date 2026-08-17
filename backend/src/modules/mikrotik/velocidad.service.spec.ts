@@ -206,7 +206,7 @@ describe('VelocidadOrquestador', () => {
     };
 
     it('debe aplicar Simple Queue y retornar exitoso', async () => {
-      mockQueueSvc.crearSimpleQueue.mockResolvedValue('*1');
+      mockQueueSvc.crearSimpleQueue.mockResolvedValue({ clase: 'aplicado', mensaje: 'ok' });
 
       const r = await orquestador.aplicarVelocidad(baseParams as any);
 

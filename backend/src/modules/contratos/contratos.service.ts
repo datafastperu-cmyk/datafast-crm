@@ -779,14 +779,20 @@ export class ContratosService {
                 version:         (router.versionRos === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
               };
 
+              // Ola 1, grupo 3b: firewallSvc/pppoeSvc hablan ResultadoOperacion — ya no
+              // lanzan. Se traduce a throw dentro de este mismo try para reusar el fallback
+              // a outbox del catch de abajo, sin duplicar esa lógica (B-4: esta ruta sigue
+              // siendo síncrona, registrado y no resuelto en esta ola).
               // 1. Quitar IP de address-list morosos (solo si tiene IP asignada)
               if (contrato.ipAsignada) {
-                await this.firewallSvc.reactivarCliente(creds, contrato.ipAsignada);
+                const r1 = await this.firewallSvc.reactivarCliente(creds, contrato.ipAsignada);
+                if (!esExito(r1)) throw new Error(mensajeDe(r1));
               }
 
               // 2. Habilitar secreto PPPoE (requiere solo usuarioPppoe, no IP)
               if (contrato.usuarioPppoe) {
-                await this.pppoeSvc.setEstado(creds, contrato.usuarioPppoe, false);
+                const r2 = await this.pppoeSvc.setEstado(creds, contrato.usuarioPppoe, false);
+                if (!esExito(r2)) throw new Error(mensajeDe(r2));
               }
 
               this.logger.log(`cambiarEstado → MikroTik reactivado: contrato ${id} | IP: ${contrato.ipAsignada ?? 'dinámica'}`);
@@ -1109,20 +1115,26 @@ export class ContratosService {
                 version:         (router.versionRos === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
               };
 
+              // Ola 1, grupo 3b: firewallSvc/pppoeSvc hablan ResultadoOperacion — se traduce
+              // a throw dentro de este mismo try para reusar el fallback a outbox del catch
+              // de abajo (B-4: síncrono, registrado y no resuelto en esta ola).
               // 1. Agregar IP a address-list morosos (solo si tiene IP asignada)
               if (contrato.ipAsignada) {
-                await this.firewallSvc.suspenderCliente(
+                const r1 = await this.firewallSvc.suspenderCliente(
                   creds,
                   contrato.ipAsignada,
                   contrato.clienteId,
                   `Suspensión manual: ${cliente?.nombre_completo ?? contrato.clienteId} | ${dto.motivo ?? 'sin motivo'} | ${new Date().toLocaleDateString('es-PE')}`,
                 );
+                if (!esExito(r1)) throw new Error(mensajeDe(r1));
               }
 
               // 2. Desconectar sesión PPPoE y deshabilitar secret (requiere solo usuarioPppoe, no IP)
               if (contrato.usuarioPppoe) {
-                await this.pppoeSvc.desconectarSesion(creds, contrato.usuarioPppoe);
-                await this.pppoeSvc.setEstado(creds, contrato.usuarioPppoe, true);
+                const r2 = await this.pppoeSvc.desconectarSesion(creds, contrato.usuarioPppoe);
+                if (!esExito(r2)) throw new Error(mensajeDe(r2));
+                const r3 = await this.pppoeSvc.setEstado(creds, contrato.usuarioPppoe, true);
+                if (!esExito(r3)) throw new Error(mensajeDe(r3));
               }
 
               this.logger.log(`cambiarEstado → MikroTik suspendido: contrato ${id} | IP: ${contrato.ipAsignada ?? 'dinámica'}`);
@@ -1220,7 +1232,10 @@ export class ContratosService {
               timeoutSec:      router.timeoutConexion ?? 15,
               version:         (router.versionRos === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
             };
-            await this.firewallSvc.reactivarCliente(creds, contrato.ipAsignada);
+            // Ola 1, grupo 3b: reactivarCliente() habla ResultadoOperacion — se traduce a
+            // throw para reusar el fallback a outbox del catch de abajo.
+            const r = await this.firewallSvc.reactivarCliente(creds, contrato.ipAsignada);
+            if (!esExito(r)) throw new Error(mensajeDe(r));
             this.logger.log(`limpiarProrroga → IP ${contrato.ipAsignada} removida de address-list | contrato ${id}`);
           }
         } catch (err: any) {
@@ -1770,17 +1785,20 @@ export class ContratosService {
       // ── S0: Limpiar address-lists morosos/prorroga antes de eliminar reglas ──
       // La IP puede estar en morosos_datafast (suspendido) o prorroga_datafast (prórroga).
       // Si no se limpia aquí, la IP queda huérfana en el router cuando se elimina el cliente.
+      // Ola 1, grupo 3b: firewallSvc/pppoeSvc hablan ResultadoOperacion — ya no lanzan.
       if (row.ipAsignada) {
-        try {
-          await this.firewallSvc.reactivarCliente(creds, row.ipAsignada);
+        const rFw = await this.firewallSvc.reactivarCliente(creds, row.ipAsignada);
+        if (esExito(rFw)) {
           this.logger.log(`desaprovisionarMikrotik → ${contratoId} | address-lists limpiadas: ${row.ipAsignada}`);
-        } catch (e: any) {
-          this.logger.warn(`desaprovisionarMikrotik → ${contratoId} | error limpiando address-lists: ${e?.message}`);
+        } else {
+          // Best-effort, como antes: se loguea y se continúa sin abortar el resto.
+          this.logger.warn(`desaprovisionarMikrotik → ${contratoId} | error limpiando address-lists: ${mensajeDe(rFw)}`);
         }
       }
 
       if (tipoControl === 'pppoe' && row.usuarioPppoe) {
-        await this.pppoeSvc.eliminar(creds, row.usuarioPppoe);
+        const rPppoe = await this.pppoeSvc.eliminar(creds, row.usuarioPppoe);
+        if (!esExito(rPppoe)) throw new Error(mensajeDe(rPppoe));
         this.logger.log(`desaprovisionarMikrotik → ${contratoId} | PPPoE eliminado: ${row.usuarioPppoe}`);
       } else if ((tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') && row.ipAsignada) {
         await this.pool.execute(creds, async (api) => {

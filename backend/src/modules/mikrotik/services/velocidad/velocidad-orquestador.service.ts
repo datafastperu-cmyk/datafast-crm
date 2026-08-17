@@ -6,6 +6,7 @@ import { VelocidadService, EstrategiaQueue }       from './velocidad.service';
 import { MangleService }                           from './mangle.service';
 import { QueueTreeClienteService }                 from './queue-tree-cliente.service';
 import { QueueService }                            from '../../services/queue.service';
+import { esExito, mensajeDe }                      from '../../../../common/domain/resultado-operacion';
 
 // ─── Parámetros de aprovisionamiento de velocidad ────────────
 export interface AplicarVelocidadParams {
@@ -143,7 +144,9 @@ export class VelocidadOrquestador {
 
         default: {
           // SIMPLE_QUEUE (default y más común)
-          const queueId = await this.queueSvc.crearSimpleQueue(creds, {
+          // Ola 1, grupo 3b: crearSimpleQueue() habla ResultadoOperacion — se traduce a
+          // throw para reusar el catch de todo el método (mismo ResultadoVelocidad de fallo).
+          const rQueue = await this.queueSvc.crearSimpleQueue(creds, {
             name:            params.usuarioPppoe,
             target:          `${params.ipAsignada}/32`,
             maxLimitDown:    params.downloadMbps,
@@ -160,6 +163,7 @@ export class VelocidadOrquestador {
               : undefined,
             comment: `DATAFAST:ClienteID:${clienteId}`,
           });
+          if (!esExito(rQueue)) throw new Error(mensajeDe(rQueue));
           resultado = {
             estrategia,
             nombreQueue:   params.usuarioPppoe,
