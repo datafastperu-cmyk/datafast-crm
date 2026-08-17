@@ -1,4 +1,4 @@
-import { FtthOnuEstado } from '../entities/ftth-onu-registro.entity';
+import { FtthOnuEstado, FtthCarrilEstado } from '../entities/ftth-onu-registro.entity';
 import { ProvisionFtthService } from './provision-ftth.service';
 
 // Ola 1 (2026-08-16) — conversión de `actualizarWan()` y `reaplicar()` a `ResultadoOperacion`.
@@ -163,5 +163,106 @@ describe('ProvisionFtthService.reaplicar() — clasificación por rama', () => {
   it('el error inesperado no lanza: cae en clasificarError vía el catch', async () => {
     const svc = hacer({ ftthRepo: { findOne: jest.fn(async () => { throw new Error('BD caída'); }) } });
     await expect(svc.reaplicar('c-1', 'e-1')).resolves.toHaveProperty('clase');
+  });
+});
+
+// Ola 1, grupo 4 (2026-08-17, cierre de la ola) — activarCarril() habla ResultadoOperacion
+// con el payload `estado` (ResultadoActivarCarril, extensión LOCAL transitoria — ver
+// metodos-frontera.ts). Sus dos llamadores reales: panel operador (olt-nativo.controller.ts)
+// y portal del abonado (PortalOnuService.conectar(), primer borde de esta ola que da a un
+// cliente final, no a un operador ni al outbox).
+describe('ProvisionFtthService.activarCarril() — clasificación por rama', () => {
+  const hacer = (over: Record<string, unknown> = {}) => {
+    const svc = Object.create(ProvisionFtthService.prototype) as any;
+    svc.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    svc.ftthRepo = { findOne: jest.fn(), update: jest.fn() };
+    svc.genieDriver = { getLastInformBySerial: jest.fn(async () => null) };
+    svc.events = { emit: jest.fn() };
+    Object.assign(svc, over);
+    return svc;
+  };
+
+  it('rechazado_definitivo: sin registro FTTH — no hay carril que activar', async () => {
+    const svc = hacer({ ftthRepo: { findOne: jest.fn(async () => null), update: jest.fn() } });
+    const r = await svc.activarCarril('c-1', 'e-1');
+    expect(r.clase).toBe('rechazado_definitivo');
+  });
+
+  it('rechazado_definitivo: registro en un estado que no admite activar el carril', async () => {
+    const svc = hacer({
+      ftthRepo: { findOne: jest.fn(async () => ({ estado: FtthOnuEstado.PENDIENTE })), update: jest.fn() },
+    });
+    const r = await svc.activarCarril('c-1', 'e-1');
+    expect(r.clase).toBe('rechazado_definitivo');
+    expect(r.motivo).toMatch(/activo.*gpon_registrado/i);
+  });
+
+  it('aplicado: ya se está activando — no-op con el payload `estado`', async () => {
+    const svc = hacer({
+      ftthRepo: {
+        findOne: jest.fn(async () => ({
+          id: 'r-1', estado: FtthOnuEstado.ACTIVO, carrilEstado: FtthCarrilEstado.ACTIVANDO,
+        })),
+        update: jest.fn(),
+      },
+    });
+    const r = await svc.activarCarril('c-1', 'e-1');
+    expect(r.clase).toBe('aplicado');
+    expect(r.estado).toBe(FtthCarrilEstado.ACTIVANDO);
+  });
+
+  it('ya_en_destino: carril activo y sesión TR-069 viva — verificado, no solo leído de BD', async () => {
+    const svc = hacer({
+      ftthRepo: {
+        findOne: jest.fn(async () => ({
+          id: 'r-1', sn: 'SN1', estado: FtthOnuEstado.ACTIVO, carrilEstado: FtthCarrilEstado.ACTIVO,
+        })),
+        update: jest.fn(),
+      },
+      genieDriver: { getLastInformBySerial: jest.fn(async () => new Date()) },
+    });
+    const r = await svc.activarCarril('c-1', 'e-1');
+    expect(r.clase).toBe('ya_en_destino');
+    expect(r.estado).toBe(FtthCarrilEstado.ACTIVO);
+  });
+
+  it('aplicado: carril activo pero sesión rancia — revive (re-bootstrap), no ya_en_destino', async () => {
+    const svc = hacer({
+      ftthRepo: {
+        findOne: jest.fn(async () => ({
+          id: 'r-1', sn: 'SN1', estado: FtthOnuEstado.ACTIVO, carrilEstado: FtthCarrilEstado.ACTIVO,
+        })),
+        update: jest.fn(),
+      },
+      genieDriver: { getLastInformBySerial: jest.fn(async () => null) }, // nunca informó → no vivo
+    });
+    const r = await svc.activarCarril('c-1', 'e-1');
+    expect(r.clase).toBe('aplicado');
+    expect(r.estado).toBe(FtthCarrilEstado.ACTIVANDO);
+  });
+
+  it('aplicado: carril inactivo — arranca la activación (write-ahead + evento)', async () => {
+    const update = jest.fn();
+    const emit = jest.fn();
+    const svc = hacer({
+      ftthRepo: {
+        findOne: jest.fn(async () => ({
+          id: 'r-1', estado: FtthOnuEstado.GPON_REGISTRADO, carrilEstado: FtthCarrilEstado.INACTIVO,
+        })),
+        update,
+      },
+      events: { emit },
+    });
+    const r = await svc.activarCarril('c-1', 'e-1');
+    expect(r.clase).toBe('aplicado');
+    expect(r.estado).toBe(FtthCarrilEstado.ACTIVANDO);
+    // Write-ahead: el estado se persiste ANTES de emitir el evento que dispara el bootstrap.
+    expect(update).toHaveBeenCalledWith('r-1', expect.objectContaining({ carrilEstado: FtthCarrilEstado.ACTIVANDO }));
+    expect(emit).toHaveBeenCalledWith('ftth.carril.activar', { contratoId: 'c-1', empresaId: 'e-1' });
+  });
+
+  it('el error inesperado no lanza: cae en clasificarError vía el catch', async () => {
+    const svc = hacer({ ftthRepo: { findOne: jest.fn(async () => { throw new Error('BD caída'); }) } });
+    await expect(svc.activarCarril('c-1', 'e-1')).resolves.toHaveProperty('clase');
   });
 });

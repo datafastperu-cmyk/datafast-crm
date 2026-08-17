@@ -9,6 +9,7 @@ import { Cache } from 'cache-manager';
 import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
 import { OnuTr069DetalleService, OnuHost } from '../olt-nativo/ztp/onu-tr069-detalle.service';
 import { ModuleHealthService } from '../../common/services/module-health.service';
+import { ResultadoOperacion, esExito, mensajeDe } from '../../common/domain/resultado-operacion';
 
 // Mi WiFi y dispositivos conectados, desde la óptica del abonado.
 //
@@ -182,6 +183,12 @@ export class PortalOnuService implements OnModuleInit {
     }
 
     const resultado = await this.ftth.activarCarril(contratoId, empresaId);
+    // No se usa esExito() aquí: el payload `estado` solo va adjunto a 'aplicado'/
+    // 'ya_en_destino' en la extensión (ResultadoActivarCarril), y el type-guard genérico
+    // estrecharía a ResultadoExitoso (sin `estado`) perdiendo ese campo para el compilador.
+    if (resultado.clase !== 'aplicado' && resultado.clase !== 'ya_en_destino') {
+      this.traducirParaPortal(resultado, 'activarCarril');
+    }
     await this.cache.set(clave, 1, MINUTOS_ENTRE_CONEXIONES * 60_000);
 
     this.logger.log(
@@ -227,9 +234,16 @@ export class PortalOnuService implements OnModuleInit {
     // editar exige que la sesión TR-069 esté VIVA (lastInform < 12 min), así que el dato
     // mostrado no puede ser viejo cuando los campos están habilitados. El refresco
     // explícito queda a un botón.
-    const detalle = refrescar
-      ? await this.detalle.refrescarWifi(registro.sn).catch(() => null)
-      : await this.detalle.getDetalle(registro.sn).catch(() => null);
+    let detalle: Awaited<ReturnType<typeof this.detalle.getDetalle>> | null;
+    if (refrescar) {
+      const r = await this.detalle.refrescarWifi(registro.sn);
+      // No se usa esExito(): el payload `detalle` solo va adjunto a 'aplicado'
+      // (ResultadoRefrescarWifi) — mismo motivo que en conectar().
+      if (r.clase !== 'aplicado') this.traducirParaPortal(r, 'refrescarWifi');
+      detalle = r.detalle;
+    } else {
+      detalle = await this.detalle.getDetalle(registro.sn).catch(() => null);
+    }
 
     if (!detalle?.informing) {
       throw new ServiceUnavailableException(
@@ -286,11 +300,12 @@ export class PortalOnuService implements OnModuleInit {
 
     // Con `await`: sin él, un fallo del write quedaba como rechazo no capturado y el
     // abonado veía "enviado" cuando no se había enviado nada.
-    await this.detalle.setWifi(registro.sn, {
+    const rSet = await this.detalle.setWifi(registro.sn, {
       band: banda,
       ssid: ssid || undefined,
       password: password || undefined,
     });
+    if (!esExito(rSet)) this.traducirParaPortal(rSet, 'setWifi');
 
     await this.registrarCambio(contratoId);
 
@@ -333,10 +348,11 @@ export class PortalOnuService implements OnModuleInit {
 
     await this.verificarLimiteCambios(contratoId);
 
-    await this.detalle.setWifiAmbasBandas(registro.sn, {
+    const rSet = await this.detalle.setWifiAmbasBandas(registro.sn, {
       ssid: ssid || undefined,
       password: password || undefined,
     });
+    if (!esExito(rSet)) this.traducirParaPortal(rSet, 'setWifiAmbasBandas');
 
     await this.registrarCambio(contratoId);
 
@@ -473,6 +489,37 @@ export class PortalOnuService implements OnModuleInit {
   }
 
   // ── Internos ────────────────────────────────────────────────
+
+  // Traductor único del borde portal↔dominio (PA-03) — cierre grupo 4 (2026-08-17), tres
+  // condiciones del propietario:
+  //  1. El `motivo`/`mensaje` interno (seriales, deviceId de GenieACS, salida de driver) NUNCA
+  //     cruza al portal — se audita del lado servidor; al abonado se le da un mensaje por
+  //     CLASE, redactado para él.
+  //  2. `indeterminado` tiene su propia redacción: nunca se le pide al abonado verificar
+  //     hardware — la incertidumbre la resuelve el ERP ("vuelve a consultar en unos minutos").
+  //  3. Vive en UN sitio del portal, no por endpoint. No reutiliza traducirAHttp(): ese
+  //     traductor es del borde OPERADOR (D-14 §3) y su vocabulario —400 con el motivo interno,
+  //     "verifica el estado real en el router"— no es seguro para un cliente final. Un portal
+  //     de abonado no tiene por qué compartir el mapa de códigos del borde de operador.
+  private traducirParaPortal(r: ResultadoOperacion, contexto: string): never {
+    this.logger.warn(`Portal [${contexto}]: ${r.clase} — ${mensajeDe(r)}`);
+
+    if (r.clase === 'indeterminado') {
+      throw new ServiceUnavailableException(
+        'Tu router está aplicando el cambio. Vuelve a consultar en unos minutos.',
+      );
+    }
+    if (r.clase === 'rechazado_definitivo') {
+      throw new ServiceUnavailableException(
+        'No pudimos completar esta acción con tu router en este momento. Si el problema sigue, escríbenos.',
+      );
+    }
+    // reintentable
+    throw new ServiceUnavailableException(
+      'Tu router no está respondiendo ahora. Verifica que esté encendido e inténtalo de nuevo.',
+    );
+  }
+
   private async buscarRegistro(
     clienteId: string,
     empresaId: string,

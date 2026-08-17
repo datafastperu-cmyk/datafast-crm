@@ -62,7 +62,7 @@ describe('PortalOnuService — WiFi del abonado', () => {
       isReady:   jest.fn().mockReturnValue(true),
       getDetalle: jest.fn().mockResolvedValue(detalleCon('RED-VIEJA')),
       refresh:    jest.fn().mockResolvedValue(detalleCon('RED-VIEJA')),
-      setWifi:    jest.fn().mockReturnValue({ ok: true, applied: 1, total: 1, fallidas: [] }),
+      setWifi:    jest.fn().mockResolvedValue({ clase: 'aplicado', mensaje: 'ok', ok: true, applied: 1, total: 1, fallidas: [] }),
     } as unknown as jest.Mocked<
       Pick<OnuTr069DetalleService, 'isReady' | 'getDetalle' | 'refresh' | 'setWifi'>
     >;
@@ -78,7 +78,7 @@ describe('PortalOnuService — WiFi del abonado', () => {
     >;
 
     const ftth = {
-      activarCarril: jest.fn().mockResolvedValue({ estado: 'activando', mensaje: '' }),
+      activarCarril: jest.fn().mockResolvedValue({ clase: 'aplicado', mensaje: '', estado: 'activando' }),
       marcarUsoTr069: jest.fn().mockResolvedValue(undefined),
     } as unknown as ProvisionFtthService;
 
@@ -216,9 +216,10 @@ describe('PortalOnuService — WiFi del abonado', () => {
   describe('el cupo solo lo consume una escritura despachada', () => {
     it('si la escritura falla, NO se registra el cambio', async () => {
       cache.get.mockResolvedValue(0);
-      detalle.setWifi.mockImplementation(() => {
-        throw new Error('ACS no disponible');
-      });
+      // setWifi() ya no lanza (Ola 1, grupo 4): captura internamente y habla
+      // ResultadoOperacion. guardarWifi() traduce el no-éxito al borde del portal
+      // (traducirParaPortal) — ahí es donde debe seguir rechazando.
+      detalle.setWifi.mockResolvedValue({ clase: 'reintentable', motivo: 'ACS no disponible' } as any);
 
       await expect(
         svc.guardarWifi(CLIENTE, EMPRESA, CONTRATO, '2.4', { ssid: 'RED-NUEVA' }),
@@ -277,6 +278,47 @@ describe('PortalOnuService — WiFi del abonado', () => {
       await expect(svc.estado(CLIENTE, EMPRESA, CONTRATO)).resolves.toMatchObject({
         disponible: false,
         motivo: 'acs_degradado',
+      });
+    });
+  });
+
+  // Traductor único del borde portal (cierre grupo 4, 2026-08-17) — tres condiciones del
+  // propietario: el motivo interno nunca cruza al portal, indeterminado tiene su propia
+  // redacción (nunca "verifica el hardware"), y no reutiliza traducirAHttp (borde operador).
+  describe('traducción al borde del portal (nunca vocabulario de operador)', () => {
+    it('indeterminado (refrescarWifi): mensaje de "vuelve a consultar", nunca pide verificar hardware', async () => {
+      (detalle as any).refrescarWifi = jest.fn().mockResolvedValue({
+        clase: 'indeterminado', motivo: 'ONU SN-TEST-001: sin respuesta al refresco de WiFi.',
+      });
+
+      // El motivo interno (con el serial) NUNCA aparece en el mensaje que ve el abonado, ni
+      // se le pide verificar hardware — solo "vuelve a consultar" (la incertidumbre la
+      // resuelve el ERP, no el abonado).
+      await expect(svc.wifi(CLIENTE, EMPRESA, CONTRATO, true)).rejects.toMatchObject({
+        message: expect.not.stringMatching(/SN-TEST-001|verifica.*hardware|estado real/i),
+      });
+      await expect(svc.wifi(CLIENTE, EMPRESA, CONTRATO, true)).rejects.toMatchObject({
+        message: expect.stringMatching(/vuelve a consultar/i),
+      });
+    });
+
+    it('rechazado_definitivo (activarCarril): mensaje genérico, el motivo interno solo se audita en el log', async () => {
+      const ftthRechazo = {
+        activarCarril: jest.fn().mockResolvedValue({
+          clase: 'rechazado_definitivo', motivo: 'Contrato sin ONU FTTH — no hay carril que activar.',
+        }),
+        marcarUsoTr069: jest.fn(),
+      } as unknown as ProvisionFtthService;
+      const svcRechazo = new PortalOnuService(
+        { query: jest.fn().mockResolvedValue([filaActual]) } as unknown as DataSource,
+        ftthRechazo,
+        detalle as unknown as OnuTr069DetalleService,
+        salud as unknown as ModuleHealthService,
+        cache as unknown as Cache,
+      );
+
+      await expect(svcRechazo.conectar(CLIENTE, EMPRESA, CONTRATO)).rejects.toMatchObject({
+        message: expect.not.stringMatching(/Contrato sin ONU FTTH/),
       });
     });
   });

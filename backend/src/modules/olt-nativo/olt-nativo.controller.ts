@@ -1,7 +1,7 @@
 import { OperacionWizardService } from './services/operacion-wizard.service';
 import { AbrirWizardDto, CerrarWizardDto } from './dto/wizard.dto';
 import {
-  BadRequestException,
+  BadRequestException, ServiceUnavailableException,
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
   Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query,
   UploadedFile, UseInterceptors,
@@ -1158,7 +1158,17 @@ export class OltNativoController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ONU: editar WiFi (2.4/5G) en vivo por TR-069' })
   async onuTr069SetWifi(@Param('sn') sn: string, @Body() dto: SetWifiLiveDto) {
-    return this.onuTr069.setWifi(sn, dto);
+    // Ola 1, grupo 4: setWifi() habla ResultadoOperacion (extensión con ok/applied/total/
+    // fallidas). Mismo idioma de traducción que activarCarril(), arriba.
+    const r = await this.onuTr069.setWifi(sn, dto);
+    // No se usa esExito() aquí: el payload ok/applied/total/fallidas solo va adjunto a
+    // 'aplicado'/'no_aplica' en la extensión (ResultadoAplicarWifi), y el type-guard
+    // genérico estrecharía a ResultadoExitoso perdiendo ese payload para el compilador.
+    if (r.clase !== 'aplicado' && r.clase !== 'no_aplica') {
+      const t = traducirAHttp(r);
+      throw new ServiceUnavailableException(t.error ? `${t.mensaje}: ${t.error}` : t.mensaje);
+    }
+    return { ok: r.ok, applied: r.applied, total: r.total, fallidas: r.fallidas };
   }
 
   @Put('onu/:sn/tr069/pppoe')
@@ -1328,7 +1338,18 @@ export class OltNativoController {
     @Param('contratoId', ParseUUIDPipe) contratoId: string,
     @CurrentUser() user: JwtPayload,
   ): Promise<{ estado: string; mensaje: string }> {
-    return this.ftth.activarCarril(contratoId, user.empresaId);
+    // Ola 1, grupo 4: activarCarril() habla ResultadoOperacion (extensión con `estado`,
+    // ver provision-ftth.service.ts). El borde sigue hablando HTTP (D-14 §3): éxito
+    // preserva la forma que ya consume el frontend operador; el rechazo se traduce con
+    // el mismo idioma que aprovisionarOnu()/eliminarProvision() (grupo 3a/3b).
+    const r = await this.ftth.activarCarril(contratoId, user.empresaId);
+    // No se usa esExito() aquí: el payload `estado` solo va adjunto a 'aplicado'/
+    // 'ya_en_destino' en la extensión (ResultadoActivarCarril) — mismo motivo que en setWifi.
+    if (r.clase !== 'aplicado' && r.clase !== 'ya_en_destino') {
+      const t = traducirAHttp(r);
+      throw new ServiceUnavailableException(t.error ? `${t.mensaje}: ${t.error}` : t.mensaje);
+    }
+    return { estado: r.estado, mensaje: r.mensaje };
   }
 
   @Post('onu/:contratoId/tr069/desactivar')

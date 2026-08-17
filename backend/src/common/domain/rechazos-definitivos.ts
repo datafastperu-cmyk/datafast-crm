@@ -112,4 +112,30 @@ export const RechazosDefinitivos = {
     clase: 'rechazado_definitivo',
     motivo: `Amarre IP/MAC requiere IP (${ip ?? 'sin asignar'}) y MAC (${mac ?? 'sin asignar'}) configuradas en el contrato.`,
   }),
+
+  // ── FTTH (olt-nativo) ────────────────────────────────────────────────────
+  // Ola 1, grupo 4 — ProvisionFtthService.activarCarril()
+
+  /** No existe registro FTTH para el contrato: no hay carril que activar. */
+  FTTH_ACTIVAR_CARRIL_SIN_REGISTRO: (): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: 'Contrato sin ONU FTTH — no hay carril que activar.',
+  }),
+
+  /** El carril solo se activa desde "activo"/"gpon_registrado"; cualquier otro estado
+   *  del registro FTTH necesita re-aprovisionar primero, no reintentar esta operación. */
+  FTTH_ACTIVAR_CARRIL_ESTADO_INVALIDO: (estadoActual: string): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: `El carril solo se activa en ONUs "activo"/"gpon_registrado" (actual: "${estadoActual}").`,
+  }),
+
+  // ── TR-069 (olt-nativo/ztp) ──────────────────────────────────────────────
+  // Ola 1, grupo 4 — OnuTr069DetalleService.setWifi()/.setWifiAmbasBandas()
+
+  /** El device-profile de la ONU declara un `parameter_map` que no está registrado: un
+   *  hueco de configuración/código, no un fallo transitorio de la ONU o del ACS. */
+  TR069_PARAMETER_MAP_NO_REGISTRADO: (detalle: string): ResultadoOperacion => ({
+    clase: 'rechazado_definitivo',
+    motivo: detalle,
+  }),
 } as const;

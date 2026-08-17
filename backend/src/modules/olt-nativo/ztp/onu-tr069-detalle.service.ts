@@ -6,6 +6,8 @@ import { GenieAcsDriver } from './genieacs.driver';
 import { getParameterMap, matchDeviceProfile } from './registry';
 import { ExecutionPlan, ExecutionPlanWrite } from './ztp.contracts';
 import { ContratoOnuConfigService } from './contrato-onu-config.service';
+import { ResultadoOperacion, clasificarError } from '../../../common/domain/resultado-operacion';
+import { RechazosDefinitivos } from '../../../common/domain/rechazos-definitivos';
 
 // ── DTOs de edición LIVE ────────────────────────────────────────────────────
 export class SetWifiLiveDto {
@@ -80,6 +82,22 @@ export interface OnuTr069Detalle {
   ppp?:  OnuPppLink[];
   hosts?: OnuHost[];
 }
+
+// Extensiones LOCALES de ResultadoOperacion — nunca en resultado-operacion.ts (corpus
+// congelado E-0.3). TRANSITORIAS: mismo criterio que ResultadoAprovisionarOnu. El único
+// llamador cruza módulo (PortalOnuService); refrescarWifi() también lo consume
+// olt-nativo.controller.ts en el mismo módulo — ninguno de los dos puede perder el payload
+// que ya usan (`detalle`, `ok/applied/total/fallidas`) porque ResultadoOperacion no lo lleva
+// a propósito (E02-10/E04-10).
+export type ResultadoRefrescarWifi =
+  | (Extract<ResultadoOperacion, { clase: 'aplicado' }> & { detalle: OnuTr069Detalle })
+  | Exclude<ResultadoOperacion, { clase: 'aplicado' }>;
+
+export type ResultadoAplicarWifi =
+  | (Extract<ResultadoOperacion, { clase: 'aplicado' | 'no_aplica' }> & {
+      ok: boolean; applied: number; total: number; fallidas: string[];
+    })
+  | Exclude<ResultadoOperacion, { clase: 'aplicado' | 'no_aplica' }>;
 
 @Injectable()
 export class OnuTr069DetalleService {
@@ -228,6 +246,28 @@ export class OnuTr069DetalleService {
     };
   }
 
+  // Clasificador de borde TR-069 (PA-03) — un solo lugar para refrescarWifi()/setWifi()/
+  // setWifiAmbasBandas(), no repetido por operación (Ola 1, grupo 4, 2026-08-17).
+  //
+  // clasificarError() no sirve tal cual: su regla NotFoundException→rechazado_definitivo
+  // asume una excepción de un guard sobre datos ya inmutables (contrato sin registro, etc.).
+  // Las dos condiciones que este servicio lanza como NotFoundException/ServiceUnavailableException
+  // ("ONU no informando a GenieACS", "NBI no configurado", "sin device-profile") son TODAS
+  // transitorias — la ONU puede volver a informar, el NBI puede reconectar, el runtime puede
+  // llegar en el siguiente ciclo — así que van a `reintentable` (D-14: ante la duda,
+  // reintentable). Solo "parameter_map no registrado" es un hueco de configuración/código que
+  // no se arregla reintentando: ese sí es `rechazado_definitivo`.
+  private clasificarErrorTr069(err: unknown): ResultadoOperacion {
+    const motivo = err instanceof Error ? err.message : String(err);
+    if (/parameter_map ".*" no registrado/i.test(motivo)) {
+      return RechazosDefinitivos.TR069_PARAMETER_MAP_NO_REGISTRADO(motivo);
+    }
+    if (err instanceof NotFoundException || err instanceof ServiceUnavailableException) {
+      return { clase: 'reintentable', motivo };
+    }
+    return clasificarError(err);
+  }
+
   // ── Acciones ──────────────────────────────────────────────────────────────
   private async _deviceIdOrThrow(serial: string): Promise<string> {
     this._assertReady();
@@ -243,25 +283,40 @@ export class OnuTr069DetalleService {
   // sirve para el panel del operador, que muestra todo, pero supera los 30 s del
   // interceptor global. El portal solo necesita el WLANConfiguration, y para el abonado
   // una sección que tarda 30 s y acaba en timeout es una sección que "no muestra nada".
-  async refrescarWifi(serial: string): Promise<OnuTr069Detalle> {
-    const deviceId = await this._deviceIdOrThrow(serial);
+  // Ola 1, grupo 4 (2026-08-17): habla ResultadoOperacion (extensión ResultadoRefrescarWifi,
+  // ver arriba). Sin condición de rechazado_definitivo propia — ver clasificarErrorTr069().
+  // `informing === false` tras el intento de refresco es `indeterminado`, no un fallo: se
+  // encoló un refreshObject contra el CPE y no hay forma de saber si llegó a aplicarse a
+  // tiempo — exactamente el caso D-14 §2, ahora también fuera de una ruta de mikrotik/OLT.
+  async refrescarWifi(serial: string): Promise<ResultadoRefrescarWifi> {
+    try {
+      const deviceId = await this._deviceIdOrThrow(serial);
 
-    // Misma higiene que en `refresh`: las lecturas pendientes se descartan para que la
-    // cola no crezca sin límite si la ONU está inalcanzable (CNT-2026-000004).
-    const pendientes = await this.nbi.listTasks(deviceId).catch(() => []);
-    await Promise.all(
-      pendientes
-        .filter((t) => t.name === 'refreshObject' || t.name === 'getParameterValues')
-        .map((t) => this.nbi.deleteTask(t._id).catch(() => {})),
-    );
+      // Misma higiene que en `refresh`: las lecturas pendientes se descartan para que la
+      // cola no crezca sin límite si la ONU está inalcanzable (CNT-2026-000004).
+      const pendientes = await this.nbi.listTasks(deviceId).catch(() => []);
+      await Promise.all(
+        pendientes
+          .filter((t) => t.name === 'refreshObject' || t.name === 'getParameterValues')
+          .map((t) => this.nbi.deleteTask(t._id).catch(() => {})),
+      );
 
-    await this.nbi.queueTask(
-      deviceId,
-      { name: 'refreshObject', objectName: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration' },
-      true,
-    ).catch(() => {});
+      await this.nbi.queueTask(
+        deviceId,
+        { name: 'refreshObject', objectName: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration' },
+        true,
+      ).catch(() => {});
 
-    return this.getDetalle(serial);
+      const detalle = await this.getDetalle(serial);
+      if (!detalle.informing) {
+        return { clase: 'indeterminado', motivo: `ONU ${serial}: sin respuesta al refresco de WiFi.` };
+      }
+      return { clase: 'aplicado', mensaje: `WiFi de ${serial} refrescado.`, detalle };
+    } catch (err) {
+      // clasificarErrorTr069() nunca devuelve 'aplicado' desde un catch — no hay `detalle`
+      // que exigir aquí.
+      return this.clasificarErrorTr069(err) as Exclude<ResultadoOperacion, { clase: 'aplicado' }>;
+    }
   }
 
   async refresh(serial: string): Promise<OnuTr069Detalle> {
@@ -392,13 +447,30 @@ export class OnuTr069DetalleService {
     return { ok: true, applied: planWrites.length, total: planWrites.length, fallidas: [] };
   }
 
-  setWifi(serial: string, dto: { band: '2.4' | '5'; ssid?: string; password?: string; enabled?: boolean }) {
-    const p = dto.band === '5' ? 'wifi5g' : 'wifi';
-    return this._applyKeys(serial, [
-      { key: `${p}.enable`,   value: dto.enabled },
-      { key: `${p}.ssid`,     value: dto.ssid },
-      { key: `${p}.password`, value: dto.password },
-    ]);
+  // Ola 1, grupo 4 (2026-08-17): habla ResultadoOperacion (extensión ResultadoAplicarWifi,
+  // ver arriba). `total === 0` (dto sin campos con valor) es `no_aplica` — nada que escribir,
+  // no un rechazo. Ver clasificarErrorTr069() para las condiciones de rechazado_definitivo/
+  // reintentable — dispersas en `_applyKeys()`, clasificadas en UN sitio, no por operación.
+  async setWifi(
+    serial: string,
+    dto: { band: '2.4' | '5'; ssid?: string; password?: string; enabled?: boolean },
+  ): Promise<ResultadoAplicarWifi> {
+    try {
+      const p = dto.band === '5' ? 'wifi5g' : 'wifi';
+      const r = await this._applyKeys(serial, [
+        { key: `${p}.enable`,   value: dto.enabled },
+        { key: `${p}.ssid`,     value: dto.ssid },
+        { key: `${p}.password`, value: dto.password },
+      ]);
+      if (r.total === 0) {
+        return { clase: 'no_aplica', mensaje: 'Sin cambios que aplicar.', ...r };
+      }
+      return { clase: 'aplicado', mensaje: `WiFi ${dto.band}GHz de ${serial} enviado al equipo.`, ...r };
+    } catch (err) {
+      // clasificarErrorTr069() nunca devuelve 'aplicado'/'no_aplica' desde un catch — no hay
+      // ok/applied/total/fallidas que exigir aquí.
+      return this.clasificarErrorTr069(err) as Exclude<ResultadoOperacion, { clase: 'aplicado' | 'no_aplica' }>;
+    }
   }
 
   /**
@@ -408,14 +480,29 @@ export class OnuTr069DetalleService {
    * contra el mismo equipo, con la posibilidad de que una se aplique y la otra no y el
    * abonado acabe con dos redes de credenciales distintas — peor que no haber tocado
    * nada, porque la pantalla le prometió una sola red.
+   *
+   * Ola 1, grupo 4 (2026-08-17): mismo criterio de conversión que setWifi().
    */
-  setWifiAmbasBandas(serial: string, dto: { ssid?: string; password?: string }) {
-    return this._applyKeys(serial, [
-      { key: 'wifi.ssid',       value: dto.ssid },
-      { key: 'wifi.password',   value: dto.password },
-      { key: 'wifi5g.ssid',     value: dto.ssid },
-      { key: 'wifi5g.password', value: dto.password },
-    ]);
+  async setWifiAmbasBandas(
+    serial: string,
+    dto: { ssid?: string; password?: string },
+  ): Promise<ResultadoAplicarWifi> {
+    try {
+      const r = await this._applyKeys(serial, [
+        { key: 'wifi.ssid',       value: dto.ssid },
+        { key: 'wifi.password',   value: dto.password },
+        { key: 'wifi5g.ssid',     value: dto.ssid },
+        { key: 'wifi5g.password', value: dto.password },
+      ]);
+      if (r.total === 0) {
+        return { clase: 'no_aplica', mensaje: 'Sin cambios que aplicar.', ...r };
+      }
+      return { clase: 'aplicado', mensaje: `WiFi (ambas bandas) de ${serial} enviado al equipo.`, ...r };
+    } catch (err) {
+      // clasificarErrorTr069() nunca devuelve 'aplicado'/'no_aplica' desde un catch — no hay
+      // ok/applied/total/fallidas que exigir aquí.
+      return this.clasificarErrorTr069(err) as Exclude<ResultadoOperacion, { clase: 'aplicado' | 'no_aplica' }>;
+    }
   }
 
   setPppoe(serial: string, dto: { username?: string; password?: string }) {

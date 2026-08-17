@@ -21,8 +21,10 @@ import {
 // la entrada nueva se declare aquí primero con su propia razón y fecha de retiro.
 // ═══════════════════════════════════════════════════════════════════════════
 describe('Registro de extensiones transitorias de ResultadoOperacion', () => {
-  // 1 = SmartoltApiService.aprovisionarOnu() (Ola 1, grupo 3a). Ver metodos-frontera.ts.
-  const TECHO_EXTENSIONES_TRANSITORIAS = 1;
+  // 5 = SmartoltApiService.aprovisionarOnu() (Ola 1, grupo 3a) + ProvisionFtthService.
+  // activarCarril(), OnuTr069DetalleService.refrescarWifi()/.setWifi()/.setWifiAmbasBandas()
+  // (Ola 1, grupo 4, cierre — 2026-08-17). Ver metodos-frontera.ts.
+  const TECHO_EXTENSIONES_TRANSITORIAS = 5;
 
   it('el número de extensiones transitorias declaradas es exactamente el techo congelado', () => {
     // Sube sin declarar aquí → deuda nueva sin registrar (F-0.1-A §6). Baja sin recongelar →

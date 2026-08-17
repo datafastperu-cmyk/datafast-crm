@@ -46,11 +46,11 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
     return out;
   };
 
-  // 14 = recongelado el 2026-08-16 tras el grupo 3b, sub-lote XuiLines+SmartoltApi
-  // (XuiLinesService.crearLineParaContrato() ya no lanza NotFoundException — bajó de 15).
-  // Desglose: 9 BadRequestException, 8 NotFoundException, 2 ConflictException (una operación
-  // puede lanzar más de una clase).
-  const TECHO_FRONTERA_CON_EXCEPCION_TRANSPORTE = 14;
+  // 13 = recongelado el 2026-08-17 tras el grupo 4 (cierre de la Ola 1):
+  // ProvisionFtthService.activarCarril() ya no lanza NotFoundException/BadRequestException
+  // (bajó de 14) — ambas condiciones ahora son rechazado_definitivo explícito
+  // (RechazosDefinitivos.FTTH_ACTIVAR_CARRIL_SIN_REGISTRO/.FTTH_ACTIVAR_CARRIL_ESTADO_INVALIDO).
+  const TECHO_FRONTERA_CON_EXCEPCION_TRANSPORTE = 13;
 
   it('el número de operaciones de frontera que lanzan HttpException es exactamente el techo congelado', () => {
     const encontrados = hallazgos().map((h) => h.id).sort();
@@ -113,6 +113,14 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
     expect(h).toBeUndefined();
   });
 
+  // Regresión del grupo 4, cierre de la Ola 1 (2026-08-17): activarCarril() lanzaba
+  // NotFoundException (sin registro FTTH) y BadRequestException (estado inválido) directamente
+  // en el cuerpo. Ahora las dos son `rechazado_definitivo` explícito.
+  it('caso conocido: ProvisionFtthService.activarCarril() ya no lanza excepción de transporte', () => {
+    const h = hallazgos().find((x) => x.id === 'ProvisionFtthService.activarCarril');
+    expect(h).toBeUndefined();
+  });
+
   // ═══════════════════════════════════════════════════════════════════════
   // ANCHO — operaciones de frontera que NO hablan ResultadoOperacion, ni literalmente ni por
   // una extensión declarada (`EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION`,
@@ -125,13 +133,11 @@ describe('Ninguna operación de frontera lanza vocabulario de transporte (E03-03
   // `ResultadoOperacion` no lleva a propósito — el registro declara esa excepción una vez, en
   // vez de que el medidor la adivine por el nombre del tipo (eso sería maquillarlo).
   // ═══════════════════════════════════════════════════════════════════════
-  // 67 = recongelado el 2026-08-17 tras el grupo 3b, bloque grande (75 → 67, las 8 ops de
-  // FirewallService.suspenderCliente()/reactivarCliente()/aplicarProrroga(),
-  // PppoeService.crear()/eliminar()/setEstado()/desconectarSesion() y
-  // QueueService.crearSimpleQueue() — ver F-0.1 §9.1). La ruta mikrotik de
-  // OutboxRedService.ejecutarComando() se convirtió en el mismo lote (condición previa del
-  // grupo: nunca dejar el consumidor outbox desfasado de la operación que consume).
-  const TECHO_FRONTERA_SIN_RESULTADO_OPERACION = 67;
+  // 63 = recongelado el 2026-08-17 tras el grupo 4, cierre de la Ola 1 (67 → 63):
+  // ProvisionFtthService.activarCarril(), OnuTr069DetalleService.refrescarWifi()/.setWifi()/
+  // .setWifiAmbasBandas() — las cuatro, vía extensión declarada (payload que sus llamadores
+  // reales necesitan: panel operador y portal del abonado, ver metodos-frontera.ts).
+  const TECHO_FRONTERA_SIN_RESULTADO_OPERACION = 63;
 
   it('el ancho (frontera sin ResultadoOperacion, ni literal ni por extensión declarada) es exactamente el techo congelado', () => {
     const sinRO = operacionesSinResultadoOperacion(metodos).map((m) => `${m.clase}.${m.nombre}`).sort();

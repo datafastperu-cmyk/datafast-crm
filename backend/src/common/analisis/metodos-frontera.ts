@@ -301,6 +301,38 @@ export const EXTENSIONES_TRANSITORIAS_RESULTADO_OPERACION: ExtensionTransitoria[
     retiro: 'Ola 3 (cuando el binding del módulo posea el identificador y el Core deje de necesitarlo)',
     razon: 'Payload `onu` (el id que SmartOLT asigna) que el llamador realmente necesita — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
   },
+  {
+    clase: 'ProvisionFtthService',
+    metodo: 'activarCarril',
+    tipo: 'ResultadoActivarCarril',
+    archivo: 'backend/src/modules/olt-nativo/services/provision-ftth.service.ts',
+    retiro: 'Sin fecha — el payload `estado` lo consumen dos bordes reales (panel operador, portal del abonado), no un dato de transición',
+    razon: 'Payload `estado` (FtthCarrilEstado) que sus dos llamadores necesitan para construir su propia respuesta — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+  },
+  {
+    clase: 'OnuTr069DetalleService',
+    metodo: 'refrescarWifi',
+    tipo: 'ResultadoRefrescarWifi',
+    archivo: 'backend/src/modules/olt-nativo/ztp/onu-tr069-detalle.service.ts',
+    retiro: 'Sin fecha — el payload `detalle` es la lectura que el portal muestra, no un dato de transición',
+    razon: 'Payload `detalle` (OnuTr069Detalle) que PortalOnuService.wifi() necesita para pintar la pantalla — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+  },
+  {
+    clase: 'OnuTr069DetalleService',
+    metodo: 'setWifi',
+    tipo: 'ResultadoAplicarWifi',
+    archivo: 'backend/src/modules/olt-nativo/ztp/onu-tr069-detalle.service.ts',
+    retiro: 'Sin fecha — el payload ok/applied/total/fallidas lo consume el panel operador',
+    razon: 'Payload ok/applied/total/fallidas que olt-nativo.controller.ts devuelve tal cual al operador — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+  },
+  {
+    clase: 'OnuTr069DetalleService',
+    metodo: 'setWifiAmbasBandas',
+    tipo: 'ResultadoAplicarWifi',
+    archivo: 'backend/src/modules/olt-nativo/ztp/onu-tr069-detalle.service.ts',
+    retiro: 'Sin fecha — mismo motivo que setWifi()',
+    razon: 'Payload ok/applied/total/fallidas — ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).',
+  },
 ];
 
 /**

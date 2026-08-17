@@ -123,6 +123,14 @@ export interface FtthProvisionResult {
   pendienteCarrilTr069?: boolean;
 }
 
+// Extensión LOCAL de ResultadoOperacion — nunca en resultado-operacion.ts (corpus congelado
+// E-0.3). TRANSITORIA: mismo criterio que ResultadoAprovisionarOnu — sus dos llamadores
+// (panel operador, portal del abonado) leen `estado` para construir su propia respuesta;
+// ResultadoOperacion no lleva payload a propósito (E02-10/E04-10).
+export type ResultadoActivarCarril =
+  | (Extract<ResultadoOperacion, { clase: 'aplicado' | 'ya_en_destino' }> & { estado: FtthCarrilEstado })
+  | Exclude<ResultadoOperacion, { clase: 'aplicado' | 'ya_en_destino' }>;
+
 // ─────────────────────────────────────────────────────────────
 // ProvisionFtthService
 //
@@ -835,57 +843,76 @@ export class ProvisionFtthService {
   // bloquea la request). El estado terminal (`activo` / `activacion_fallida`) lo fija el
   // propio bootstrap; un watcher resuelve cualquier `activando` que quede colgado por crash.
   // El lock por contrato se mantiene durante todo el bootstrap async (mutex con desaprovisión).
+  //
+  // Ola 1, grupo 4 (2026-08-17): habla ResultadoOperacion con el payload `estado` que sus dos
+  // llamadores necesitan (panel operador vía olt-nativo.controller.ts, portal del abonado vía
+  // PortalOnuService.conectar()) — extensión LOCAL transitoria (ResultadoActivarCarril), mismo
+  // patrón que ResultadoAprovisionarOnu (E02-10/E04-10: ResultadoOperacion no lleva payload).
+  // No hay condición de `indeterminado`/`reintentable` en el camino normal: esta función nunca
+  // toca hardware síncronamente (el bootstrap real lo hace activarCarrilPorContrato(), ya
+  // convertido, invocado por el outbox) — solo valida el registro y escribe estado propio.
   async activarCarril(
     contratoId: string,
     empresaId:  string,
-  ): Promise<{ estado: FtthCarrilEstado; mensaje: string }> {
-    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
-    if (!registro) throw new NotFoundException('Contrato sin ONU FTTH — no hay carril que activar.');
-    if (registro.estado !== FtthOnuEstado.ACTIVO && registro.estado !== FtthOnuEstado.GPON_REGISTRADO) {
-      throw new BadRequestException(`El carril solo se activa en ONUs "activo"/"gpon_registrado" (actual: "${registro.estado}").`);
-    }
-    // Idempotente PERO liveness-aware: "activo" solo es un no-op si la sesión está VIVA. Si el
-    // carril está activo pero el CPE dejó de informar (lastInform viejo → sesión muerta), se
-    // RE-BOOTSTRAPEA para revivirla; de lo contrario un task TR-069 se encolaría sin entregarse
-    // (el bug de "activo pero muerto"). `activando` siempre es no-op (ya está en curso).
-    if (registro.carrilEstado === FtthCarrilEstado.ACTIVANDO) {
-      await this.ftthRepo.update(registro.id, { tr069UltimoUsoAt: new Date() });
-      return { estado: registro.carrilEstado, mensaje: 'El carril TR-069 ya se está activando.' };
-    }
-    if (registro.carrilEstado === FtthCarrilEstado.ACTIVO) {
-      const li   = await this.genieDriver.getLastInformBySerial(registro.sn).catch(() => null);
-      const vivo = li != null && (Date.now() - li.getTime()) < 12 * 60_000;
-      if (vivo) {
-        await this.ftthRepo.update(registro.id, { tr069UltimoUsoAt: new Date() });
-        return { estado: FtthCarrilEstado.ACTIVO, mensaje: 'El carril TR-069 ya está activo y la sesión está viva.' };
+  ): Promise<ResultadoActivarCarril> {
+    try {
+      const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+      // RechazosDefinitivos.*() siempre devuelve 'rechazado_definitivo' — el payload `estado`
+      // no aplica a esa clase, igual que en el catch de abajo.
+      if (!registro) {
+        return RechazosDefinitivos.FTTH_ACTIVAR_CARRIL_SIN_REGISTRO() as Exclude<ResultadoOperacion, { clase: 'aplicado' | 'ya_en_destino' }>;
       }
-      this.logger.warn(
-        `activarCarril | contrato=${contratoId}: carril ACTIVO pero sesión TR-069 rancia ` +
-        `(lastInform=${li?.toISOString() ?? 'nunca'}) — re-bootstrapeando para revivir.`,
-      );
-      // cae al re-bootstrap de abajo.
+      if (registro.estado !== FtthOnuEstado.ACTIVO && registro.estado !== FtthOnuEstado.GPON_REGISTRADO) {
+        return RechazosDefinitivos.FTTH_ACTIVAR_CARRIL_ESTADO_INVALIDO(registro.estado) as Exclude<ResultadoOperacion, { clase: 'aplicado' | 'ya_en_destino' }>;
+      }
+      // Idempotente PERO liveness-aware: "activo" solo es un no-op si la sesión está VIVA. Si el
+      // carril está activo pero el CPE dejó de informar (lastInform viejo → sesión muerta), se
+      // RE-BOOTSTRAPEA para revivirla; de lo contrario un task TR-069 se encolaría sin entregarse
+      // (el bug de "activo pero muerto"). `activando` siempre es no-op (ya está en curso).
+      if (registro.carrilEstado === FtthCarrilEstado.ACTIVANDO) {
+        await this.ftthRepo.update(registro.id, { tr069UltimoUsoAt: new Date() });
+        return { clase: 'aplicado', mensaje: 'El carril TR-069 ya se está activando.', estado: registro.carrilEstado };
+      }
+      if (registro.carrilEstado === FtthCarrilEstado.ACTIVO) {
+        const li   = await this.genieDriver.getLastInformBySerial(registro.sn).catch(() => null);
+        const vivo = li != null && (Date.now() - li.getTime()) < 12 * 60_000;
+        if (vivo) {
+          await this.ftthRepo.update(registro.id, { tr069UltimoUsoAt: new Date() });
+          return { clase: 'ya_en_destino', mensaje: 'El carril TR-069 ya está activo y la sesión está viva.', estado: FtthCarrilEstado.ACTIVO };
+        }
+        this.logger.warn(
+          `activarCarril | contrato=${contratoId}: carril ACTIVO pero sesión TR-069 rancia ` +
+          `(lastInform=${li?.toISOString() ?? 'nunca'}) — re-bootstrapeando para revivir.`,
+        );
+        // cae al re-bootstrap de abajo.
+      }
+
+      // Write-ahead: el estado `activando` se persiste ANTES de encolar. Si el proceso muere
+      // entre ambos, el watcher ve un `activando` colgado y lo resuelve; al revés (encolar y
+      // luego persistir) el comando podría ejecutarse contra un registro que aún dice
+      // `inactivo`. Mismo orden que exige la directriz de wizards para la bitácora de saga.
+      await this.ftthRepo.update(registro.id, {
+        carrilEstado: FtthCarrilEstado.ACTIVANDO,
+        tr069UltimoUsoAt: new Date(),
+        ultimoError: null,
+      });
+
+      // El trabajo pesado (bootstrap + convergencia, hasta ~6 min) lo hace el outbox, no un
+      // fire-and-forget colgado de esta request. El lock por contrato se toma DENTRO del
+      // comando, no aquí: sostenerlo desde la request obligaba a adivinar un TTL que cubriera
+      // una ventana que esta función ya no controla.
+      this.events.emit('ftth.carril.activar', { contratoId, empresaId });
+
+      return {
+        clase: 'aplicado',
+        mensaje: 'Activando el carril TR-069. La ONU aparecerá en el ACS al informar (~1-5 min).',
+        estado: FtthCarrilEstado.ACTIVANDO,
+      };
+    } catch (err) {
+      // clasificarError() nunca devuelve 'aplicado'/'ya_en_destino' — no hay éxito posible
+      // desde un catch, así que ninguna de las dos exige el payload `estado` aquí.
+      return clasificarError(err) as Exclude<ResultadoOperacion, { clase: 'aplicado' | 'ya_en_destino' }>;
     }
-
-    // Write-ahead: el estado `activando` se persiste ANTES de encolar. Si el proceso muere
-    // entre ambos, el watcher ve un `activando` colgado y lo resuelve; al revés (encolar y
-    // luego persistir) el comando podría ejecutarse contra un registro que aún dice
-    // `inactivo`. Mismo orden que exige la directriz de wizards para la bitácora de saga.
-    await this.ftthRepo.update(registro.id, {
-      carrilEstado: FtthCarrilEstado.ACTIVANDO,
-      tr069UltimoUsoAt: new Date(),
-      ultimoError: null,
-    });
-
-    // El trabajo pesado (bootstrap + convergencia, hasta ~6 min) lo hace el outbox, no un
-    // fire-and-forget colgado de esta request. El lock por contrato se toma DENTRO del
-    // comando, no aquí: sostenerlo desde la request obligaba a adivinar un TTL que cubriera
-    // una ventana que esta función ya no controla.
-    this.events.emit('ftth.carril.activar', { contratoId, empresaId });
-
-    return {
-      estado: FtthCarrilEstado.ACTIVANDO,
-      mensaje: 'Activando el carril TR-069. La ONU aparecerá en el ACS al informar (~1-5 min).',
-    };
   }
 
   // ── Ejecutor del comando ACTIVAR_CARRIL_TR069 (lo invoca el outbox) ──────
