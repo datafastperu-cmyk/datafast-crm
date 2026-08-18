@@ -32,11 +32,12 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 | **ADR-035** | Modelo de facturación: se adopta el del sector y se clasifica cada divergencia | **Propuesta** — §4.1 superseded por ADR-036 | [ADR-035-modelo-facturacion-tmforum.md](ADR-035-modelo-facturacion-tmforum.md) |
 | **ADR-036** | Benchmark del Core: qué se adopta de TM Forum, qué se adapta y qué sigue sin fuente | **Aceptada** | [ADR-036-benchmark-del-core.md](ADR-036-benchmark-del-core.md) |
 | **ADR-037** | Los estados de «no llegó a empezar»: `CANCELADO` en A §16 y `RECHAZADO` en C §5 | **Aceptada** — **modifica corpus congelado** | [ADR-037-estados-de-lo-que-no-empezo.md](ADR-037-estados-de-lo-que-no-empezo.md) |
+| **ADR-038** | El contrato de una lectura, y el veredicto de un conjunto — cierra **R-6** | **Aceptada** | [ADR-038-contrato-de-lectura-y-veredicto-de-conjunto.md](ADR-038-contrato-de-lectura-y-veredicto-de-conjunto.md) |
 | **E-0.2** | Modelo de Información del Core — Cliente, Contrato, Cuenta, Servicio Contratado | ✅ **Vigente** v2.4 | [E-0.2-modelo-informacion-core.md](E-0.2-modelo-informacion-core.md) |
-| **E-0.3** | Contratos de Capacidad y Ejecución | ✅ **Vigente** v2.4 | [E-0.3-capacidades-y-ejecucion.md](E-0.3-capacidades-y-ejecucion.md) |
+| **E-0.3** | Contratos de Capacidad y Ejecución | ✅ **Vigente** v2.5 | [E-0.3-capacidades-y-ejecucion.md](E-0.3-capacidades-y-ejecucion.md) |
 | **E-0.4** | Fronteras de los Dominios Técnicos | ✅ **Vigente** v2.3 | [E-0.4-fronteras-dominios-tecnicos.md](E-0.4-fronteras-dominios-tecnicos.md) |
 | **F-0.0** | **Punto de entrada para implementar el Core** — se lee antes que nada | Vigente v1.0 | [F-0.0-punto-de-entrada.md](F-0.0-punto-de-entrada.md) |
-| **F-0.1-A** | **Catálogo de comprobaciones** — los 46 invariantes con su mecanismo | Vigente v1.0 | [F-0.1-anexo-catalogo-comprobaciones.md](F-0.1-anexo-catalogo-comprobaciones.md) |
+| **F-0.1-A** | **Catálogo de comprobaciones** — los 49 invariantes con su mecanismo | Vigente v1.2 | [F-0.1-anexo-catalogo-comprobaciones.md](F-0.1-anexo-catalogo-comprobaciones.md) |
 | **F-0.1** | Plan de Reestructuración del Core | ✅ **Ratificado por el propietario** v3.1 | [F-0.1-plan-de-reestructuracion.md](F-0.1-plan-de-reestructuracion.md) |
 | **F-0.1-R1** | Registro de divergencias de producción durante la congelación (procedimiento de R-1) | Vigente v1.0 — **vivo, se actualiza por incidente** | [F-0.1-R1-divergencias.md](F-0.1-R1-divergencias.md) |
 | **—** | Verificación transversal de E-0.2/3/4 contra el cuerpo normativo | Control de conformidad — hallazgo, no norma | [E-0.2-4-verificacion-transversal.md](E-0.2-4-verificacion-transversal.md) |
