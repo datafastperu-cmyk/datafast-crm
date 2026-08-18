@@ -888,19 +888,34 @@ Odoo y ERPNext. Hoy no puede —`facturas_total_check (total >= 0)`— y por eso
 por tipo de documento (A-5). Con importe negativo restaría solo. **No se hizo ahora a propósito:**
 cambia el modelo de dinero y toca toda la agregación.
 
-### 29-bis-2. ADR-035 espera tu aprobación — y la fase 1 tiene ventana
+### 29-bis-2. ADR-035 espera tu aprobación — actualizado 2026-08-18, la cardinalidad ya se decidió
 
-**Por qué importa:** `docs/gobierno/ADR-035-modelo-facturacion-tmforum.md` clasifica los 20
-conceptos de facturación contra TMF666 / Stripe / Odoo / ERPNext y propone las tres piezas que
-faltan: **cuenta de facturación**, **ciclo como objeto reutilizable** y **libro de cargos**.
+**Corregido 2026-08-18 (censo de deuda, Ola 4):** esta entrada seguía describiendo la fase 1 como
+*«`BillingAccount`, una por cliente, invisible en la UI»* — cardinalidad que **ADR-036 (Aceptada,
+2026-08-14) ya superó**: la Cuenta de Facturación es **1:1 con el CONTRATO**, no con el cliente
+(*«si un cliente tiene 3 contratos deberá tener 3 comprobantes»*, decisión directa del
+propietario). `docs/gobierno/ADR-035-modelo-facturacion-tmforum.md` clasifica los 20 conceptos de
+facturación contra TMF666 / Stripe / Odoo / ERPNext y propone las otras dos piezas que siguen en
+pie: **ciclo como objeto reutilizable** y **libro de cargos** — la pieza 1 (cuenta de facturación)
+ya tiene cardinalidad decidida, solo falta ejecutarla.
 
-**La ventana:** la fase 1 (`BillingAccount`, una por cliente, invisible en la UI) tiene que ir
-**antes de la instalación limpia**. Después deja de ser un cambio de esquema y pasa a ser una
-migración con datos de abonados reales. Hoy hay 16 clientes, 2 contratos vivos y 4 facturas.
+**La ventana sigue vigente, con la cardinalidad correcta.** Tiene que ir **antes de la instalación
+limpia** — después deja de ser un cambio de esquema y pasa a ser una migración con datos de
+abonados reales. Hoy hay 16 clientes (2 vivos), 2 contratos vivos y 4 facturas.
 
-**Cuatro decisiones tuyas en §8 del ADR:** aprobar fases 1-2, eventos del prorrateo y su tope,
-vencimiento de la nota de crédito y los cargos únicos, y qué se hace con los cinco campos de
-configuración que no hacen nada.
+**Bloqueante real encontrado por el censo de deuda, más urgente que la cardinalidad:** hoy
+**nada crea un contrato para un cliente nuevo** — ni el primero, ni el segundo. La migración
+`1791800000054` creó un contrato por cliente una sola vez, en la propia migración; cero código de
+aplicación escribe `servicios.contrato_id` ni inserta en `contratos` desde entonces. Latente (0
+casos en producción — los 2 clientes vivos son anteriores a la migración), se dispara con la
+primera alta nueva. Detalle, opciones vistas en el código sin elegir ninguna, y la interacción con
+el invariante de escritura de pagos/promesas/cargos (`ef1f6c04`) en
+`docs/gobierno/inventario/E-0.2-censo-calculo-deuda.md` §7-bis.
+
+**Tres decisiones tuyas en §8 del ADR-035** (la de cardinalidad, §8 punto de fases 1-2, ya no
+aplica en su forma original — ADR-036 la resolvió): eventos del prorrateo y su tope (parcialmente
+cerrado por PD-14, ver arriba), vencimiento de la nota de crédito y los cargos únicos, y qué se
+hace con los cinco campos de configuración que no hacen nada.
 
 ### 33. H-11 · Un abonado suspendido por una deuda duplicada — **VERIFICADO 2026-08-10, falta tu acción**
 
