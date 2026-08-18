@@ -67,16 +67,17 @@ export class Pago {
   @Column({ name: 'factura_id', nullable: true })
   facturaId: string;
 
-  @Column({ name: 'contrato_id', nullable: true })
-  contratoId: string;
+  /** El Servicio Contratado (tabla `servicios`) al que aplica el pago -- Ola 2. */
+  @Column({ name: 'servicio_id', nullable: true })
+  servicioId: string;
 
   /**
-   * Paso A del lote de dinero (Ola 2): el ACUERDO real, traducido desde `contratoId` vía
-   * `servicios.contrato_id`. Aditiva -- ningún servicio la lee todavía; `contratoId` sigue
-   * siendo la fuente de verdad hasta el Paso B.
+   * El ACUERDO (tabla `contratos`) del que cuelga el pago -- Ola 2, Paso B (2026-08-18).
+   * Poblado, sin lectores todavía: a quién reactiva un pago bajo un acuerdo con varios
+   * servicios es una decisión de la Ola 4/5, no de este renombrado.
    */
-  @Column({ name: 'contrato_id_real', type: 'uuid', nullable: true })
-  contratoIdReal: string | null;
+  @Column({ name: 'contrato_id', type: 'uuid', nullable: true })
+  contratoId: string | null;
 
   // ── Monto ────────────────────────────────────────────────
   @Column({ type: 'decimal', precision: 12, scale: 2 })

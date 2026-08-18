@@ -271,13 +271,11 @@ export class PagosService {
         // En un consolidado apunta al comprobante más antiguo: el reparto completo vive en
         // `pago_aplicaciones`, esta columna es la referencia principal para el histórico.
         facturaId:       factura.id,
-        // Pago.contratoId es hoy un servicios.id (Ola 2 lo renombrará a servicioId más
-        // adelante) -- BUG CORREGIDO 2026-08-18: la fase 4.1 (commit 3c94c55b) renombró
-        // esta clave a `servicioId` en el mismo barrido que renombró Factura.contratoId ->
-        // Factura.servicioId, pero Pago nunca fue tocado por esa fase ("pagos... sigue
-        // aplazado", commit propio). `Pago` no tiene una propiedad `servicioId` -- create()
-        // la descartaba en silencio y todo pago de caja quedaba con contrato_id NULL.
-        contratoId:      factura.servicioId ?? null,
+        // BUG CORREGIDO 2026-08-18 (commit b793cfcf): la fase 4.1 (commit 3c94c55b) había
+        // renombrado esta clave a `servicioId` cuando `Pago` todavía no tenía esa
+        // propiedad -- create() la descartaba en silencio. Ola 2, Paso B le dio nombre
+        // real a la columna: ahora sí existe `Pago.servicioId`.
+        servicioId:      factura.servicioId ?? null,
         monto:           dto.monto,
         moneda:          'PEN',
         // Modelo antiguo: se sigue escribiendo. El histórico se lee tal como se registró,
@@ -558,7 +556,7 @@ export class PagosService {
       empresaId,
       clienteId:       dto.clienteId!,
       facturaId:       null,
-      contratoId:      null,
+      servicioId:      null,
       monto:           dto.monto,
       moneda:          'PEN',
       metodoPago:      dto.metodoPago,
@@ -762,9 +760,9 @@ export class PagosService {
       return;
     }
 
-    // Pago.contratoId == servicios.id (ver comentario en el create() de más arriba). BUG
-    // CORREGIDO 2026-08-18: leía facturas.contrato_id (el ACUERDO real desde la fase
-    // 4.2a), no facturas.servicio_id -- mismo defecto que el path de registrar().
+    // Pago.servicioId == servicios.id. BUG CORREGIDO 2026-08-18: leía facturas.contrato_id
+    // (el ACUERDO real desde la fase 4.2a), no facturas.servicio_id -- mismo defecto que
+    // el path de registrar().
     const { empresa_id: empresaId, cliente_id: clienteId, servicio_id: contratoId } = facturaRow;
 
     // ── 5. Procesar según el status del pago ──────────────
@@ -788,7 +786,7 @@ export class PagosService {
           empresaId,
           clienteId,
           facturaId,
-          contratoId,
+          servicioId: contratoId,
           monto:           mpPayment.transaction_amount,
           moneda:          mpPayment.currency_id || 'PEN',
           metodoPago:      'mercadopago',
@@ -877,7 +875,7 @@ export class PagosService {
   private async aplicarPagoAFacturaYContrato(pago: Pago, user: JwtPayload): Promise<void> {
     try {
       let facturaId   = pago.facturaId;
-      let contratoId  = pago.contratoId;
+      let contratoId  = pago.servicioId;
       const empresaId = pago.empresaId;
 
       // ── A. Aplicar a los comprobantes imputados ──────────
@@ -1178,9 +1176,9 @@ export class PagosService {
       // emitAsync garantiza que la promesa quede 'cumplida' antes de cambiarEstado
       // y que cualquier fallo del handler suba en lugar de perderse silenciosamente.
       await this.events.emitAsync('promesa.verificar_cumplimiento', {
-        // servicioId, no contratoId: promesas_pago hizo su Paso B (Ola 2, 2026-08-18) y su
-        // entidad ya no tiene ese campo. pagos.contratoId sigue significando servicio hasta
-        // su propio Paso B.
+        // El evento y ambas entidades (Pago, PromesaPago) usan servicioId desde el Paso B
+        // de Ola 2 (2026-08-18) -- `contratoId` local aquí es solo el nombre de la
+        // variable, no el campo de la entidad.
         servicioId: contratoId,
         pagoId: pagoId ?? '',
         deuda,
@@ -1249,7 +1247,9 @@ export class PagosService {
         metodoPago:     pago.metodoPago,
         saldoPendiente: 'S/ 0.00',
         empresaId:      pago.empresaId,
-        contratoId:     pago.contratoId ?? undefined,
+        // Campo del evento sigue llamándose contratoId a propósito: alimenta
+        // notificaciones_logs.contrato_id, tabla fuera de esta ola (censo §3.2, sin FK).
+        contratoId:     pago.servicioId ?? undefined,
         clienteId:      pago.clienteId ?? undefined,
         pagoId:         pago.id,
       });

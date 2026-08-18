@@ -38,7 +38,7 @@ export class PagoRepository {
 
   async findByContrato(contratoId: string, empresaId: string): Promise<Pago[]> {
     return this.repo.find({
-      where: { contratoId, empresaId },
+      where: { servicioId: contratoId, empresaId },
       order: { registradoEn: 'DESC' },
       take: 30,
     });
@@ -70,7 +70,7 @@ export class PagoRepository {
     if (f.metodoPago){ conds.push(`p.metodo_pago = $${idx++}`);   params.push(f.metodoPago); }
     if (f.clienteId) { conds.push(`p.cliente_id = $${idx++}`);    params.push(f.clienteId); }
     if (f.facturaId) { conds.push(`p.factura_id = $${idx++}`);    params.push(f.facturaId); }
-    if (f.contratoId){ conds.push(`p.contrato_id = $${idx++}`);   params.push(f.contratoId); }
+    if (f.servicioId){ conds.push(`p.servicio_id = $${idx++}`);   params.push(f.servicioId); }
     if (f.cajeroId)  { conds.push(`p.cajero_id = $${idx++}`);     params.push(f.cajeroId); }
     if (f.banco)     { conds.push(`p.banco ILIKE $${idx++}`);     params.push(`%${f.banco}%`); }
     if (f.numeroOperacion) { conds.push(`p.numero_operacion ILIKE $${idx++}`); params.push(`%${f.numeroOperacion}%`); }
@@ -100,7 +100,7 @@ export class PagoRepository {
       `SELECT COUNT(*) AS total
        FROM pagos p
        LEFT JOIN clientes cl ON cl.id = p.cliente_id
-       LEFT JOIN servicios co ON co.id = p.contrato_id
+       LEFT JOIN servicios co ON co.id = p.servicio_id
        WHERE ${where}`,
       params,
     );
@@ -112,7 +112,9 @@ export class PagoRepository {
          p.empresa_id        AS "empresaId",
          p.cliente_id        AS "clienteId",
          p.factura_id        AS "facturaId",
-         p.contrato_id       AS "contratoId",
+         -- Alias de salida se conserva "contratoId": contrato con el frontend
+         -- (types/index.ts Pago.contratoId), aunque la columna interna ya es servicio_id.
+         p.servicio_id       AS "contratoId",
          p.monto, p.moneda, p.banco, p.estado, p.notas, p.conciliado,
          p.metodo_pago       AS "metodoPago",
          p.numero_operacion  AS "numeroOperacion",
@@ -138,7 +140,7 @@ export class PagoRepository {
          f.numero_completo   AS numero_comprobante
        FROM pagos p
        LEFT JOIN clientes cl ON cl.id = p.cliente_id
-       LEFT JOIN servicios co ON co.id = p.contrato_id
+       LEFT JOIN servicios co ON co.id = p.servicio_id
        LEFT JOIN facturas f ON f.id = p.factura_id AND f.deleted_at IS NULL
        WHERE ${where}
        ORDER BY ${sortCol} ${sortDir}
@@ -156,7 +158,11 @@ export class PagoRepository {
     const needsContrato = !!(f.routerId);
     const needsCliente  = !!(f.sectorId);
 
-    if (needsContrato) qb.leftJoin('contratos', 'co', 'co.id = p.contrato_id');
+    // Sin llamadores (verificado 2026-08-18): este join ya apuntaba a 'contratos' —el
+    // ACUERDO, sin columna router_id— cuando necesitaba 'servicios'. Bug preexistente,
+    // no introducido por el renombrado de Ola 2 y fuera de alcance arreglarlo de pasada;
+    // se deja constancia para quien reactive este método.
+    if (needsContrato) qb.leftJoin('contratos', 'co', 'co.id = p.servicio_id');
     if (needsCliente)  qb.leftJoin('clientes',  'cl', 'cl.id = p.cliente_id');
 
     if (f.search)          qb.andWhere('(p.numero_operacion ILIKE :s OR p.banco ILIKE :s)', { s: `%${f.search}%` });
@@ -164,7 +170,7 @@ export class PagoRepository {
     if (f.metodoPago)      qb.andWhere('p.metodo_pago = :mp', { mp: f.metodoPago });
     if (f.clienteId)       qb.andWhere('p.cliente_id = :clienteId', { clienteId: f.clienteId });
     if (f.facturaId)       qb.andWhere('p.factura_id = :facturaId', { facturaId: f.facturaId });
-    if (f.contratoId)      qb.andWhere('p.contrato_id = :contratoId', { contratoId: f.contratoId });
+    if (f.servicioId)      qb.andWhere('p.servicio_id = :servicioId', { servicioId: f.servicioId });
     if (f.cajeroId)        qb.andWhere('p.cajero_id = :cajeroId', { cajeroId: f.cajeroId });
     if (f.banco)           qb.andWhere('p.banco ILIKE :banco', { banco: `%${f.banco}%` });
     if (f.numeroOperacion) qb.andWhere('p.numero_operacion ILIKE :no', { no: `%${f.numeroOperacion}%` });

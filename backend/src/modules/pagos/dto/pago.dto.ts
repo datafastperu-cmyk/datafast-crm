@@ -92,7 +92,7 @@ export class FilterPagoDto extends PaginationDto {
   facturaId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsUUID()
-  contratoId?: string;
+  servicioId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsUUID()
   cajeroId?: string;

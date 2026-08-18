@@ -735,7 +735,7 @@ export class CobranzaWorker {
       // MikroTik, saltamos las llamadas al router para evitar doble RTT y timeouts innecesarios.
       const [promesaCumplida] = await this.ds.query<{ id: string }[]>(`
         SELECT id FROM promesas_pago
-        WHERE  contrato_id = $1
+        WHERE  servicio_id = $1
           AND  estado      = 'cumplida'
           AND  resuelta_en >= NOW() - INTERVAL '5 minutes'
         LIMIT  1

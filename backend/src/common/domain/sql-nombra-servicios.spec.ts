@@ -163,3 +163,25 @@ describe('Ola 2 · Ninguna consulta usa contrato_id contra una tabla ya renombra
     expect(TABLAS_RENOMBRADAS_A_SERVICIO_ID.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Ola 2, lote de dinero (2026-08-18) — `contrato_id_real`/`contratoIdReal` es nombre de
+ * ANDAMIO: correcto solo mientras conviven la columna vieja y la traducida (Paso A). El
+ * Paso B de `cargos_pendientes`, `promesas_pago` y `pagos` ya retiró las tres — un nombre
+ * que dice "real" afirma que el otro es falso, y esa afirmación deja de tener sentido en
+ * cuanto solo queda una columna. Si reaparece, es la señal de que alguien reintrodujo el
+ * patrón de dos columnas sin completar su Paso B: se detiene el build, no se descubre en
+ * producción.
+ */
+describe('Ola 2 · `contrato_id_real` es nombre prohibido — el andamio del Paso A ya se retiró', () => {
+  const ES_LA_PROPIA_BARRERA = (f: string) => f.endsWith(path.basename(__filename).replace(/.js$/, '.ts'));
+
+  it('ningún fichero fuera de las migraciones menciona contrato_id_real / contratoIdReal', () => {
+    const infractores = ficheros
+      .filter((f) => !ES_LA_PROPIA_BARRERA(f))
+      .filter((f) => /\bcontrato_id_real\b|\bcontratoIdReal\b/.test(fs.readFileSync(f, 'utf8')))
+      .map((f) => path.relative(SRC, f));
+
+    expect(infractores).toEqual([]);
+  });
+});

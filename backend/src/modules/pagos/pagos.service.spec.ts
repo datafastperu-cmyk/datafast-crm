@@ -32,7 +32,7 @@ const mockUser = {
 
 const mockPago: Partial<Pago> = {
   id: 'pag-001', empresaId: 'emp-001', clienteId: 'cli-001',
-  facturaId: 'fac-001', contratoId: 'cnt-001',
+  facturaId: 'fac-001', servicioId: 'cnt-001',
   monto: 85, moneda: 'PEN', metodoPago: MetodoPago.YAPE,
   numeroOperacion: 'YAP12345678', banco: null,
   estado: EstadoPago.PENDIENTE_VERIFICACION,
@@ -412,16 +412,16 @@ describe('PagosService', () => {
     });
 
     it('un pago de caja registra el servicio (create() descarta propiedades desconocidas en silencio)', async () => {
-      // Incidente 2026-08-18: la fase 4.1 (commit 3c94c55b) renombró Factura.contratoId a
-      // Factura.servicioId y, en el mismo barrido, renombró por accidente la CLAVE del
-      // objeto que registrar() pasa a manager.create(Pago, {...}) de `contratoId` a
-      // `servicioId` -- pero `Pago` nunca tuvo (ni tiene) una propiedad `servicioId`.
+      // Incidente 2026-08-18 (commit b793cfcf): la fase 4.1 (commit 3c94c55b) renombró
+      // Factura.contratoId a Factura.servicioId y, en el mismo barrido, renombró por
+      // accidente la CLAVE que registrar() pasaba a manager.create(Pago, {...}) de
+      // `contratoId` a `servicioId` -- pero `Pago` no tenía esa propiedad entonces.
       // TypeORM descarta silenciosamente las claves que la entidad no declara: ocho días
       // de pagos de caja quedaron con contrato_id NULL sin un solo error en ningún lado.
       //
-      // Este test no confía en que el mock de manager.create() reproduzca ese descarte
-      // (no lo hace: es un merge incondicional) -- afirma sobre la FORMA de lo que
-      // registrar() intenta escribir, que es donde vivía el defecto real.
+      // Ola 2, Paso B (mismo día) le dio nombre real a la columna: `Pago.servicioId` ya
+      // existe. Este test sigue afirmando sobre la FORMA de lo que registrar() escribe,
+      // no sobre el mock (que hace un merge incondicional y no reproduciría el descarte).
       await service.registrar({
         clienteId: 'cli-001', facturaId: 'fac-001',
         monto: 85, metodoPago: MetodoPago.EFECTIVO,
@@ -429,10 +429,10 @@ describe('PagosService', () => {
 
       expect(managerMock.create).toHaveBeenCalledWith(
         Pago,
-        expect.objectContaining({ contratoId: 'cnt-001' }),
+        expect.objectContaining({ servicioId: 'cnt-001' }),
       );
       const [, payload] = managerMock.create.mock.calls[managerMock.create.mock.calls.length - 1];
-      expect(payload).not.toHaveProperty('servicioId');
+      expect(payload).not.toHaveProperty('contratoId');
     });
   });
 
@@ -449,7 +449,7 @@ describe('PagosService', () => {
       mockContratosSvc.actualizarDeuda.mockResolvedValue(undefined);
       mockContratosSvc.findOne.mockResolvedValue(mockContratoSuspendido);
       mockContratosSvc.cambiarEstado.mockResolvedValue({ ...mockContratoSuspendido, estado: EstadoContrato.ACTIVO });
-      mockDs.query.mockResolvedValue([{ contrato_id: 'cnt-001' }]);
+      mockDs.query.mockResolvedValue([{ servicio_id: 'cnt-001' }]);
 
       await service.verificar('pag-001', { aprobado: true }, mockUser as any);
 
@@ -512,7 +512,7 @@ describe('PagosService', () => {
       // exactamente el caso en el que se reactivaría.
       mockContratosSvc.findOne.mockResolvedValue(mockContratoSuspendido);
       mockRepo.calcularDeudaContrato.mockResolvedValue({ deuda: 0, meses: 0 });
-      mockDs.query.mockResolvedValue([{ contrato_id: 'cnt-001' }]);
+      mockDs.query.mockResolvedValue([{ servicio_id: 'cnt-001' }]);
 
       await service.verificar('pag-001', { aprobado: true }, mockUser as any);
 
@@ -529,7 +529,7 @@ describe('PagosService', () => {
       mockContratosSvc.actualizarDeuda.mockResolvedValue(undefined);
       // Contrato ya está ACTIVO
       mockContratosSvc.findOne.mockResolvedValue(mockContratoActivo);
-      mockDs.query.mockResolvedValue([{ contrato_id: 'cnt-001' }]);
+      mockDs.query.mockResolvedValue([{ servicio_id: 'cnt-001' }]);
 
       await service.verificar('pag-001', { aprobado: true }, mockUser as any);
 
@@ -546,7 +546,7 @@ describe('PagosService', () => {
       // Aún queda deuda
       mockRepo.calcularDeudaContrato.mockResolvedValue({ deuda: 45, meses: 1 });
       mockContratosSvc.actualizarDeuda.mockResolvedValue(undefined);
-      mockDs.query.mockResolvedValue([{ contrato_id: 'cnt-001' }]);
+      mockDs.query.mockResolvedValue([{ servicio_id: 'cnt-001' }]);
 
       await service.verificar('pag-001', { aprobado: true }, mockUser as any);
 
@@ -637,9 +637,10 @@ describe('PagosService', () => {
       // la lógica de negocio: el webhook no aplica dinero, lo registra.
       expect(mockAplicador.aplicar).toHaveBeenCalled();
       // Mismo defecto que en registrar() (2026-08-18): leía facturas.contrato_id (el
-      // ACUERDO real desde la fase 4.2a) en vez de servicio_id.
+      // ACUERDO real desde la fase 4.2a) en vez de servicio_id. Y Ola 2, Paso B (mismo
+      // día) renombró Pago.contratoId a Pago.servicioId.
       expect(mockRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ contratoId: 'cnt-001' }),
+        expect.objectContaining({ servicioId: 'cnt-001' }),
       );
     });
   });
