@@ -145,13 +145,29 @@ jobs:
       # SOLO en este Postgres efímero de CI — nunca en producción (la VPS real tiene 87 MB
       # libres de RAM, no hay margen para este volumen). Va al final del job a propósito: si
       # algo de este paso ensucia datos, no contamina el resto de los informes que corrieron
-      # antes. Es una medición, no un gate — no falla el build por su resultado. Se retira en
-      # cuanto el número quede leído y registrado (mismo patrón que
-      # `dinero:verificar-paso-a`, retirado el 2026-08-18 al cerrar su propio propósito).
+      # antes. Es una medición, no un gate frente a su RESULTADO — un número lento no debe
+      # tumbar el build. Pero SÍ es un gate frente a que la medición exista: el run 32150016820
+      # salió verde sin medir nada (empresa duplicada rechazada por
+      # `unica_empresa_por_instalacion`, `\gset` nunca corrió, cascada de syntax error, y sin
+      # `ON_ERROR_STOP` psql salió en 0 de todas formas). Un paso que puede "pasar" sin medir
+      # es peor que no tenerlo: afirma que midió cuando no midió nada — la misma distinción de
+      # VIO (evidencia observable, no solo "no explotó") aplicada aquí a una medición.
+      # `ON_ERROR_STOP=1` para que cualquier error real SÍ tumbe el paso, y la aserción de
+      # abajo comprueba que la evidencia concreta ("Execution Time" del EXPLAIN ANALYZE) esté
+      # en el log — no que el paso simplemente haya terminado. Se retira en cuanto el número
+      # quede leído y registrado (mismo patrón que `dinero:verificar-paso-a`, retirado el
+      # 2026-08-18 al cerrar su propio propósito).
       - name: "[TEMPORAL] Ola 4 — medir SUM(saldo) vs. deuda_total a 10k×12"
         run: |
+          set -euo pipefail
           PGPASSWORD=ci_password psql -h localhost -U datafast_db_user -d datafast_db \
-            -f scripts/medir-deuda-por-facturas.sql
+            -v ON_ERROR_STOP=1 \
+            -f scripts/medir-deuda-por-facturas.sql | tee /tmp/medicion-deuda.log
+          if ! grep -q "Execution Time" /tmp/medicion-deuda.log; then
+            echo "::error::La medición no dejó evidencia -- 'Execution Time' no aparece en el log. Esto es un fallo, no un resultado lento."
+            exit 1
+          fi
+          echo "Medición confirmada: 'Execution Time' presente en el log."
 
   frontend:
     name: Frontend — typecheck
