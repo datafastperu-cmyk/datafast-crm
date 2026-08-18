@@ -41,9 +41,22 @@ RETURNING id AS plan_id \gset
 -- 60ef8c53, corrió contra Postgres real hace dos días) en vez de la entidad de memoria:
 -- `nombres` (plural) es la columna real — el fallo anterior fue una transcripción propia,
 -- no una deriva del esquema. La entidad (cliente.entity.ts:44) ya lo decía bien.
-INSERT INTO clientes (empresa_id, numero_documento, nombres, apellido_paterno, telefono, direccion)
+--
+-- CORREGIDO tras el 4º fallo: el precedente sembraba UNA fila por escenario, así que ninguna
+-- restricción de unicidad se activaba nunca. A 10.000 filas se activan todas. Regla aplicada
+-- aquí, no campo por campo: TODO valor potencialmente único se deriva de `g` — ningún
+-- literal compartido en `telefono`, `email` ni `usuario_portal`.
+--   uq_clientes_empresa_documento (empresa_id, numero_documento) — ya derivado.
+--   uq_clientes_empresa_telefono  (empresa_id, telefono)         — derivado ahora.
+--   uq_clientes_empresa_email     (empresa_id, email)            — derivado ahora.
+--   ux_clientes_usuario_portal    (usuario_portal, GLOBAL, sin empresa_id) — derivado ahora.
+INSERT INTO clientes (
+  empresa_id, numero_documento, nombres, apellido_paterno, telefono, email, usuario_portal,
+  direccion
+)
 SELECT :'empresa_id', 'BENCH' || lpad(g::text, 8, '0'), 'Cliente Bench ' || g, 'Apellido',
-       '999999999', 'Dirección Bench ' || g
+       '9' || lpad(g::text, 8, '0'), 'bench' || g || '@bench.test', 'bench_portal_' || g,
+       'Dirección Bench ' || g
 FROM generate_series(1, 10000) AS g;
 
 -- ── 4. Un contrato (acuerdo real) por cliente — la cardinalidad de hoy (D-1/054) ─────────
