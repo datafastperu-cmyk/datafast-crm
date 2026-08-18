@@ -37,7 +37,11 @@ VALUES (:'empresa_id', 'BENCH — Plan Ola4', 80.00, 50, 20)
 RETURNING id AS plan_id \gset
 
 -- ── 3. 10.000 clientes, aislados por prefijo BENCH en numero_documento ───────────────────
-INSERT INTO clientes (empresa_id, numero_documento, nombre, apellido_paterno, telefono, direccion)
+-- Columnas verificadas contra el log verde de scripts/verificar-paso-a-dinero.ts (commit
+-- 60ef8c53, corrió contra Postgres real hace dos días) en vez de la entidad de memoria:
+-- `nombres` (plural) es la columna real — el fallo anterior fue una transcripción propia,
+-- no una deriva del esquema. La entidad (cliente.entity.ts:44) ya lo decía bien.
+INSERT INTO clientes (empresa_id, numero_documento, nombres, apellido_paterno, telefono, direccion)
 SELECT :'empresa_id', 'BENCH' || lpad(g::text, 8, '0'), 'Cliente Bench ' || g, 'Apellido',
        '999999999', 'Dirección Bench ' || g
 FROM generate_series(1, 10000) AS g;
