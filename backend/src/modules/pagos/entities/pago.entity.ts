@@ -70,6 +70,14 @@ export class Pago {
   @Column({ name: 'contrato_id', nullable: true })
   contratoId: string;
 
+  /**
+   * Paso A del lote de dinero (Ola 2): el ACUERDO real, traducido desde `contratoId` vía
+   * `servicios.contrato_id`. Aditiva -- ningún servicio la lee todavía; `contratoId` sigue
+   * siendo la fuente de verdad hasta el Paso B.
+   */
+  @Column({ name: 'contrato_id_real', type: 'uuid', nullable: true })
+  contratoIdReal: string | null;
+
   // ── Monto ────────────────────────────────────────────────
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   monto: number;
