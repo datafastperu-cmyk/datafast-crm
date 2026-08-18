@@ -133,10 +133,17 @@ async function crearPromesa(q: QueryRunner, clienteId: string, servicioId: strin
 async function crearCargo(
   q: QueryRunner, clienteId: string, servicioId: string | null, tipo: 'servicio' | 'reconexion' | 'mora', monto: number,
 ): Promise<string> {
+  // aplica_igv se calcula en TS, no en SQL: reutilizar $4 dentro de `$4 <> 'mora'` le daba
+  // a ese parámetro dos tipos deducidos a la vez (varchar de la columna `tipo`, text de la
+  // comparación) — Postgres lo rechaza con "inconsistent types deduced for parameter $4" y
+  // tumbaba el INSERT antes de que la guarda llegara a correr. Además: mora=false,
+  // reconexion=true ya es una regla documentada en cargo-pendiente.entity.ts — no hace
+  // falta reimplementarla dentro del INSERT.
+  const aplicaIgv = tipo !== 'mora';
   const [fila] = await q.query(
     `INSERT INTO cargos_pendientes (empresa_id, cliente_id, contrato_id, tipo, monto, aplica_igv)
-     VALUES ($1, $2, $3, $4, $5, $4 <> 'mora') RETURNING id`,
-    [EMPRESA_ID, clienteId, servicioId, tipo, monto],
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [EMPRESA_ID, clienteId, servicioId, tipo, monto, aplicaIgv],
   );
   return fila.id;
 }
@@ -204,10 +211,15 @@ async function casoHuerfano(qr: QueryRunner, tabla: string): Promise<void> {
         await cargosPendientesContratoRealPasoA(qr);
       }
     } catch (err) {
-      assert(
-        err instanceof PasoAHuerfanoError,
-        `la guarda lanza PasoAHuerfanoError (no un error genérico): ${err instanceof Error ? err.message : err}`,
-      );
+      if (!(err instanceof PasoAHuerfanoError)) {
+        // Un error de Postgres real (no el que esta prueba busca) deja la transacción
+        // ABORTADA — cualquier SELECT posterior en la misma transacción fallaría con
+        // "current transaction is aborted", tapando el error de verdad detrás de uno
+        // secundario. Se reporta el original tal cual y se sale sin tocar la conexión de
+        // nuevo; el rollback del `finally` de más abajo la deja limpia igual.
+        assert(false, `la guarda reventó por algo que NO es el caso huérfano: ${err instanceof Error ? err.message : err}`);
+        return;
+      }
 
       // El punto central del caso: SIN el guard, un pago huérfano se habría quedado
       // con contrato_id_real en NULL, en silencio, y nadie lo habría notado hasta que
