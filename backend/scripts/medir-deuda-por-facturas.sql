@@ -70,6 +70,12 @@ INSERT INTO facturas (
   periodo_inicio, periodo_fin, subtotal, igv, total, monto_pagado, estado,
   fecha_emision, fecha_vencimiento
 )
+-- El moroso se decide por cliente, no por posición de fila: `numero_documento` codifica el
+-- índice `g` (1..10000) usado al generarlo (`'BENCH' || lpad(g,8,'0')`), así que
+-- `g % 3 = 0` es una etiqueta determinista por cliente. Un `row_number()` sobre el resultado
+-- del CROSS JOIN habría dependido del orden interno, sin garantía, de las 12 filas por
+-- cliente — exactamente el tipo de cosa que este script ya no puede permitirse después de
+-- la corrección de arriba.
 SELECT
   s.empresa_id, s.cliente_id, s.id, s.contrato_id,
   'boleta', 'BENCH',
@@ -77,8 +83,8 @@ SELECT
   (CURRENT_DATE - (m || ' months')::interval)::date,
   ((CURRENT_DATE - (m || ' months')::interval) + INTERVAL '1 month' - INTERVAL '1 day')::date,
   67.80, 12.20, 80.00,
-  CASE WHEN m = 0 AND (row_number() OVER (ORDER BY s.cliente_id)) % 3 = 0 THEN 0 ELSE 80.00 END,
-  CASE WHEN m = 0 AND (row_number() OVER (ORDER BY s.cliente_id)) % 3 = 0 THEN 'vencida' ELSE 'pagada' END,
+  CASE WHEN m = 0 AND substring(c.numero_documento FROM 6)::int % 3 = 0 THEN 0 ELSE 80.00 END,
+  CASE WHEN m = 0 AND substring(c.numero_documento FROM 6)::int % 3 = 0 THEN 'vencida' ELSE 'pagada' END,
   (CURRENT_DATE - (m || ' months')::interval)::date,
   ((CURRENT_DATE - (m || ' months')::interval) + INTERVAL '5 days')::date
 FROM servicios s
