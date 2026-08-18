@@ -500,15 +500,35 @@ contra la base (no solo tests) → `DROP` de la columna vieja → `RENAME` de
 escritor del saldo por diseño — A-4): el Paso B de `pagos` no puede introducir un segundo
 camino de cálculo al mover los lectores.
 
-**Límite dicho explícitamente, no escondido:** las 3 migraciones NO se ejecutaron contra
-una base de datos real en esta sesión — no hay Postgres disponible en el entorno de
-trabajo. Revisadas con la misma disciplina que el resto del lote (sintaxis, columnas,
-nulabilidad, siguiendo al detalle el precedente ya probado de `facturas`
-055/056-FacturaApuntaAlServicio/FacturaPerteneceAlContrato), y la guarda ya tiene su propio
-test de CI con datos sembrados (arriba) — pero su primera ejecución contra un esquema real
-seguirá siendo en la base de datos de destino. Si el conteo de huérfanos o el VIO de dinero
-disparan ahí, es la migración funcionando como se diseñó, no un defecto del diseño — y en
-ese caso se para y se reporta antes de reintentar nada.
+**✅ Verificado contra Postgres real en CI (2026-08-18, corridas #305-#307)** — no solo
+revisado, EJECUTADO. Sin Postgres local en el entorno de trabajo, la única base de datos
+real disponible para probar esto era el propio CI, y se usó como tal:
+
+- **#305** (primer push): las 3 migraciones de Paso A corrieron limpio contra la
+  instalación desde cero. El nuevo paso `dinero:verificar-paso-a` falló — el sembrado del
+  test, no la guarda: `clientes.apellido_paterno` es `NOT NULL` en la tabla real
+  (`CreateClientes` 1700000003000) pese a que la entidad TypeORM lo declara nullable, y
+  `planes` exige `velocidad_bajada`/`velocidad_subida` cuando `producto='internet'` (su
+  default) por el `CHECK planes_velocidad_solo_internet` de la fase 2. Dos derivas de
+  esquema reales, no del mapa servicio→contrato.
+- **#306** (tras corregir el sembrado): siguió fallando. Causa distinta y real: dentro de
+  `crearCargo()`, el parámetro `$4` se usaba a la vez como la columna `tipo` (varchar) y
+  dentro de `$4 <> 'mora'` (deducido `text`) — Postgres rechaza un parámetro con dos tipos
+  deducidos. El INSERT de `cargos_pendientes` nunca llegaba a ejecutarse, así que su guarda
+  nunca corrió en ninguno de sus tres casos. `pagos`/`promesas_pago` sí habían corrido bien
+  en esta corrida (confirmado leyendo el log).
+- **#307 (verde total):** `aplica_igv` movido a TypeScript (`tipo !== 'mora'`, la regla que
+  ya documentaba `cargo-pendiente.entity.ts`) y pasado como su propio parámetro. **Los 9
+  escenarios (3 tablas × 3 casos) pasaron**, incluido el que importaba de verdad: un
+  servicio sin acuerdo hace que `PasoAHuerfanoError` se lance de verdad — no en teoría —
+  para `pagos`, `promesas_pago` y `cargos_pendientes`, sin escribir nada a medias.
+
+**La lección, dicha explícita:** el primer y segundo fallo de CI no fueron el mapa
+servicio→contrato fallando — fue el instrumento de medición (el script de sembrado) el que
+estaba roto. Corregirlo llevó dos vueltas porque las dos primeras correcciones (aplicadas
+antes de leer el log real, cuando el log no era accesible desde el entorno de trabajo) no
+tenían forma de saber si eran la causa hasta verlas confirmadas contra el log — quedaron
+las dos porque el log las confirmó necesarias, no porque "ya no fallara".
 
 ---
 
