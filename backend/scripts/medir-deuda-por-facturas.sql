@@ -1,13 +1,31 @@
--- Ola 4, entregable 3 — medición, no construcción (2026-08-18).
+-- Ola 4, entregable 3 — HERRAMIENTA DE MEDICIÓN REPETIBLE, no un script de un solo uso
+-- (resultado obtenido y registrado 2026-08-18; retirado de CI el mismo día — ver abajo).
 --
--- Pregunta: `facturas.saldo` ya es GENERATED. ¿Un índice parcial sobre `facturas` sostiene,
--- a volumen realista, la misma pregunta que hoy responde el acumulador `servicios.deuda_total`
--- ("¿este contrato debe algo?"), usada como pre-filtro indexado en
--- `cobranza.worker.detectarMorosos()`? Si aguanta, E02-12 se cumple sin inventar nada y el
--- acumulador se retira. Si no, se diseña una proyección — pero solo si este número lo exige.
+-- Pregunta que contestó: `facturas.saldo` ya es GENERATED. ¿Un índice parcial sobre `facturas`
+-- sostiene, a volumen realista, la misma pregunta que hoy responde el acumulador
+-- `servicios.deuda_total` ("¿este contrato debe algo?"), usada como pre-filtro indexado en
+-- `cobranza.worker.detectarMorosos()`? RESULTADO: sí — 30.295 ms de ejecución, 120.000 facturas,
+-- 3.333 contratos morosos detectados (el tercio esperado por diseño del sembrado). Detalle
+-- completo, con los tres matices del plan de ejecución (estimaciones erradas por el filtro
+-- propio del benchmark, medición en caliente, nombre de índice provisional), en
+-- `docs/gobierno/inventario/E-0.2-censo-calculo-deuda.md` §11.5. El índice real que se adoptó
+-- —`idx_facturas_contrato_exigible`— vive en la migración `1791800000072`, con su propio
+-- nombre y su propia justificación; el de este script (`idx_bench_facturas_exigible`) es
+-- exclusivo del benchmark y no sobrevive a su `\echo` de limpieza (§10 del script).
 --
--- Corre SOLO en CI, contra el Postgres 16 efímero del workflow — nunca contra producción.
--- Volumen: 10.000 clientes × 12 meses de facturas (no las 2 facturas reales de producción).
+-- NO vive en `ci.yml`: costó siete intentos dejarlo conforme al esquema real (mono-empresa,
+-- `nombres` no `nombre`, unicidad a 10k filas, dos ENUM con destino distinto — uno vivo, uno ya
+-- convertido a VARCHAR por una migración posterior a su creación), y ese esfuerzo no se tira: es
+-- exactamente el patrón que hará falta cuando llegue la migración de MikroWISP
+-- (`project_migracion_mikrowisp`, real, con datos de abonados de verdad). Para repetir esta
+-- medición cuando el volumen realista cambie (más clientes, más meses de historial), correr a
+-- mano contra un Postgres desechable — NUNCA contra producción (ver nota de la VPS, abajo):
+--
+--   PGPASSWORD=ci_password psql -h localhost -U datafast_db_user -d datafast_db \
+--     -v ON_ERROR_STOP=1 -f backend/scripts/medir-deuda-por-facturas.sql
+--
+-- Corre SOLO contra un Postgres efímero/desechable — nunca contra producción. Volumen actual:
+-- 10.000 clientes × 12 meses de facturas (no las 2 facturas reales de producción).
 --
 -- CORREGIDO 2026-08-18, tras el run 32150016820 (verde, y no midió nada):
 --   1. Causa raíz: ADR-031/1791800000047 hace el ERP MONO-EMPRESA
