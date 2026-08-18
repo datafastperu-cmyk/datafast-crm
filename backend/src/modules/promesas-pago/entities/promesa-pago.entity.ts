@@ -20,6 +20,14 @@ export class PromesaPago extends BaseModel {
   @Column({ name: 'contrato_id' })
   contratoId: string;
 
+  /**
+   * Paso A del lote de dinero (Ola 2): el ACUERDO real, traducido desde `contratoId` vía
+   * `servicios.contrato_id`. Aditiva -- ningún servicio la lee todavía; `contratoId` sigue
+   * siendo la fuente de verdad hasta el Paso B.
+   */
+  @Column({ name: 'contrato_id_real', type: 'uuid', nullable: true })
+  contratoIdReal: string | null;
+
   @Column({ name: 'cliente_id' })
   clienteId: string;
 
