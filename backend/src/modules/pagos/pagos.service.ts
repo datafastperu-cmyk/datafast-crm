@@ -2,6 +2,7 @@ import {
   Injectable, Logger, NotFoundException,
   ConflictException, BadRequestException,
   ForbiddenException, UnprocessableEntityException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -16,6 +17,8 @@ import { FacturacionService }   from '../facturacion/facturacion.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 import { ContratosService }     from '../contratos/contratos.service';
 import { AuditoriaService }     from '../auth/auditoria.service';
+import { FacturaRepository }    from '../facturacion/repositories/factura.repository';
+import { EventosSistemaService } from '../sistema/eventos-sistema.service';
 import { JwtPayload }           from '../../common/decorators/current-user.decorator';
 
 import { Pago, EstadoPago, CuentaBancaria } from './entities/pago.entity';
@@ -57,7 +60,37 @@ export class PagosService {
     private readonly canalSvc:     CanalPagoService,
     private readonly aplicador:    AplicadorFacturaService,
     @InjectQueue(QUEUES.COBRANZA) private readonly cobranzaQueue: Queue,
+    private readonly facturaRepo:  FacturaRepository,
+    @Optional() private readonly eventos?: EventosSistemaService,
   ) {}
+
+  /**
+   * Resuelve el acuerdo de un pago y deja rastro si no se pudo -- NUNCA en silencio
+   * (incidente 2026-08-10→18: ocho días de `contrato_id` NULL sin un solo error en
+   * ningún lado, ver PENDIENTES.md "Cerrado"). La caja NUNCA se bloquea por esto: un
+   * pago se registra igual, con `contratoId` en NULL, y el evento queda en
+   * `eventos_sistema` a nivel error para que alguien lo note y lo corrija — rechazar un
+   * cobro por una anomalía de datos es peor que la anomalía.
+   */
+  private async resolverAcuerdoParaPago(
+    clienteId: string, empresaId: string, servicioId: string | null,
+  ): Promise<string | null> {
+    const contratoId = await this.facturaRepo.contratoDe(clienteId, empresaId, servicioId);
+    if (!contratoId) {
+      this.logger.error(
+        `[PAGO] Sin acuerdo resuelto para cliente=${clienteId} servicio=${servicioId ?? '(ninguno)'} `
+        + `-- el pago se registra igual, contrato_id queda NULL`,
+      );
+      void this.eventos?.registrar({
+        nivel: 'error',
+        origen: 'db',
+        codigo: 'pago-sin-acuerdo',
+        mensaje: `Pago sin acuerdo resuelto — servicio ${servicioId ?? '(ninguno)'} no cuelga de ningún contrato`,
+        contexto: { clienteId, servicioId, empresaId },
+      });
+    }
+    return contratoId;
+  }
 
   // ────────────────────────────────────────────────────────────
   // REGISTRAR PAGO — Fase 2: Transacción ACID completa
@@ -265,6 +298,12 @@ export class PagosService {
       // la cuenta, y por tanto lo que hay que buscar en el extracto al conciliar.
       const { comision, neto } = this.canalSvc.calcularComision(canal, dto.monto);
 
+      // Resolver el acuerdo ANTES del create() -- si no se resuelve, se registra igual
+      // (la caja nunca se bloquea) pero queda rastro en eventos_sistema, nunca en silencio.
+      const contratoIdResuelto = await this.resolverAcuerdoParaPago(
+        factura.clienteId, empresaId, factura.servicioId ?? null,
+      );
+
       const pago = manager.create(Pago, {
         empresaId,
         clienteId:       factura.clienteId,
@@ -276,6 +315,9 @@ export class PagosService {
         // propiedad -- create() la descartaba en silencio. Ola 2, Paso B le dio nombre
         // real a la columna: ahora sí existe `Pago.servicioId`.
         servicioId:      factura.servicioId ?? null,
+        // El acuerdo real (Ola 2, Paso B). Puede quedar NULL -- ver resolverAcuerdoParaPago:
+        // si eso pasa, ya se dejó rastro en eventos_sistema antes de llegar aquí.
+        contratoId:      contratoIdResuelto,
         monto:           dto.monto,
         moneda:          'PEN',
         // Modelo antiguo: se sigue escribiendo. El histórico se lee tal como se registró,
@@ -552,11 +594,16 @@ export class PagosService {
       : await this.canalSvc.resolverDesdeLegacy(empresaId, dto.metodoPago, dto.banco, manager);
     const { comision, neto } = this.canalSvc.calcularComision(canal, dto.monto);
 
+    // Sin servicio (es un adelanto), pero contratoDe() resuelve por cliente igual --
+    // misma regla que registrar(): nunca en silencio si no se resuelve.
+    const contratoIdResuelto = await this.resolverAcuerdoParaPago(dto.clienteId!, empresaId, null);
+
     const pago = manager.create(Pago, {
       empresaId,
       clienteId:       dto.clienteId!,
       facturaId:       null,
       servicioId:      null,
+      contratoId:      contratoIdResuelto,
       monto:           dto.monto,
       moneda:          'PEN',
       metodoPago:      dto.metodoPago,
@@ -781,12 +828,17 @@ export class PagosService {
         pago = await this.pagoRepo.findById(pagoExistente.id, empresaId);
 
       } else {
+        // Resolver el acuerdo ANTES del create() -- misma regla que registrar(): la caja
+        // nunca se bloquea, pero si no se resuelve queda rastro en eventos_sistema.
+        const contratoIdResuelto = await this.resolverAcuerdoParaPago(clienteId, empresaId, contratoId);
+
         // Crear nuevo pago registrado automáticamente por webhook
         pago = await this.pagoRepo.save(this.pagoRepo.create({
           empresaId,
           clienteId,
           facturaId,
           servicioId: contratoId,
+          contratoId: contratoIdResuelto,
           monto:           mpPayment.transaction_amount,
           moneda:          mpPayment.currency_id || 'PEN',
           metodoPago:      'mercadopago',

@@ -321,4 +321,24 @@ describe('FacturacionService', () => {
       expect(mockRepo.save).toHaveBeenCalled();
     });
   });
+
+  // ── Registrar cargo pendiente ─────────────────────────────
+  // Regla del propietario (2026-08-18): el invariante "una fila de dinero no nace con
+  // el acuerdo a medias" se mudó de la migración (Paso A) a tiempo de escritura. A
+  // diferencia de un pago de caja, registrar un cargo es un flujo controlado (el
+  // llamador puede corregir y reintentar) y SÍ puede rechazarse.
+  describe('registrarCargoPendiente() — rechaza si el servicio no tiene acuerdo', () => {
+    it('un cliente sin ningún acuerdo no crea el cargo en silencio', async () => {
+      mockRepo.contratoDe.mockResolvedValueOnce(null);
+      mockComprobantesSvc.getConfiguracion.mockResolvedValueOnce({
+        igvRate: 0.18, moneda: 'PEN',
+        moraAcumulaSiguienteCiclo: true, reconexionAcumulaSiguienteCiclo: true,
+      } as never);
+
+      await expect(service.registrarCargoPendiente({
+        empresaId: 'emp-001', clienteId: 'cli-sin-acuerdo', servicioId: 'svc-001',
+        tipo: 'servicio', monto: 20,
+      })).rejects.toThrow('no se puede registrar el cargo');
+    });
+  });
 });

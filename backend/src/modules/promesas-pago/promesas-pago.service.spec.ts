@@ -1,3 +1,4 @@
+import { UnprocessableEntityException } from '@nestjs/common';
 import { PromesasPagoService } from './promesas-pago.service';
 import { EstadoPromesa } from './entities/promesa-pago.entity';
 
@@ -94,5 +95,44 @@ describe('PromesasPagoService — guarda antes de cortar por prórroga vencida',
 
     expect(firewallSvc.suspenderCliente).not.toHaveBeenCalled();
     expect(repo.update).not.toHaveBeenCalled();
+  });
+});
+
+// Regla del propietario (2026-08-18): el invariante "una fila de dinero no nace con el
+// acuerdo a medias" se mudó de la migración (Paso A) a tiempo de escritura. A diferencia
+// de un pago de caja, otorgar una promesa es un flujo controlado (un operador lo hace a
+// propósito) y SÍ puede rechazarse.
+describe('PromesasPagoService.crear() — rechaza si el servicio no tiene acuerdo', () => {
+  it('un servicio que no cuelga de ningún acuerdo no crea la promesa en silencio', async () => {
+    const contratoRow = {
+      id: 'svc-001', empresa_id: 'emp-001', cliente_id: 'cli-001', estado: 'activo',
+      ip_asignada: '172.16.201.3', router_id: 'router-1', usuario_pppoe: 'tumbes',
+      deuda_total: '85.00', en_prorroga: false,
+      nombre_cliente: 'Cliente Test', whatsapp: null, telefono: '999999999',
+    };
+    const query = jest.fn().mockResolvedValue([contratoRow]);
+    const transaction = jest.fn();
+    const repo = { findOne: jest.fn().mockResolvedValue(null) };
+    const facturaRepo = { contratoDe: jest.fn().mockResolvedValue(null) };
+
+    const svc = new PromesasPagoService(
+      repo as never,
+      { query, transaction } as never,
+      {} as never,
+      {} as never,
+      { encolar: jest.fn(), encolarAplicarProrroga: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      facturaRepo as never,
+    );
+
+    const futuro = new Date(); futuro.setDate(futuro.getDate() + 5);
+    const dto = { servicioId: 'svc-001', fechaVencimiento: futuro.toISOString().split('T')[0] };
+    const user = { sub: 'usr-001', empresaId: 'emp-001' };
+
+    await expect(svc.crear(dto as never, user as never))
+      .rejects.toThrow(UnprocessableEntityException);
+
+    // Ninguna promesa se creó a medias: el rechazo ocurre ANTES de la transacción.
+    expect(transaction).not.toHaveBeenCalled();
   });
 });

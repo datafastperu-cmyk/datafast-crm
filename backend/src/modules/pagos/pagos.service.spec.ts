@@ -18,6 +18,8 @@ import { FacturacionService }  from '../facturacion/facturacion.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 import { ContratosService }    from '../contratos/contratos.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
+import { FacturaRepository }   from '../facturacion/repositories/factura.repository';
+import { EventosSistemaService } from '../sistema/eventos-sistema.service';
 import { ConfigService }       from '@nestjs/config';
 import { Pago, MetodoPago, EstadoPago } from './entities/pago.entity';
 import { EstadoContrato }      from '../contratos/entities/contrato.entity';
@@ -103,6 +105,16 @@ const mockContratosSvc = {
 
 const mockAuditoria = {
   log: jest.fn(), logCreate: jest.fn(), logUpdate: jest.fn(),
+};
+
+// Por defecto resuelve un acuerdo -- los tests del incidente (contrato_id NULL,
+// 2026-08-10→18) lo sobreescriben con mockResolvedValueOnce(null).
+const mockFacturaRepo = {
+  contratoDe: jest.fn().mockResolvedValue('cnt-001'),
+};
+
+const mockEventos = {
+  registrar: jest.fn().mockResolvedValue(undefined),
 };
 
 // La frontera del dinero: el único escritor del saldo de un comprobante.
@@ -217,6 +229,8 @@ describe('PagosService', () => {
         { provide: WatcherHeartbeatService, useValue: {
           ejecutar: jest.fn(async (_n: string, _i: number, fn: any) => fn()),
         } },
+        { provide: FacturaRepository,    useValue: mockFacturaRepo },
+        { provide: EventosSistemaService, useValue: mockEventos },
       ],
     }).compile();
     service = m.get<PagosService>(PagosService);
@@ -432,7 +446,36 @@ describe('PagosService', () => {
         expect.objectContaining({ servicioId: 'cnt-001' }),
       );
       const [, payload] = managerMock.create.mock.calls[managerMock.create.mock.calls.length - 1];
-      expect(payload).not.toHaveProperty('contratoId');
+      expect(payload).toHaveProperty('servicioId');
+    });
+
+    it('un pago cuyo servicio no cuelga de un acuerdo no se registra en silencio (ocho días de contrato_id NULL, 10/08-18/08)', async () => {
+      // Mismo incidente que el test de arriba, corregido con la regla nueva del
+      // propietario (2026-08-18): el invariante "una fila de dinero no nace con el
+      // acuerdo a medias" se mudó de la migración (Paso A) a tiempo de escritura. La
+      // caja NUNCA se bloquea por esto -- rechazar un cobro por una anomalía de datos es
+      // peor que la anomalía -- pero el pago se registra CON RASTRO, no en silencio.
+      mockFacturaRepo.contratoDe.mockResolvedValueOnce(null);
+
+      const result = await service.registrar({
+        clienteId: 'cli-001', facturaId: 'fac-001',
+        monto: 85, metodoPago: MetodoPago.EFECTIVO,
+      } as any, mockUser as any);
+
+      // El pago se registra igual -- la caja no se bloquea.
+      expect(result).toBeDefined();
+      expect(managerMock.create).toHaveBeenCalledWith(
+        Pago,
+        expect.objectContaining({ servicioId: 'cnt-001', contratoId: null }),
+      );
+      // Y queda rastro a nivel error en eventos_sistema, con cliente y servicio.
+      expect(mockEventos.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nivel: 'error',
+          codigo: 'pago-sin-acuerdo',
+          contexto: expect.objectContaining({ clienteId: 'cli-001', servicioId: 'cnt-001' }),
+        }),
+      );
     });
   });
 

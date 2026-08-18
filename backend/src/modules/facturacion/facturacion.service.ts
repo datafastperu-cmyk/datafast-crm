@@ -1,6 +1,6 @@
 import {
   Injectable, Logger, NotFoundException,
-  BadRequestException, ConflictException,
+  BadRequestException, ConflictException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
@@ -827,6 +827,14 @@ export class FacturacionService {
     const contratoId = await this.facturaRepo.contratoDe(
       params.clienteId, params.empresaId, params.servicioId,
     );
+    // Flujo controlado (el llamador puede corregir y reintentar) — SÍ se rechaza, a
+    // diferencia de un pago de caja: mejor un error ahora que un cargo sin dueño
+    // (incidente 2026-08-10→18 en `pagos`, ver PENDIENTES.md — misma regla, distinto límite).
+    if (!contratoId) {
+      throw new UnprocessableEntityException(
+        `El cliente ${params.clienteId} no tiene ningún acuerdo — no se puede registrar el cargo`,
+      );
+    }
 
     const repo = this.ds.getRepository(CargoPendiente);
     const cargo = repo.create({

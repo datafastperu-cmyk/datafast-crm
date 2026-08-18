@@ -1,6 +1,6 @@
 import {
   Injectable, Logger, BadRequestException,
-  ConflictException, NotFoundException,
+  ConflictException, NotFoundException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository }  from '@nestjs/typeorm';
 import { InjectDataSource }  from '@nestjs/typeorm';
@@ -104,6 +104,15 @@ export class PromesasPagoService {
     const contratoId = await this.facturaRepo.contratoDe(
       contrato.cliente_id, user.empresaId, dto.servicioId,
     );
+    // A diferencia de un pago de caja, esto es un flujo controlado (un operador otorga la
+    // prórroga) y SÍ puede rechazarse: mejor que el operador vea el error ahora y lo
+    // corrija, a que la promesa nazca sin acuerdo y quede sin dueño (incidente
+    // 2026-08-10→18 en `pagos`, ver PENDIENTES.md — misma regla, distinto límite).
+    if (!contratoId) {
+      throw new UnprocessableEntityException(
+        `El servicio ${dto.servicioId} no cuelga de ningún acuerdo — no se puede crear la promesa`,
+      );
+    }
 
     // Guardar en BD + actualizar campos de prórroga en contrato (transacción)
     const promesa = await this.ds.transaction(async (em) => {
