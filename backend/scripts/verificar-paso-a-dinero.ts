@@ -49,25 +49,36 @@ function assert(cond: unknown, mensaje: string): void {
 }
 
 // ── Semillas mínimas ─────────────────────────────────────────────────────
-// Cada valor de negocio (numero_documento, numero_contrato) lleva el token del proceso
-// para que dos ejecuciones del script en la misma base —o dos runs de CI concurrentes—
-// nunca choquen contra una constraint UNIQUE, aunque el rollback debería dejar cero rastro.
-const TOKEN = `pasoA-${process.pid}-${Date.now()}`;
+// Cada valor de negocio (numero_documento, numero_contrato) lleva este token para que dos
+// ejecuciones del script en la misma base no choquen contra una constraint UNIQUE, aunque
+// el rollback debería dejar cero rastro. Corto a propósito: numero_documento es
+// VARCHAR(20) y numero_contrato VARCHAR(30) — un token largo (pid+timestamp) revienta esos
+// límites antes de que la guarda llegue a ejecutarse.
+const TOKEN = Math.random().toString(36).slice(2, 8);
 
 async function crearPlan(q: QueryRunner, sufijo: string): Promise<string> {
+  // producto NOT NULL DEFAULT 'internet' (fase 2, CatalogoAbiertoAProductos) trae consigo
+  // el CHECK planes_velocidad_solo_internet: con producto='internet' (el default, que no
+  // se está pisando aquí) las dos velocidades son obligatorias pese a que la columna en sí
+  // sea nullable desde esa misma migración.
   const [fila] = await q.query(
-    `INSERT INTO planes (empresa_id, nombre, precio) VALUES ($1, $2, 50) RETURNING id`,
+    `INSERT INTO planes (empresa_id, nombre, precio, velocidad_bajada, velocidad_subida)
+     VALUES ($1, $2, 50, 100, 20) RETURNING id`,
     [EMPRESA_ID, `Plan ${TOKEN}-${sufijo}`],
   );
   return fila.id;
 }
 
 async function crearCliente(q: QueryRunner, sufijo: string): Promise<string> {
+  // apellido_paterno es NOT NULL en la tabla real (CreateClientes 1700000003000) aunque la
+  // entidad TypeORM lo declara nullable con default '' — deriva conocida, sin barrera que
+  // la vigile (esquema real vs. entidades es solo informe, F-0.1-A). Se provee explícito
+  // aquí porque este script habla SQL crudo contra la tabla, no contra la entidad.
   const [fila] = await q.query(
-    `INSERT INTO clientes (empresa_id, numero_documento, nombres, telefono, direccion)
-     VALUES ($1, $2, $3, '999999999', 'Dirección de prueba — Paso A')
+    `INSERT INTO clientes (empresa_id, numero_documento, nombres, apellido_paterno, telefono, direccion)
+     VALUES ($1, $2, $3, $4, '999999999', 'Dirección de prueba — Paso A')
      RETURNING id`,
-    [EMPRESA_ID, `${TOKEN}-doc-${sufijo}`, `Cliente ${TOKEN}-${sufijo}`],
+    [EMPRESA_ID, `${TOKEN}${sufijo}`, `Cliente ${TOKEN}`, `Test-${sufijo}`],
   );
   return fila.id;
 }
@@ -77,7 +88,7 @@ async function crearContratoReal(q: QueryRunner, clienteId: string, sufijo: stri
   const [fila] = await q.query(
     `INSERT INTO contratos (empresa_id, cliente_id, numero_contrato)
      VALUES ($1, $2, $3) RETURNING id`,
-    [EMPRESA_ID, clienteId, `${TOKEN}-ctr-${sufijo}`],
+    [EMPRESA_ID, clienteId, `CTR-${TOKEN}${sufijo}`],
   );
   return fila.id;
 }
@@ -94,7 +105,7 @@ async function crearServicio(
        (empresa_id, cliente_id, plan_id, contrato_id, numero_contrato, fecha_inicio, precio_mensual)
      VALUES ($1, $2, $3, $4, $5, CURRENT_DATE, 50)
      RETURNING id`,
-    [EMPRESA_ID, clienteId, planId, contratoRealId, `${TOKEN}-svc-${sufijo}`],
+    [EMPRESA_ID, clienteId, planId, contratoRealId, `SVC-${TOKEN}${sufijo}`],
   );
   return fila.id;
 }
@@ -257,21 +268,36 @@ async function casoDineroNoSeMueve(qr: QueryRunner, tabla: string): Promise<void
   }
 }
 
+// Un escenario que revienta por algo que NO es la guarda (p.ej. una columna NOT NULL de
+// la semilla que este script no conocía) no debe tapar a los demás: cada `casoX` ya hace
+// rollback en su propio `finally`, así que el runner queda limpio para seguir. Sin este
+// try/catch, el primer fallo inesperado abortaba TODO el script y dejaba los otros 8
+// escenarios sin ejecutar — el peor momento para perder cobertura es cuando algo ya salió
+// mal.
+async function correr(nombre: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    fallos++;
+    console.error(`  ✗ [${nombre}] reventó fuera de una aserción: ${e instanceof Error ? e.stack : e}`);
+  }
+}
+
 async function main(): Promise<void> {
   await dataSource.initialize();
   const qr = dataSource.createQueryRunner();
   try {
     for (const tabla of ['pagos', 'promesas_pago', 'cargos_pendientes']) {
-      await casoTraduccionCorrecta(qr, tabla);
-      await casoHuerfano(qr, tabla);
-      await casoDineroNoSeMueve(qr, tabla);
+      await correr(`${tabla}/a`, () => casoTraduccionCorrecta(qr, tabla));
+      await correr(`${tabla}/b`, () => casoHuerfano(qr, tabla));
+      await correr(`${tabla}/c`, () => casoDineroNoSeMueve(qr, tabla));
     }
   } finally {
     await qr.release();
     await dataSource.destroy();
   }
 
-  console.log(`\n[verificar-paso-a-dinero] ${fallos === 0 ? 'TODO VERDE' : `${fallos} aserción(es) FALLIDA(s)`}`);
+  console.log(`\n[verificar-paso-a-dinero] ${fallos === 0 ? 'TODO VERDE' : `${fallos} aserción(es)/escenario(s) FALLIDO(s)`}`);
   process.exit(fallos === 0 ? 0 : 1);
 }
 
