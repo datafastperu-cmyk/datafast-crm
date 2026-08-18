@@ -94,18 +94,26 @@ INSERT INTO facturas (
 -- cliente — exactamente el tipo de cosa que este script ya no puede permitirse después de
 -- la corrección de arriba.
 --
--- `tipo_comprobante` y `estado` son ENUM de Postgres (`tipo_comprobante`, `estado_factura` —
--- migración 1700000008000), no texto: un literal suelto en una lista de `SELECT` no se
--- castea solo al tipo destino como sí ocurre en un `VALUES` de un solo `INSERT` — cast
--- explícito en los dos. `numero_completo`/`base_imponible`/`saldo` son `GENERATED ALWAYS` —
--- ninguna aparece en la lista de columnas de arriba; Postgres calcula `saldo` como
--- `total - monto_pagado`, así que la proporción de morosos se controla en `monto_pagado`
--- (abajo), nunca escribiendo `saldo`. `correlativo` es `row_number()` sobre el resultado
--- completo del CROSS JOIN (120.000 filas): único de punta a punta, no se reinicia por
--- cliente — satisface `UNIQUE (empresa_id, serie, correlativo)`.
+-- `tipo_comprobante` DEJÓ de ser ENUM (`1788800000000-ConvertTipoComprobanteToVarchar.ts`, el
+-- `up()` la convierte a VARCHAR(30) — el `CREATE TYPE tipo_comprobante` que aparece en ese
+-- fichero vive en el `down()`, no en el `up()`). Sin cast: un texto no necesita uno.
+-- `estado` SÍ sigue siendo ENUM (`estado_factura`, migración 1700000008000, sin ninguna
+-- conversión posterior) — un literal suelto en un `CASE`/`SELECT` no se castea solo al tipo
+-- destino como sí ocurre en un `VALUES` de un `INSERT` simple, así que aquí el cast se queda.
+-- Verificado columna por columna contra el histórico completo de migraciones sobre `facturas`
+-- (no solo la de creación) tras el primer error de tipo: `1783200000000` añade `version` (con
+-- default, fuera de esta lista); `1786700000000`/`1786900000000`/`1789100000000` tocan otras
+-- columnas o un trigger ya retirado; `1791800000055`/`056` son el rename servicio_id/contrato_id
+-- ya conocido. Ninguna otra columna de esta lista cambió de tipo ni de nulabilidad.
+-- `numero_completo`/`base_imponible`/`saldo` son `GENERATED ALWAYS` — ninguna aparece en la
+-- lista de columnas de arriba; Postgres calcula `saldo` como `total - monto_pagado`, así que
+-- la proporción de morosos se controla en `monto_pagado` (abajo), nunca escribiendo `saldo`.
+-- `correlativo` es `row_number()` sobre el resultado completo del CROSS JOIN (120.000 filas):
+-- único de punta a punta, no se reinicia por cliente — satisface
+-- `UNIQUE (empresa_id, serie, correlativo)`.
 SELECT
   s.empresa_id, s.cliente_id, s.id, s.contrato_id,
-  'boleta'::tipo_comprobante, 'BENCH',
+  'boleta', 'BENCH',
   (row_number() OVER (ORDER BY s.id, m))::int,
   (CURRENT_DATE - (m || ' months')::interval)::date,
   ((CURRENT_DATE - (m || ' months')::interval) + INTERVAL '1 month' - INTERVAL '1 day')::date,
