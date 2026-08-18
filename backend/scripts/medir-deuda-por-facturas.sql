@@ -93,15 +93,26 @@ INSERT INTO facturas (
 -- del CROSS JOIN habría dependido del orden interno, sin garantía, de las 12 filas por
 -- cliente — exactamente el tipo de cosa que este script ya no puede permitirse después de
 -- la corrección de arriba.
+--
+-- `tipo_comprobante` y `estado` son ENUM de Postgres (`tipo_comprobante`, `estado_factura` —
+-- migración 1700000008000), no texto: un literal suelto en una lista de `SELECT` no se
+-- castea solo al tipo destino como sí ocurre en un `VALUES` de un solo `INSERT` — cast
+-- explícito en los dos. `numero_completo`/`base_imponible`/`saldo` son `GENERATED ALWAYS` —
+-- ninguna aparece en la lista de columnas de arriba; Postgres calcula `saldo` como
+-- `total - monto_pagado`, así que la proporción de morosos se controla en `monto_pagado`
+-- (abajo), nunca escribiendo `saldo`. `correlativo` es `row_number()` sobre el resultado
+-- completo del CROSS JOIN (120.000 filas): único de punta a punta, no se reinicia por
+-- cliente — satisface `UNIQUE (empresa_id, serie, correlativo)`.
 SELECT
   s.empresa_id, s.cliente_id, s.id, s.contrato_id,
-  'boleta', 'BENCH',
+  'boleta'::tipo_comprobante, 'BENCH',
   (row_number() OVER (ORDER BY s.id, m))::int,
   (CURRENT_DATE - (m || ' months')::interval)::date,
   ((CURRENT_DATE - (m || ' months')::interval) + INTERVAL '1 month' - INTERVAL '1 day')::date,
   67.80, 12.20, 80.00,
   CASE WHEN m = 0 AND substring(c.numero_documento FROM 6)::int % 3 = 0 THEN 0 ELSE 80.00 END,
-  CASE WHEN m = 0 AND substring(c.numero_documento FROM 6)::int % 3 = 0 THEN 'vencida' ELSE 'pagada' END,
+  (CASE WHEN m = 0 AND substring(c.numero_documento FROM 6)::int % 3 = 0
+        THEN 'vencida' ELSE 'pagada' END)::estado_factura,
   (CURRENT_DATE - (m || ' months')::interval)::date,
   ((CURRENT_DATE - (m || ' months')::interval) + INTERVAL '5 days')::date
 FROM servicios s
