@@ -378,9 +378,15 @@ CAMBIO_DATOS, INSTALACION, TRASLADO, OTRO), y `contratoId` es un campo genérico
 (`nullable: true`) que el DTO puebla igual sin distinguir la categoría (`ticket.dto.ts`,
 `tickets.service.ts`, `ticket.repository.ts`). Un ticket de facturación es del acuerdo, uno
 técnico es del servicio — mismo patrón mixto que `notificaciones_logs`. Instrucción explícita
-del propietario: "si mezcla, la sacas de la ola y la reportas — no la fuerzas a un bando". Pasa
-a **excluida**, pendiente de una decisión de diseño propia (¿dos columnas, como
-`cargos_pendientes`?), no de un renombrado. Documentado en
+del propietario: "si mezcla, la sacas de la ola y la reportas — no la fuerzas a un bando".
+
+**No es una decisión de la Ola 2 ni del Core — confirmado por el propietario (2026-08-17): la
+tabla necesita decir DE QUÉ habla cada fila, y esa es una pregunta de modelado del módulo de
+soporte, no del Core técnico/dinero.** Dos opciones nombradas, ninguna elegida todavía: **(a)**
+sujeto polimórfico (`sujeto_tipo` + `sujeto_id`, el ticket apunta a `servicios` o a `contratos`
+según su categoría) o **(b)** dos columnas nullable, patrón `cargos_pendientes`
+(`servicio_id` + `contrato_id`, se llena la que corresponda según `categoria`). Queda para
+cuando se reestructure el módulo de soporte — **no vuelve a la Ola 2**. Documentado en
 `E-0.2-clasificacion-contrato-id.md` v3.
 
 **Entregable 3 (primer renombrado real), 2026-08-17** — `comandos_red_pendientes.contrato_id`
@@ -398,31 +404,32 @@ el MISMO commit con un registro declarado de tablas renombradas (hoy: 1) y una b
 detecta `contrato_id` dentro del mismo literal SQL que una tabla ya renombrada — sin confundir
 el `servicios.contrato_id` legítimo (FK real al acuerdo, fase 3b) con el defecto que vigila.
 
-**Fuera de alcance a propósito, documentado en el propio código**: el campo `contratoId` DENTRO
-del JSONB `payload` de cada comando (`PayloadDesprovisionarRed`/`PayloadProvisionarRed`) no se
-tocó — no es la columna con FK que cubre la clasificación, y tocarlo habría ensanchado el lote a
-`ContratosService` y otros llamadores sin necesidad. El parámetro de
-`ProvisionFtthService.suspenderPorContrato()`/etc. (consumidos por `ejecutarComandoOnu()`)
-también sigue llamándose `contratoId` en su propia firma — resuelve contra `ftth_onu_registro`,
-tabla SIN FK (censo §3.2), de otro lote.
+**El JSONB — corrección del propietario sobre el registro original (2026-08-17).** La primera
+versión de esta ficha decía que un comando en vuelo podía llevar "el significado viejo" tras un
+rename técnico. **Es incorrecto y quedó corregido: los renames técnicos cambian NOMBRES DE
+COLUMNA, no VALORES.** `servicios.id` sigue siendo `servicios.id` antes y después de
+`ALTER TABLE ... RENAME COLUMN` — un comando encolado antes del rename y ejecutado después lleva
+el MISMO valor con el MISMO significado. No hay rotura en vuelo y no hacía falta ninguna
+decisión de diseño para esto. Esa es justo la línea que separa este lote (renombrado de columna)
+del lote de dinero (traducción de valores, sección de abajo): solo el segundo puede cambiar lo
+que un ID *significa*.
 
-**⚠️ El punto ciego de la barrera — el JSONB, registrado explícitamente (2026-08-17).**
-`sql-nombra-servicios.spec.ts` lee texto SQL y tipos TypeScript; no puede ver dentro de un blob
-JSONB. El campo `contratoId` en `PayloadDesprovisionarRed`/`PayloadProvisionarRed` es, por
-diseño de la barrera, el **ÚNICO punto de toda la Ola 2 donde equivocarse no falla ruidoso** —
-todo lo demás (columna renombrada, tabla renombrada) rompe con un error de Postgres visible. Un
-JSONB mal escrito no rompe: guarda silenciosamente el significado equivocado.
+Lo que SÍ seguía siendo cierto — y motivó el lote — es que `sql-nombra-servicios.spec.ts` lee
+texto SQL y tipos TypeScript, nunca el contenido de un blob JSONB: el campo `contratoId` de
+`PayloadDesprovisionarRed`/`PayloadProvisionarRed` era el único nombre `contratoId` que sobrevivía
+a las 7 tablas técnicas sin que ninguna barrera lo vigilara. Verificado antes de tocarlo: **cero
+lectores** en todo el repo (backend y frontend) leen ese campo por nombre —
+`ejecutarComando()`/DESPROVISIONAR resuelve todo contra `cmd.servicio_id` (la columna, ya
+renombrada), y `encolarProvisionar()` no tiene ni un solo punto de llamada (código muerto).
 
-**Consecuencia concreta:** un comando encolado ANTES del renombrado de una tabla y ejecutado
-DESPUÉS lleva en su payload un `contratoId` cuyo significado ya cambió de sentido en el resto
-del sistema (o viceversa, si el payload se reescribe pero el consumidor todavía espera el
-significado viejo). El outbox es asíncrono por diseño — el desfase entre encolar y ejecutar es
-justo la ventana donde esto puede pasar.
-
-**Su propio lote debe decidirse ANTES de que la Ola 2 cierre, no después** — instrucción
-explícita del propietario. Qué hacer con comandos en vuelo (¿versionar el payload? ¿un campo de
-esquema? ¿drenar el outbox antes de cada rename técnico?) es una decisión de diseño del
-propietario, no algo que se resuelve por default en esta ola.
+**Hecho, lote pequeño, mismo día:** `PayloadDesprovisionarRed.contratoId` y
+`PayloadProvisionarRed.contratoId` → `servicioId` en `outbox-red.service.ts`. Sin lectura dual en
+código porque no hay lector al que aplicársela — el JSDoc de la interfaz deja escrito qué hacer
+si alguna vez se añade uno (`payload.servicioId ?? (payload as any).contratoId`) y cuándo se
+puede retirar esa cautela (`comandos_red_pendientes` sin ninguna fila
+`estado IN ('PENDIENTE','EN_PROCESO') AND payload ? 'contratoId'`). `ProvisionFtthService.
+suspenderPorContrato()`/etc. sigue llamando `contratoId` a su parámetro — resuelve contra
+`ftth_onu_registro`, tabla SIN FK (censo §3.2), de otro lote, sin relación con este payload.
 
 **Las 7 tablas técnicas están HECHAS (2026-08-17).** `comandos_red_pendientes` (`1791800000058`),
 `ordenes_trabajo` (`1791800000059`), `consumo_datos`+`consumo_snapshot` (`1791800000060`, mismo

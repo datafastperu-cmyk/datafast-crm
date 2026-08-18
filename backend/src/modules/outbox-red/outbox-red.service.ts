@@ -64,12 +64,24 @@ export interface PayloadReactivarRed {
 }
 
 export interface PayloadDesprovisionarRed {
-  contratoId:   string;
+  /**
+   * El Servicio Contratado (tabla `servicios`) — Ola 2, `contratoId` → `servicioId`
+   * (2026-08-17). Verificado antes de renombrar: ningún código, backend ni frontend, lee
+   * este campo por nombre (DESPROVISIONAR resuelve todo lo que necesita contra
+   * `cmd.servicio_id`, la columna, no el payload). Filas encoladas antes de este cambio
+   * guardan la clave vieja `contratoId` en el JSONB — inofensivo mientras siga sin lector.
+   * Si se añade uno, debe leer con `payload.servicioId ?? (payload as any).contratoId`
+   * hasta que `comandos_red_pendientes` no tenga ninguna fila con
+   * `estado IN ('PENDIENTE','EN_PROCESO') AND payload ? 'contratoId'`.
+   */
+  servicioId:   string;
   motivo:       string;
 }
 
 export interface PayloadProvisionarRed {
-  contratoId:    string;
+  /** Ver el comentario de `PayloadDesprovisionarRed.servicioId` — misma migración, mismo
+   * verificado (además `encolarProvisionar()` no tiene ningún punto de llamada hoy). */
+  servicioId:    string;
   clienteId:     string;
   usuarioPppoe:  string;
   passwordPppoe: string;
@@ -170,11 +182,8 @@ export class OutboxRedService {
       );
       return;
     }
-    // El campo `contratoId` del payload (PayloadDesprovisionarRed) queda fuera de este
-    // lote a propósito: vive dentro del JSONB `payload`, no es la columna con FK que la
-    // clasificación de la Ola 2 cubre — ver E-0.2-clasificacion-contrato-id.md.
     await this.encolar('DESPROVISIONAR', servicioId, routerId, {
-      contratoId: servicioId,
+      servicioId,
       ipAsignada:   datos.ipAsignada   ?? null,
       usuarioPppoe: datos.usuarioPppoe ?? null,
       motivo:       datos.motivo,
