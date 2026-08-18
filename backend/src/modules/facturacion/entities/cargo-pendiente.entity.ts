@@ -18,24 +18,20 @@ export class CargoPendiente extends BaseModel {
   @Column({ name: 'cliente_id' })
   clienteId: string;
 
+  /**
+   * El ACUERDO (tabla `contratos`) del que cuelga el cargo -- Ola 2, Paso B (2026-08-18).
+   * Antes de esta migración esta columna guardaba un `servicios.id` bajo un nombre que
+   * mentía sobre lo que contenía; ver `servicioId` para esa dimensión, que no se perdió.
+   */
   @Column({ name: 'contrato_id', type: 'uuid', nullable: true })
   contratoId: string | null;
 
   /**
-   * Paso A del lote de dinero (Ola 2): qué SERVICIO motivó el cargo -- solo para
-   * tipo IN ('servicio', 'reconexion'); NULL en mora, que es del acuerdo, no de un
-   * servicio concreto. Aditiva -- ningún servicio la lee todavía.
+   * Qué SERVICIO motivó el cargo -- solo para tipo IN ('servicio', 'reconexion'); NULL en
+   * mora, que es del acuerdo, no de un servicio concreto.
    */
   @Column({ name: 'servicio_id', type: 'uuid', nullable: true })
   servicioId: string | null;
-
-  /**
-   * Paso A del lote de dinero (Ola 2): el ACUERDO real, traducido desde `contratoId` vía
-   * `servicios.contrato_id`. Aditiva -- ningún servicio la lee todavía; `contratoId` sigue
-   * siendo la fuente de verdad hasta el Paso B.
-   */
-  @Column({ name: 'contrato_id_real', type: 'uuid', nullable: true })
-  contratoIdReal: string | null;
 
   // 'reconexion' → siempre aplica IGV
   // 'mora'       → nunca aplica IGV

@@ -1433,7 +1433,7 @@ export class ContratosService {
       await this.facturacionSvc.registrarCargoPendiente({
         empresaId:   user.empresaId,
         clienteId:   contrato.clienteId,
-        contratoId:  contrato.id,
+        servicioId:  contrato.id,
         tipo:        'servicio',
         monto:       cargo.importe,
         descripcion: `Servicio ${ciclo.inicio} a ${ciclo.fin} · ${cargo.dias} días desde la activación`,

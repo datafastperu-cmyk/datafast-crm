@@ -803,7 +803,7 @@ export class FacturacionService {
   async registrarCargoPendiente(params: {
     empresaId: string;
     clienteId: string;
-    contratoId: string | null;
+    servicioId: string | null;
     tipo: 'mora' | 'reconexion' | 'servicio';
     monto: number;
     descripcion?: string;
@@ -822,11 +822,20 @@ export class FacturacionService {
     // operador decide aplicar o no, mientras que un tramo de servicio entregado se debe siempre.
     // Dejarlo configurable sería ofrecer la opción de regalar días ya prestados.
 
+    // El acuerdo se resuelve aquí, no en el llamador: es el mismo resolutor que usa la
+    // emisión de facturas (fase 4.2a), para no tener dos caminos hacia la misma respuesta.
+    const contratoId = await this.facturaRepo.contratoDe(
+      params.clienteId, params.empresaId, params.servicioId,
+    );
+
     const repo = this.ds.getRepository(CargoPendiente);
     const cargo = repo.create({
       empresaId:   params.empresaId,
       clienteId:   params.clienteId,
-      contratoId:  params.contratoId,
+      // La mora es del acuerdo, no de un servicio concreto (Ola 2, clasificación v2):
+      // servicioId solo se guarda para lo que sí lo motivó.
+      servicioId:  params.tipo === 'mora' ? null : params.servicioId,
+      contratoId,
       tipo:        params.tipo,
       monto:       params.monto,
       // mora = NUNCA IGV | reconexion = SIEMPRE IGV | servicio = lo que diga su comprobante.
