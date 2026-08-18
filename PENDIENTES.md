@@ -458,6 +458,36 @@ reutilizada aquí): `:contratoId` en rutas del portal y de `planta-externa.contr
 parámetros de servicio que espejan esos DTOs. Cada decisión de frontera está comentada inline en
 el código donde se tomó.
 
+**Lote de DINERO — Paso A hecho (2026-08-17), Paso B NO arranca sin revisión.** Dos pasos
+reversibles por tabla, nunca se sobreescribe el valor en su sitio (mapa servicio→contrato
+N:1, irreconstruible si se pisa): **Paso A** añade columna(s) nueva(s) rellenas desde el
+mapa, deja la vieja intacta, nadie la lee aún. **Paso B** (más adelante, con revisión)
+mueve lectores/escritores y retira la vieja.
+
+Cada migración de Paso A trae sus dos guardas obligatorias: **(1)** si algún `contrato_id`
+referenciado apunta a un servicio sin acuerdo (soft-deleted antes de la fase 3b), la
+migración FALLA RUIDOSA con el conteo y una muestra de IDs — no inventa contrato ni calla;
+**(2)** un recuento de dinero por cliente antes/después (VIO aplicado a la migración): si
+cambia un céntimo, se revierte (`migrationsTransactionMode: 'each'` — cada migración en su
+propia transacción, el `throw` la deshace sola).
+
+- `pagos` — `1791800000064-PagosContratoRealPasoA.ts`: añade `contrato_id_real`.
+- `promesas_pago` — `1791800000065-PromesasPagoContratoRealPasoA.ts`: añade
+  `contrato_id_real` (`contrato_id` es NOT NULL aquí — toda promesa debe traducir).
+- `cargos_pendientes` — `1791800000066-CargosPendientesContratoRealPasoA.ts`: añade LAS
+  DOS — `servicio_id` (copia directa de `contrato_id`, solo
+  `tipo IN ('servicio','reconexion')`; NULL en mora, que es del acuerdo) +
+  `contrato_id_real` (traducido vía el mapa, todo tipo incluida la mora).
+
+**Límite dicho explícitamente, no escondido:** las 3 migraciones NO se ejecutaron contra
+una base de datos real en esta sesión — no hay Postgres disponible en el entorno de
+trabajo. Revisadas con la misma disciplina que el resto del lote (sintaxis, columnas,
+nulabilidad, siguiendo al detalle el precedente ya probado de `facturas`
+055/056-FacturaApuntaAlServicio/FacturaPerteneceAlContrato), pero su primera ejecución real
+será contra la base de datos de destino. Si el conteo de huérfanos o el VIO de dinero
+disparan ahí, es la migración funcionando como se diseñó, no un defecto del diseño — y en
+ese caso se para y se reporta antes de reintentar nada.
+
 ---
 
 ## 🔵 A vigilar (no es un fallo, es un cambio sin ejercitar)
