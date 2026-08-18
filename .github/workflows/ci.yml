@@ -86,16 +86,6 @@ jobs:
       - name: Instalación desde cero (migraciones core + auxiliary)
         run: npm run migration:run:all
 
-      # ── Ola 2, lote de dinero — la guarda ejercitada con datos, no con cero filas ──────
-      # La instalación limpia de arriba corre las migraciones de Paso A sobre una base
-      # vacía: el conteo de huérfanos y la comparación de dinero pasan sobre conjuntos
-      # vacíos y no prueban nada (hallazgo del propietario, 2026-08-17 — PC-04, guarda
-      # decorativa). Este paso siembra filas a mano —incluida una huérfana a propósito— y
-      # llama a la MISMA función que las migraciones usan, para que su primera vez viendo
-      # un dato real sea aquí, no en producción.
-      - name: Paso A del lote de dinero — guardas con datos sembrados
-        run: npm run dinero:verificar-paso-a
-
       - name: Volcar esquema resultante
         run: |
           PGPASSWORD=ci_password psql -h localhost -U datafast_db_user -d datafast_db -tAc \

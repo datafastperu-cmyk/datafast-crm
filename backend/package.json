@@ -34,8 +34,7 @@
     "seed:run": "TS_NODE_PROJECT=tsconfig.migration.json ts-node src/database/seeds/run-seeds.ts",
     "typecheck": "tsc --noEmit",
     "migration:run:all": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:run -d src/config/datasource.install.ts",
-    "migration:show:all": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:show -d src/config/datasource.install.ts",
-    "dinero:verificar-paso-a": "TS_NODE_PROJECT=tsconfig.migration.json ts-node -T scripts/verificar-paso-a-dinero.ts"
+    "migration:show:all": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:show -d src/config/datasource.install.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^3.0.2",

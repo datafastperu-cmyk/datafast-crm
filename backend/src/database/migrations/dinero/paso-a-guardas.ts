@@ -2,9 +2,17 @@ import { QueryRunner } from 'typeorm';
 
 /**
  * Guardas del Paso A del lote de DINERO (Ola 2), extraídas de las migraciones
- * `1791800000064/065/066` para que el test de CI con datos sembrados
- * (`scripts/verificar-paso-a-dinero.ts`) ejerza EXACTAMENTE la misma lógica que corre en
- * producción — no una copia que puede divergir de lo que la migración hace de verdad.
+ * `1791800000064/065/066` para que fueran ejercitables desde un test con datos sembrados
+ * en vez de solo revisadas — ver PENDIENTES.md #37 para la historia completa (dos
+ * corridas de CI reales encontraron bugs de sembrado, no de la guarda; la tercera pasó).
+ *
+ * Este módulo se queda porque las migraciones 064/065/066 lo importan y una migración ya
+ * aplicada no se edita. El test que las ejercitaba
+ * (`scripts/verificar-paso-a-dinero.ts`) se retiró el 2026-08-18: con el Paso B
+ * (migraciones 068/069/070) ya autorizado y desplegado, `contrato_id_real` no existe en
+ * ninguna instalación nueva — `migration:run:all` aplica la cadena completa, y el Paso B
+ * renombra esa columna antes de que el test llegara a verla. Ya no hay ventana en la que
+ * el estado intermedio del Paso A sea observable en un CI fresco.
  *
  * Cada función asume que la columna destino YA EXISTE (el `ALTER TABLE ADD COLUMN` es
  * DDL de una sola vez y vive en la migración, no aquí) y hace tres cosas, en orden:

@@ -491,6 +491,16 @@ huérfano DETIENE la migración en vez de quedar en NULL en silencio, (c) el din
 mueve. Doble uso: es también el test que dirá si el mapa aguanta cuando lleguen datos
 reales de la migración MikroWISP — no hay que reinventarlo entonces.
 
+**Retirado el 2026-08-18, al cerrar el Paso B.** `scripts/verificar-paso-a-dinero.ts`
+verificaba un estado intermedio (`contrato_id_real` existente) que ya no es alcanzable en
+una instalación nueva: `migration:run:all` aplica la cadena completa, y el Paso B
+(migraciones 068/069/070) renombra esa columna antes de que el test llegara a verla —
+confirmado por un CI real que falló ahí, no supuesto. El script se borró; la lógica que
+probaba (`paso-a-guardas.ts`) se queda porque las migraciones 064/065/066 la importan y una
+migración ya aplicada no se edita. No hace falta reinventar este instrumento para MikroWISP:
+si esa migración necesita el mismo patrón Paso A/B, se construye una guarda y un test
+propios cuando llegue, con la misma disciplina.
+
 **`contrato_id_real` es nombre de andamio, no puede sobrevivir al Paso B** — un nombre que
 dice "real" afirma que el otro es falso, y eso deja de tener sentido en cuanto solo queda
 uno. La forma del Paso B, documentada en `E-0.2-clasificacion-contrato-id.md` pero NO
