@@ -1191,7 +1191,7 @@ export class ContratosService {
   async otorgarProrroga(id: string, dto: OtorgarProrrogaDto, user: JwtPayload, req?: any): Promise<Contrato> {
     // Delega a PromesasPagoService: persiste promesa, actualiza contrato y aplica en MikroTik
     await this.promesasSvc.crear(
-      { contratoId: id, fechaVencimiento: dto.prorrogaHasta, motivo: dto.motivo },
+      { servicioId: id, fechaVencimiento: dto.prorrogaHasta, motivo: dto.motivo },
       user,
     );
     return this.findOne(id, user.empresaId);

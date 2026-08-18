@@ -12,7 +12,7 @@ import { ApiResponse as StdResponse }            from '../../common/dto/response
 import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
 
 class CrearPromesaBodyDto implements CrearPromesaDto {
-  contratoId:       string;
+  servicioId:       string;
   @IsDateString()
   fechaVencimiento: string;
   @IsOptional() @IsString() @MaxLength(500)

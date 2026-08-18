@@ -17,16 +17,19 @@ export class PromesaPago extends BaseModel {
   @Column({ name: 'empresa_id' })
   empresaId: string;
 
-  @Column({ name: 'contrato_id' })
-  contratoId: string;
+  /** El Servicio Contratado (tabla `servicios`) al que aplica la promesa -- Ola 2. */
+  @Column({ name: 'servicio_id' })
+  servicioId: string;
 
   /**
-   * Paso A del lote de dinero (Ola 2): el ACUERDO real, traducido desde `contratoId` vía
-   * `servicios.contrato_id`. Aditiva -- ningún servicio la lee todavía; `contratoId` sigue
-   * siendo la fuente de verdad hasta el Paso B.
+   * El ACUERDO (tabla `contratos`) del que cuelga la promesa -- Ola 2, Paso B
+   * (2026-08-18). Poblado (resuelto vía `FacturaRepository.contratoDe()` al crear),
+   * sin lectores todavía: a quién reactiva un pago bajo un acuerdo con varios
+   * servicios y contra qué compite una promesa activa son decisiones de la Ola 4/5,
+   * no de este renombrado.
    */
-  @Column({ name: 'contrato_id_real', type: 'uuid', nullable: true })
-  contratoIdReal: string | null;
+  @Column({ name: 'contrato_id', type: 'uuid', nullable: true })
+  contratoId: string | null;
 
   @Column({ name: 'cliente_id' })
   clienteId: string;

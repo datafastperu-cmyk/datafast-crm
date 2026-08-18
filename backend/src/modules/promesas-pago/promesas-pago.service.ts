@@ -18,15 +18,16 @@ import { JwtPayload }                 from '../../common/decorators/current-user
 import { NOTIFICATION_EVENTS }        from '../notificaciones/events/notification.events';
 import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
 import { esExito, mensajeDe } from '../../common/domain/resultado-operacion';
+import { FacturaRepository } from '../facturacion/repositories/factura.repository';
 
 export interface CrearPromesaDto {
-  contratoId:       string;
+  servicioId:       string;
   fechaVencimiento: string;  // 'YYYY-MM-DD'
   motivo?:          string;
 }
 
 export interface EventPromesaVerificarCumplimiento {
-  contratoId: string;
+  servicioId: string;
   pagoId:     string;
   deuda:      number;
 }
@@ -46,6 +47,7 @@ export class PromesasPagoService {
     private readonly pppoeSvc:    PppoeService,
     private readonly outboxSvc:   OutboxRedService,
     private readonly events:      EventEmitter2,
+    private readonly facturaRepo: FacturaRepository,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -74,7 +76,7 @@ export class PromesasPagoService {
       FROM   servicios c
       JOIN   clientes cl ON cl.id = c.cliente_id
       WHERE  c.id = $1 AND c.deleted_at IS NULL
-    `, [dto.contratoId]);
+    `, [dto.servicioId]);
 
     if (!contrato)
       throw new NotFoundException('Contrato no encontrado');
@@ -89,18 +91,26 @@ export class PromesasPagoService {
     // Verificar que no exista ya una promesa activa (el índice UNIQUE lo garantiza en BD,
     // pero verificamos antes para dar un mensaje claro)
     const existente = await this.repo.findOne({
-      where: { contratoId: dto.contratoId, estado: EstadoPromesa.ACTIVA },
+      where: { servicioId: dto.servicioId, estado: EstadoPromesa.ACTIVA },
     });
     if (existente)
       throw new ConflictException(
         `Ya existe una promesa activa para este contrato (vence ${existente.fechaVencimiento})`,
       );
 
+    // El acuerdo se resuelve UNA vez, fuera de la transacción: es una lectura, no escribe
+    // nada, y así un fallo del resolutor no deja la promesa a medias. Mismo resolutor que
+    // usa la emisión de facturas (fase 4.2a) -- no uno nuevo.
+    const contratoId = await this.facturaRepo.contratoDe(
+      contrato.cliente_id, user.empresaId, dto.servicioId,
+    );
+
     // Guardar en BD + actualizar campos de prórroga en contrato (transacción)
     const promesa = await this.ds.transaction(async (em) => {
       const nueva = em.create(PromesaPago, {
         empresaId:            contrato.empresa_id,
-        contratoId:           dto.contratoId,
+        servicioId:           dto.servicioId,
+        contratoId,
         clienteId:            contrato.cliente_id,
         estado:               EstadoPromesa.ACTIVA,
         fechaVencimiento:     dto.fechaVencimiento,
@@ -125,7 +135,7 @@ export class PromesasPagoService {
                prorroga_otorgada_por = $3,
                updated_at         = NOW()
         WHERE  id = $4
-      `, [dto.fechaVencimiento, dto.motivo || 'Promesa de pago', user.sub, dto.contratoId]);
+      `, [dto.fechaVencimiento, dto.motivo || 'Promesa de pago', user.sub, dto.servicioId]);
 
       // Reactivar contrato suspendido manualmente durante el período de la promesa
       if (contrato.estado === 'suspendido') {
@@ -133,7 +143,7 @@ export class PromesasPagoService {
           UPDATE servicios
           SET    estado = 'activo', fecha_estado = NOW(), updated_at = NOW()
           WHERE  id = $1
-        `, [dto.contratoId]);
+        `, [dto.servicioId]);
 
         // Sincronizar clientes.estado solo si no quedan otros contratos bloqueados
         const [clienteActualizado] = filasUpdateReturning<{ id: string }>(await em.query(`
@@ -149,7 +159,7 @@ export class PromesasPagoService {
                 AND  id != $2
             )
           RETURNING id
-        `, [contrato.cliente_id, dto.contratoId]));
+        `, [contrato.cliente_id, dto.servicioId]));
 
         if (clienteActualizado) {
           await em.query(`
@@ -171,7 +181,7 @@ export class PromesasPagoService {
           (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
         VALUES ($1, $2, $3, $4, $5, $6, FALSE)
       `, [
-        dto.contratoId,
+        dto.servicioId,
         contrato.empresa_id,
         contrato.estado,
         estadoNuevo,
@@ -216,7 +226,7 @@ export class PromesasPagoService {
         );
         await this.repo.update(promesa.id, { mikrotikUltimoError: err.message?.slice(0, 500) });
         // Encolar para reintento automático
-        await this.outboxSvc.encolarAplicarProrroga(dto.contratoId, contrato.router_id, {
+        await this.outboxSvc.encolarAplicarProrroga(dto.servicioId, contrato.router_id, {
           promesaId:            promesa.id,
           ipAsignada:           contrato.ip_asignada,
           usuarioPppoe:         contrato.usuario_pppoe || undefined,
@@ -239,7 +249,9 @@ export class PromesasPagoService {
         fechaProrroga: dto.fechaVencimiento,
         montoDeuda:    String(Number(contrato.deuda_total || 0).toFixed(2)),
         empresaId:     contrato.empresa_id,
-        contratoId:    dto.contratoId,
+        // Campo del evento sigue llamándose contratoId a propósito: alimenta
+        // notificaciones_logs.contrato_id, tabla fuera de esta ola (censo §3.2, sin FK).
+        contratoId:    dto.servicioId,
         clienteId:     contrato.cliente_id,
       });
     }
@@ -283,7 +295,7 @@ export class PromesasPagoService {
     // lo cambió manualmente entre la creación de la promesa y esta cancelación).
     const [contratoActual] = await this.ds.query<{ estado: string }[]>(
       `SELECT estado FROM servicios WHERE id = $1 AND deleted_at IS NULL`,
-      [promesa.contratoId],
+      [promesa.servicioId],
     );
     const estadoRealActual = contratoActual?.estado ?? previo;
 
@@ -303,7 +315,7 @@ export class PromesasPagoService {
              prorroga_hasta = NULL,
              updated_at   = NOW()
       WHERE  id = $1
-    `, [promesa.contratoId]);
+    `, [promesa.servicioId]);
 
     // Restaurar estado suspendido solo si la promesa efectivamente lo cambió a activo
     // (previo='suspendido' + estadoRealActual='activo'). Si el admin ya lo cambió, no tocar.
@@ -312,7 +324,7 @@ export class PromesasPagoService {
         UPDATE servicios
         SET    estado = 'suspendido', fecha_estado = NOW(), updated_at = NOW()
         WHERE  id = $1
-      `, [promesa.contratoId]);
+      `, [promesa.servicioId]);
 
       // Revertir clientes.estado a suspendido si no quedan contratos activos
       const [clienteActualizado] = await this.ds.query<{ id: string }[]>(`
@@ -328,7 +340,7 @@ export class PromesasPagoService {
               AND  id != $2
           )
         RETURNING id
-      `, [promesa.clienteId, promesa.contratoId]).catch(() => []);
+      `, [promesa.clienteId, promesa.servicioId]).catch(() => []);
 
       if (clienteActualizado) {
         await this.ds.query(`
@@ -351,7 +363,7 @@ export class PromesasPagoService {
         (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
       VALUES ($1, $2, $3, $4, $5, $6, FALSE)
     `, [
-      promesa.contratoId,
+      promesa.servicioId,
       promesa.empresaId,
       estadoActualEnBd,
       previo,
@@ -370,7 +382,7 @@ export class PromesasPagoService {
           const rBloq = await this.firewallSvc.suspenderCliente(
             creds,
             promesa.ipClienteSnapshot,
-            promesa.contratoId,
+            promesa.servicioId,
             `Cancelación de promesa: ${motivo || promesa.motivo}`,
           );
           if (!esExito(rBloq)) throw new Error(mensajeDe(rBloq));
@@ -403,7 +415,7 @@ export class PromesasPagoService {
 
     const promesa = await this.repo.findOne({
       where: {
-        contratoId: event.contratoId,
+        servicioId: event.servicioId,
         estado:     In([EstadoPromesa.ACTIVA, EstadoPromesa.VENCIDA_PENDIENTE]),
       },
     });
@@ -426,7 +438,7 @@ export class PromesasPagoService {
       UPDATE servicios
       SET    en_prorroga = FALSE, prorroga_hasta = NULL, updated_at = NOW()
       WHERE  id = $1
-    `, [promesa.contratoId]);
+    `, [promesa.servicioId]);
 
     // Quitar de TODAS las address-lists (prorroga y morosos)
     if (promesa.ipClienteSnapshot && promesa.routerIdSnapshot) {
@@ -445,7 +457,7 @@ export class PromesasPagoService {
         // La IP puede quedar en prorroga_datafast indefinidamente si no se reintenta.
         await this.outboxSvc.encolar(
           'REACTIVAR',
-          promesa.contratoId,
+          promesa.servicioId,
           promesa.routerIdSnapshot,
           {
             ipAsignada:   promesa.ipClienteSnapshot,
@@ -527,7 +539,7 @@ export class PromesasPagoService {
             `Encolando vía outbox.`,
           );
           await this.outboxSvc.encolarAplicarProrroga(
-            p.contratoId,
+            p.servicioId,
             p.routerIdSnapshot!,
             {
               promesaId:            p.id,
@@ -562,7 +574,9 @@ export class PromesasPagoService {
     const rows = await this.ds.query<any[]>(`
       SELECT
         pp.id,
-        pp.contrato_id       AS "contratoId",
+        -- Alias de salida se conserva "contratoId": contrato con el frontend
+        -- (PromesaRow.contratoId), aunque la columna interna ya es servicio_id.
+        pp.servicio_id        AS "contratoId",
         pp.estado,
         pp.fecha_vencimiento AS "fechaVencimiento",
         pp.monto_prometido   AS "montoPrometido",
@@ -579,7 +593,7 @@ export class PromesasPagoService {
         ro.nombre            AS "routerNombre"
       FROM  promesas_pago pp
       JOIN  clientes  c  ON c.id  = pp.cliente_id
-      JOIN  servicios co ON co.id = pp.contrato_id
+      JOIN  servicios co ON co.id = pp.servicio_id
       LEFT JOIN routers ro ON ro.id = pp.router_id_snapshot
       WHERE pp.empresa_id = $1
         ${whereEstado}
@@ -639,7 +653,7 @@ export class PromesasPagoService {
         WHERE (f.servicio_id = c.id OR (f.servicio_id IS NULL AND f.cliente_id = c.cliente_id))
           AND ${sqlDeudaExigible('f')}
           AND f.deleted_at IS NULL`,
-      [promesa.contratoId],
+      [promesa.servicioId],
     ).catch(() => [{ deuda: '' }]);
 
     // Cadena vacía = la consulta falló. Ante la duda NO se corta: un corte indebido se
@@ -647,7 +661,7 @@ export class PromesasPagoService {
     const deuda = deudaRow?.deuda;
     if (deuda === '') {
       this.logger.warn(
-        `[Promesa] No se pudo comprobar la deuda de ${promesa.contratoId} — corte aplazado al próximo tick`,
+        `[Promesa] No se pudo comprobar la deuda de ${promesa.servicioId} — corte aplazado al próximo tick`,
       );
       return;
     }
@@ -655,7 +669,7 @@ export class PromesasPagoService {
       this.logger.log(
         `[Promesa] ${promesa.id} vencida pero el cliente NO debe nada: se marca cumplida en vez de cortar`,
       );
-      await this.onPagoVerificado({ contratoId: promesa.contratoId, pagoId: '', deuda: 0 });
+      await this.onPagoVerificado({ servicioId: promesa.servicioId, pagoId: '', deuda: 0 });
       return;
     }
 
@@ -675,7 +689,7 @@ export class PromesasPagoService {
       const rSusp = await this.firewallSvc.suspenderCliente(
         creds,
         promesa.ipClienteSnapshot,
-        promesa.contratoId,
+        promesa.servicioId,
         `Prorroga vencida — promesa:${promesa.id}`,
       );
       if (!esExito(rSusp)) throw new Error(mensajeDe(rSusp));
@@ -694,7 +708,7 @@ export class PromesasPagoService {
       await this.repo.update(promesa.id, { mikrotikUltimoError: err.message?.slice(0, 500) });
 
       await this.outboxSvc.encolarRevocarProrroga(
-        promesa.contratoId,
+        promesa.servicioId,
         promesa.routerIdSnapshot,
         {
           promesaId:    promesa.id,
@@ -719,7 +733,7 @@ export class PromesasPagoService {
     // (Antes caía en `'moroso'`, un estado que nunca existió en los datos.)
     const [contratoActual] = await this.ds.query<{ estado: string }[]>(
       `SELECT estado FROM servicios WHERE id = $1`,
-      [promesa.contratoId],
+      [promesa.servicioId],
     );
     const estadoAnterior = contratoActual?.estado ?? promesa.contratoEstadoPrevio ?? 'activo';
 
@@ -731,13 +745,13 @@ export class PromesasPagoService {
              fecha_estado   = NOW(),
              updated_at     = NOW()
       WHERE  id = $1
-    `, [promesa.contratoId]);
+    `, [promesa.servicioId]);
 
     await this.ds.query(`
       INSERT INTO servicios_historial
         (servicio_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, origen)
       VALUES ($1, $2, $3, 'suspendido', 'Promesa de pago vencida — corte automático', TRUE, 'prorroga_incumplida')
-    `, [promesa.contratoId, promesa.empresaId, estadoAnterior]);
+    `, [promesa.servicioId, promesa.empresaId, estadoAnterior]);
 
     // Sincronizar clientes.estado a suspendido si no quedan contratos activos
     const [clienteActualizado] = await this.ds.query<{ id: string }[]>(`
@@ -753,7 +767,7 @@ export class PromesasPagoService {
             AND  id != $2
         )
       RETURNING id
-    `, [promesa.clienteId, promesa.contratoId]).catch(() => []);
+    `, [promesa.clienteId, promesa.servicioId]).catch(() => []);
 
     if (clienteActualizado) {
       await this.ds.query(`
@@ -778,7 +792,7 @@ export class PromesasPagoService {
           JOIN   clientes  cl ON cl.id = co.cliente_id
           JOIN   empresas  em ON em.id = co.empresa_id
           WHERE  co.id = $1
-        `, [promesa.contratoId]);
+        `, [promesa.servicioId]);
         if (!row) return;
         const tel = row.whatsapp || row.telefono;
         if (!tel) return;
@@ -788,7 +802,7 @@ export class PromesasPagoService {
           deudaTotal:    String(row.deuda_total ?? 0),
           nombreEmpresa: row.empresa_nombre,
           empresaId:     promesa.empresaId,
-          contratoId:    promesa.contratoId,
+          contratoId:    promesa.servicioId,
           clienteId:     promesa.clienteId,
           motivo:        'Promesa de pago vencida',
         });

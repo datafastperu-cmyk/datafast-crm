@@ -16,7 +16,7 @@ import { EstadoPromesa } from './entities/promesa-pago.entity';
 describe('PromesasPagoService — guarda antes de cortar por prórroga vencida', () => {
   const promesa = {
     id: 'promesa-1',
-    contratoId: 'contrato-1',
+    servicioId: 'contrato-1',
     estado: EstadoPromesa.ACTIVA,
     ipClienteSnapshot: '172.16.201.3',
     routerIdSnapshot:  'router-1',
@@ -48,6 +48,8 @@ describe('PromesasPagoService — guarda antes de cortar por prórroga vencida',
         encolarRevocarProrroga: jest.fn().mockResolvedValue(undefined),
       } as never,
       { emit: jest.fn() } as never,
+      // FacturaRepository -- solo lo usa crear() (Ola 2, Paso B); ejecutarCorte() no lo toca.
+      { contratoDe: jest.fn() } as never,
     );
 
     // `ejecutarCorte` es privado: se invoca por su nombre porque lo que se prueba es

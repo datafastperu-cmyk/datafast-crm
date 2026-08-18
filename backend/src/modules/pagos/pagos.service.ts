@@ -1178,7 +1178,10 @@ export class PagosService {
       // emitAsync garantiza que la promesa quede 'cumplida' antes de cambiarEstado
       // y que cualquier fallo del handler suba en lugar de perderse silenciosamente.
       await this.events.emitAsync('promesa.verificar_cumplimiento', {
-        contratoId,
+        // servicioId, no contratoId: promesas_pago hizo su Paso B (Ola 2, 2026-08-18) y su
+        // entidad ya no tiene ese campo. pagos.contratoId sigue significando servicio hasta
+        // su propio Paso B.
+        servicioId: contratoId,
         pagoId: pagoId ?? '',
         deuda,
       }).catch((err: any) =>

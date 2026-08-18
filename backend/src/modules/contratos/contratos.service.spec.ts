@@ -225,7 +225,7 @@ describe('ContratosService', () => {
       await service.otorgarProrroga('cnt-001', { prorrogaHasta: hasta, motivo: 'Acuerdo' } as any, mockUser as any);
 
       expect(promesasSvc.crear).toHaveBeenCalledWith(
-        expect.objectContaining({ contratoId: 'cnt-001', fechaVencimiento: hasta, motivo: 'Acuerdo' }),
+        expect.objectContaining({ servicioId: 'cnt-001', fechaVencimiento: hasta, motivo: 'Acuerdo' }),
         expect.objectContaining({ empresaId: 'emp-001' }),
       );
     });
