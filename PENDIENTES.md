@@ -479,12 +479,34 @@ propia transacción, el `throw` la deshace sola).
   `tipo IN ('servicio','reconexion')`; NULL en mora, que es del acuerdo) +
   `contrato_id_real` (traducido vía el mapa, todo tipo incluida la mora).
 
+**Corrección del propietario (2026-08-17): la guarda nunca había visto un dato.** La
+instalación limpia de CI corre las 3 migraciones sobre una base vacía — el conteo de
+huérfanos y el VIO pasaban sobre conjuntos vacíos, decorativo (PC-04). Corregido:
+`backend/scripts/verificar-paso-a-dinero.ts`, nuevo paso de CI justo después de
+"Instalación desde cero", siembra filas a mano —incluida una huérfana a propósito— y llama
+a la MISMA función que las migraciones (extraída a
+`backend/src/database/migrations/dinero/paso-a-guardas.ts`, un solo sitio, no una copia que
+podría divergir). Tres casos por tabla: (a) traducción correcta, (b) el que importa — un
+huérfano DETIENE la migración en vez de quedar en NULL en silencio, (c) el dinero no se
+mueve. Doble uso: es también el test que dirá si el mapa aguanta cuando lleguen datos
+reales de la migración MikroWISP — no hay que reinventarlo entonces.
+
+**`contrato_id_real` es nombre de andamio, no puede sobrevivir al Paso B** — un nombre que
+dice "real" afirma que el otro es falso, y eso deja de tener sentido en cuanto solo queda
+uno. La forma del Paso B, documentada en `E-0.2-clasificacion-contrato-id.md` pero NO
+autorizada a empezar: mover lectores/escritores → correr la comparación de dinero REAL
+contra la base (no solo tests) → `DROP` de la columna vieja → `RENAME` de
+`contrato_id_real` a `contrato_id`. Ojo con `facturas.saldo` (columna GENERATED, un solo
+escritor del saldo por diseño — A-4): el Paso B de `pagos` no puede introducir un segundo
+camino de cálculo al mover los lectores.
+
 **Límite dicho explícitamente, no escondido:** las 3 migraciones NO se ejecutaron contra
 una base de datos real en esta sesión — no hay Postgres disponible en el entorno de
 trabajo. Revisadas con la misma disciplina que el resto del lote (sintaxis, columnas,
 nulabilidad, siguiendo al detalle el precedente ya probado de `facturas`
-055/056-FacturaApuntaAlServicio/FacturaPerteneceAlContrato), pero su primera ejecución real
-será contra la base de datos de destino. Si el conteo de huérfanos o el VIO de dinero
+055/056-FacturaApuntaAlServicio/FacturaPerteneceAlContrato), y la guarda ya tiene su propio
+test de CI con datos sembrados (arriba) — pero su primera ejecución contra un esquema real
+seguirá siendo en la base de datos de destino. Si el conteo de huérfanos o el VIO de dinero
 disparan ahí, es la migración funcionando como se diseñó, no un defecto del diseño — y en
 ese caso se para y se reporta antes de reintentar nada.
 

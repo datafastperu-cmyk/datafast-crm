@@ -1,4 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
+import { cargosPendientesContratoRealPasoA } from '../dinero/paso-a-guardas';
 
 /**
  * Ola 2, lote de DINERO — Paso A (aditiva, reversible). `cargos_pendientes.contrato_id`
@@ -18,6 +19,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *     de un acuerdo).
  *
  * `contrato_id` sigue siendo la fuente de verdad hasta el Paso B.
+ *
+ * La guarda (huérfanos + VIO de dinero) vive en `../dinero/paso-a-guardas.ts`, no aquí —
+ * mismo razonamiento que en `pagos`/`promesas_pago`: el test de CI con datos sembrados
+ * (`scripts/verificar-paso-a-dinero.ts`) llama a la MISMA función.
  */
 export class CargosPendientesContratoRealPasoA1791800000066 implements MigrationInterface {
   name = 'CargosPendientesContratoRealPasoA1791800000066';
@@ -29,60 +34,7 @@ export class CargosPendientesContratoRealPasoA1791800000066 implements Migration
         ADD COLUMN contrato_id_real UUID REFERENCES contratos(id) ON DELETE SET NULL
     `);
 
-    // Mismo criterio que en pagos/promesas_pago: si un cargo con contrato_id apunta a un
-    // servicio sin acuerdo (soft-deleted antes de la fase 3b), no se inventa ni se calla.
-    const huerfanos: Array<{ id: string; contrato_id: string }> = await q.query(`
-      SELECT c.id, c.contrato_id
-        FROM cargos_pendientes c
-        JOIN servicios s ON s.id = c.contrato_id
-       WHERE c.contrato_id IS NOT NULL
-         AND s.contrato_id IS NULL
-       LIMIT 20
-    `);
-    if (huerfanos.length > 0) {
-      const [{ total }] = await q.query(`
-        SELECT COUNT(*)::text AS total
-          FROM cargos_pendientes c
-          JOIN servicios s ON s.id = c.contrato_id
-         WHERE c.contrato_id IS NOT NULL AND s.contrato_id IS NULL
-      `);
-      throw new Error(
-        `Paso A (cargos_pendientes): ${total} cargo(s) apuntan a un servicio sin acuerdo `
-        + `(soft-deleted antes de la fase 3b) — no se traduce a ciegas. Ejemplos: `
-        + huerfanos.slice(0, 5).map((f) => `${f.id}→${f.contrato_id}`).join(', '),
-      );
-    }
-
-    // VIO aplicado a la migración: se prueba, no se confía. `monto` es la única cifra de
-    // dinero de esta tabla; este paso no debe moverla.
-    const antes = await this.snapshot(q);
-
-    // servicio_id: copia directa, solo para lo que SÍ es de un servicio concreto.
-    await q.query(`
-      UPDATE cargos_pendientes
-         SET servicio_id = contrato_id
-       WHERE contrato_id IS NOT NULL
-         AND tipo IN ('servicio', 'reconexion')
-    `);
-
-    // contrato_id_real: traducido vía el mapa, para todo cargo con contrato_id -- la mora
-    // incluida, porque la deuda de mora sigue siendo de un acuerdo.
-    await q.query(`
-      UPDATE cargos_pendientes c
-         SET contrato_id_real = s.contrato_id
-        FROM servicios s
-       WHERE s.id = c.contrato_id
-         AND c.contrato_id IS NOT NULL
-    `);
-
-    const despues = await this.snapshot(q);
-    if (JSON.stringify(antes) !== JSON.stringify(despues)) {
-      throw new Error(
-        'Paso A (cargos_pendientes): el monto pendiente por cliente cambió durante la '
-        + 'migración — se revierte. Este paso solo debía escribir servicio_id y '
-        + 'contrato_id_real.',
-      );
-    }
+    await cargosPendientesContratoRealPasoA(q);
 
     await q.query(`
       CREATE INDEX idx_cargos_pendientes_servicio ON cargos_pendientes (servicio_id)
@@ -105,16 +57,6 @@ export class CargosPendientesContratoRealPasoA1791800000066 implements Migration
         'desde contrato_id vía servicios.contrato_id, para todo tipo incluida la mora. '
         'Aditiva -- nadie la lee todavia. contrato_id sigue siendo la fuente de verdad '
         'hasta el Paso B.'
-    `);
-  }
-
-  /** SUM(monto) por empresa+cliente, orden estable -- lo único que este paso no debe mover. */
-  private async snapshot(q: QueryRunner): Promise<Array<{ empresa_id: string; cliente_id: string; total: string }>> {
-    return q.query(`
-      SELECT empresa_id, cliente_id, SUM(monto)::text AS total
-        FROM cargos_pendientes
-       GROUP BY empresa_id, cliente_id
-       ORDER BY empresa_id, cliente_id
     `);
   }
 

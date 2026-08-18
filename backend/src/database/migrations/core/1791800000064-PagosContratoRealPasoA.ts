@@ -1,4 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
+import { pagosContratoRealPasoA } from '../dinero/paso-a-guardas';
 
 /**
  * Ola 2, lote de DINERO — Paso A (aditiva, reversible). `pagos.contrato_id` guarda hoy un
@@ -13,6 +14,12 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * queda INTACTA y nadie la sustituye todavía — ningún servicio, ninguna consulta lee
  * `contrato_id_real` en este commit. El Paso B (aparte, con revisión del propietario antes
  * de arrancar) migra lectores/escritores y solo entonces retira la columna vieja.
+ *
+ * La guarda (huérfanos + VIO de dinero) vive en `../dinero/paso-a-guardas.ts`, no aquí:
+ * `scripts/verificar-paso-a-dinero.ts` la ejercita en CI contra datos sembrados llamando a
+ * la MISMA función, no a una copia que podría divergir de lo que esto ejecuta en
+ * producción (hallazgo del propietario, 2026-08-17: una guarda que nunca vio un dato es
+ * decorativa — PC-04).
  */
 export class PagosContratoRealPasoA1791800000064 implements MigrationInterface {
   name = 'PagosContratoRealPasoA1791800000064';
@@ -23,51 +30,7 @@ export class PagosContratoRealPasoA1791800000064 implements MigrationInterface {
         ADD COLUMN contrato_id_real UUID REFERENCES contratos(id) ON DELETE SET NULL
     `);
 
-    // Ningún pago vivo sin acuerdo: el mapa es servicios.contrato_id, NOT NULL en los
-    // servicios vivos desde la fase 3b y NULL solo en servicios borrados ANTES de esa
-    // fase. Si aparece uno, no se inventa un contrato ni se deja en NULL en silencio: se
-    // para y se reporta.
-    const huerfanos: Array<{ id: string; contrato_id: string }> = await q.query(`
-      SELECT p.id, p.contrato_id
-        FROM pagos p
-        JOIN servicios s ON s.id = p.contrato_id
-       WHERE p.contrato_id IS NOT NULL
-         AND s.contrato_id IS NULL
-       LIMIT 20
-    `);
-    if (huerfanos.length > 0) {
-      const [{ total }] = await q.query(`
-        SELECT COUNT(*)::text AS total
-          FROM pagos p
-          JOIN servicios s ON s.id = p.contrato_id
-         WHERE p.contrato_id IS NOT NULL AND s.contrato_id IS NULL
-      `);
-      throw new Error(
-        `Paso A (pagos): ${total} pago(s) apuntan a un servicio sin acuerdo (soft-deleted `
-        + `antes de la fase 3b) — no se traduce a ciegas. Ejemplos: `
-        + huerfanos.slice(0, 5).map((f) => `${f.id}→${f.contrato_id}`).join(', '),
-      );
-    }
-
-    // VIO aplicado a la migración: que el ALTER no dé error no dice si los datos quedaron
-    // bien. Se prueba, no se confía — snapshot de lo único que este paso NO debería tocar.
-    const antes = await this.snapshot(q);
-
-    await q.query(`
-      UPDATE pagos p
-         SET contrato_id_real = s.contrato_id
-        FROM servicios s
-       WHERE s.id = p.contrato_id
-         AND p.contrato_id IS NOT NULL
-    `);
-
-    const despues = await this.snapshot(q);
-    if (JSON.stringify(antes) !== JSON.stringify(despues)) {
-      throw new Error(
-        'Paso A (pagos): el monto cobrado por cliente cambió durante la migración — se '
-        + 'revierte. Este paso solo debía escribir contrato_id_real.',
-      );
-    }
+    await pagosContratoRealPasoA(q);
 
     await q.query(`
       CREATE INDEX idx_pagos_contrato_real ON pagos (contrato_id_real)
@@ -79,16 +42,6 @@ export class PagosContratoRealPasoA1791800000064 implements MigrationInterface {
         'Paso A del lote de dinero (Ola 2): el ACUERDO real (tabla contratos), traducido '
         'desde contrato_id vía servicios.contrato_id. Aditiva -- nadie la lee todavia. '
         'contrato_id sigue siendo la fuente de verdad hasta el Paso B.'
-    `);
-  }
-
-  /** SUM(monto) por empresa+cliente, orden estable — lo único que este paso no debe mover. */
-  private async snapshot(q: QueryRunner): Promise<Array<{ empresa_id: string; cliente_id: string; total: string }>> {
-    return q.query(`
-      SELECT empresa_id, cliente_id, SUM(monto)::text AS total
-        FROM pagos
-       GROUP BY empresa_id, cliente_id
-       ORDER BY empresa_id, cliente_id
     `);
   }
 

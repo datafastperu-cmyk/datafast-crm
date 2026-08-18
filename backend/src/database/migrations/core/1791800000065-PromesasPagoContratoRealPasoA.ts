@@ -1,4 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
+import { promesasPagoContratoRealPasoA } from '../dinero/paso-a-guardas';
 
 /**
  * Ola 2, lote de DINERO — Paso A (aditiva, reversible). Mismo patrón y misma razón que
@@ -12,6 +13,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * NOT NULL y es la fuente de verdad; si `contrato_id_real` naciera NOT NULL, cualquier
  * INSERT de hoy —que no la conoce— rompería en caliente). El Paso B migra
  * lectores/escritores y solo entonces retira la columna vieja.
+ *
+ * La guarda (huérfanos + VIO de dinero) vive en `../dinero/paso-a-guardas.ts`, no aquí —
+ * mismo razonamiento que en `pagos`: el test de CI con datos sembrados
+ * (`scripts/verificar-paso-a-dinero.ts`) llama a la MISMA función.
  */
 export class PromesasPagoContratoRealPasoA1791800000065 implements MigrationInterface {
   name = 'PromesasPagoContratoRealPasoA1791800000065';
@@ -22,49 +27,7 @@ export class PromesasPagoContratoRealPasoA1791800000065 implements MigrationInte
         ADD COLUMN contrato_id_real UUID REFERENCES contratos(id) ON DELETE SET NULL
     `);
 
-    // `contrato_id` es NOT NULL aquí: TODA promesa debe traducir. Igual que en pagos, no
-    // se inventa un contrato ni se deja en NULL en silencio si el servicio referenciado
-    // quedó sin acuerdo (soft-deleted antes de la fase 3b).
-    const huerfanas: Array<{ id: string; contrato_id: string }> = await q.query(`
-      SELECT pp.id, pp.contrato_id
-        FROM promesas_pago pp
-        JOIN servicios s ON s.id = pp.contrato_id
-       WHERE s.contrato_id IS NULL
-       LIMIT 20
-    `);
-    if (huerfanas.length > 0) {
-      const [{ total }] = await q.query(`
-        SELECT COUNT(*)::text AS total
-          FROM promesas_pago pp
-          JOIN servicios s ON s.id = pp.contrato_id
-         WHERE s.contrato_id IS NULL
-      `);
-      throw new Error(
-        `Paso A (promesas_pago): ${total} promesa(s) apuntan a un servicio sin acuerdo `
-        + `(soft-deleted antes de la fase 3b) — no se traduce a ciegas. Ejemplos: `
-        + huerfanas.slice(0, 5).map((f) => `${f.id}→${f.contrato_id}`).join(', '),
-      );
-    }
-
-    // VIO aplicado a la migración: se prueba, no se confía. `monto_prometido` y
-    // `deuda_al_crear` son las cifras de dinero de esta tabla; este paso no debe moverlas.
-    const antes = await this.snapshot(q);
-
-    await q.query(`
-      UPDATE promesas_pago pp
-         SET contrato_id_real = s.contrato_id
-        FROM servicios s
-       WHERE s.id = pp.contrato_id
-    `);
-
-    const despues = await this.snapshot(q);
-    if (JSON.stringify(antes) !== JSON.stringify(despues)) {
-      throw new Error(
-        'Paso A (promesas_pago): el monto prometido/deuda_al_crear por cliente cambió '
-        + 'durante la migración — se revierte. Este paso solo debía escribir '
-        + 'contrato_id_real.',
-      );
-    }
+    await promesasPagoContratoRealPasoA(q);
 
     await q.query(`
       CREATE INDEX idx_promesas_contrato_real ON promesas_pago (contrato_id_real)
@@ -76,20 +39,6 @@ export class PromesasPagoContratoRealPasoA1791800000065 implements MigrationInte
         'Paso A del lote de dinero (Ola 2): el ACUERDO real (tabla contratos), traducido '
         'desde contrato_id vía servicios.contrato_id. Aditiva -- nadie la lee todavia. '
         'contrato_id sigue siendo la fuente de verdad hasta el Paso B.'
-    `);
-  }
-
-  /** SUM por empresa+cliente de las dos cifras de dinero de la tabla, orden estable. */
-  private async snapshot(q: QueryRunner): Promise<Array<{
-    empresa_id: string; cliente_id: string; prometido: string; al_crear: string;
-  }>> {
-    return q.query(`
-      SELECT empresa_id, cliente_id,
-             SUM(monto_prometido)::text AS prometido,
-             SUM(deuda_al_crear)::text  AS al_crear
-        FROM promesas_pago
-       GROUP BY empresa_id, cliente_id
-       ORDER BY empresa_id, cliente_id
     `);
   }
 
