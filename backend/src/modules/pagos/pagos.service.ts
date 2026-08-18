@@ -271,7 +271,13 @@ export class PagosService {
         // En un consolidado apunta al comprobante más antiguo: el reparto completo vive en
         // `pago_aplicaciones`, esta columna es la referencia principal para el histórico.
         facturaId:       factura.id,
-        servicioId:      factura.servicioId ?? null,
+        // Pago.contratoId es hoy un servicios.id (Ola 2 lo renombrará a servicioId más
+        // adelante) -- BUG CORREGIDO 2026-08-18: la fase 4.1 (commit 3c94c55b) renombró
+        // esta clave a `servicioId` en el mismo barrido que renombró Factura.contratoId ->
+        // Factura.servicioId, pero Pago nunca fue tocado por esa fase ("pagos... sigue
+        // aplazado", commit propio). `Pago` no tiene una propiedad `servicioId` -- create()
+        // la descartaba en silencio y todo pago de caja quedaba con contrato_id NULL.
+        contratoId:      factura.servicioId ?? null,
         monto:           dto.monto,
         moneda:          'PEN',
         // Modelo antiguo: se sigue escribiendo. El histórico se lee tal como se registró,
@@ -747,7 +753,7 @@ export class PagosService {
 
     // Buscar empresa de la factura
     const [facturaRow] = await this.ds.query(
-      'SELECT empresa_id, cliente_id, contrato_id, total, saldo FROM facturas WHERE id = $1',
+      'SELECT empresa_id, cliente_id, servicio_id, total, saldo FROM facturas WHERE id = $1',
       [facturaId],
     );
 
@@ -756,7 +762,10 @@ export class PagosService {
       return;
     }
 
-    const { empresa_id: empresaId, cliente_id: clienteId, contrato_id: contratoId } = facturaRow;
+    // Pago.contratoId == servicios.id (ver comentario en el create() de más arriba). BUG
+    // CORREGIDO 2026-08-18: leía facturas.contrato_id (el ACUERDO real desde la fase
+    // 4.2a), no facturas.servicio_id -- mismo defecto que el path de registrar().
+    const { empresa_id: empresaId, cliente_id: clienteId, servicio_id: contratoId } = facturaRow;
 
     // ── 5. Procesar según el status del pago ──────────────
     if (this.mpSvc.esAprobado(mpPayment)) {
@@ -926,13 +935,18 @@ export class PagosService {
 
       if (facturaId) {
 
-        // Obtener contratoId de la factura si no vino en el pago
+        // Obtener contratoId (== servicios.id, ver comentario en el create() de arriba) de
+        // la factura si no vino en el pago. BUG CORREGIDO 2026-08-18: leía
+        // `facturas.contrato_id`, que desde la fase 4.2a es el ACUERDO real, no el
+        // servicio -- ese id se pasaba tal cual a verificarYReactivarContrato() más abajo,
+        // que consulta `servicios` y no lo encontraba. El catch de esa función atrapa el
+        // NotFound y sale en silencio (línea ~1147): la reactivación nunca corría, sin log.
         if (!contratoId) {
           const [row] = await this.ds.query(
-            'SELECT contrato_id FROM facturas WHERE id = $1',
+            'SELECT servicio_id FROM facturas WHERE id = $1',
             [facturaId],
           );
-          contratoId = row?.contrato_id;
+          contratoId = row?.servicio_id;
         }
       }
 

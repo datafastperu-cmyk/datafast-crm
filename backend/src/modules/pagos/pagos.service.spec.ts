@@ -231,7 +231,10 @@ describe('PagosService', () => {
     // `mockEntidades` define qué encuentra: ese es el estado del mundo de cada caso.
     beforeEach(() => {
       mockEntidades.pagoDuplicado = null;
-      mockEntidades.factura       = { ...mockFacturaRow, contratoId: 'cnt-001', clienteId: 'cli-001' };
+      // servicioId, no contratoId: Factura se renombró en la fase 4.1 (commit 3c94c55b) y
+      // este fixture se había quedado con el nombre viejo -- por eso el bug de abajo no
+      // lo agarraba ningún test: la aserción nunca miraba qué llegaba realmente a `create()`.
+      mockEntidades.factura       = { ...mockFacturaRow, servicioId: 'cnt-001', clienteId: 'cli-001' };
       mockEntidades.contrato      = mockContratoSuspendido;
       mockEntidades.facturas      = null;
     });
@@ -406,6 +409,30 @@ describe('PagosService', () => {
       const sqls = managerMock.query.mock.calls.map((c: any[]) => String(c[0]));
       expect(sqls.some((s) => /UPDATE\s+facturas/i.test(s))).toBe(false);
       expect(mockDs.transaction).toHaveBeenCalled();
+    });
+
+    it('un pago de caja registra el servicio (create() descarta propiedades desconocidas en silencio)', async () => {
+      // Incidente 2026-08-18: la fase 4.1 (commit 3c94c55b) renombró Factura.contratoId a
+      // Factura.servicioId y, en el mismo barrido, renombró por accidente la CLAVE del
+      // objeto que registrar() pasa a manager.create(Pago, {...}) de `contratoId` a
+      // `servicioId` -- pero `Pago` nunca tuvo (ni tiene) una propiedad `servicioId`.
+      // TypeORM descarta silenciosamente las claves que la entidad no declara: ocho días
+      // de pagos de caja quedaron con contrato_id NULL sin un solo error en ningún lado.
+      //
+      // Este test no confía en que el mock de manager.create() reproduzca ese descarte
+      // (no lo hace: es un merge incondicional) -- afirma sobre la FORMA de lo que
+      // registrar() intenta escribir, que es donde vivía el defecto real.
+      await service.registrar({
+        clienteId: 'cli-001', facturaId: 'fac-001',
+        monto: 85, metodoPago: MetodoPago.EFECTIVO,
+      } as any, mockUser as any);
+
+      expect(managerMock.create).toHaveBeenCalledWith(
+        Pago,
+        expect.objectContaining({ contratoId: 'cnt-001' }),
+      );
+      const [, payload] = managerMock.create.mock.calls[managerMock.create.mock.calls.length - 1];
+      expect(payload).not.toHaveProperty('servicioId');
     });
   });
 
@@ -587,7 +614,7 @@ describe('PagosService', () => {
       });
       mockMpSvc.esAprobado.mockReturnValue(true);
       mockDs.query.mockResolvedValue([{
-        empresa_id: 'emp-001', cliente_id: 'cli-001', contrato_id: 'cnt-001',
+        empresa_id: 'emp-001', cliente_id: 'cli-001', servicio_id: 'cnt-001',
         total: 85, saldo: 85,
       }]);
       mockRepo.save.mockResolvedValue({ ...mockPago, estado: EstadoPago.VERIFICADO });
@@ -609,6 +636,11 @@ describe('PagosService', () => {
       // Es la propiedad que hace que la Etapa II se construya sobre esto sin reescribir
       // la lógica de negocio: el webhook no aplica dinero, lo registra.
       expect(mockAplicador.aplicar).toHaveBeenCalled();
+      // Mismo defecto que en registrar() (2026-08-18): leía facturas.contrato_id (el
+      // ACUERDO real desde la fase 4.2a) en vez de servicio_id.
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ contratoId: 'cnt-001' }),
+      );
     });
   });
 });
