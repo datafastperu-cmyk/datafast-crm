@@ -530,6 +530,47 @@ antes de leer el log real, cuando el log no era accesible desde el entorno de tr
 tenían forma de saber si eran la causa hasta verlas confirmadas contra el log — quedaron
 las dos porque el log las confirmó necesarias, no porque "ya no fallara".
 
+**✅ PASO B HECHO — las 3 tablas (2026-08-18), autorizado tras el mapeo de consumidores.**
+Un mapeo completo de cada sitio que lee/escribe `pagos.contrato_id` y
+`promesas_pago.contrato_id` mostró que TODO el código vivo de esas dos tablas opera por
+SERVICIO (creación, cancelación, cumplimiento, el guard de deuda del corte automático, el
+listado) — cero sitios necesitaban la dimensión de acuerdo. La clasificación NO cambió (la
+deuda sigue siendo del acuerdo, A-4/E02-01/E02-02): lo que cambió fue la FORMA del Paso B,
+porque completarlo con traducción de valores habría exigido decidir comportamiento nuevo
+(a quién reactiva un pago bajo un acuerdo con varios servicios) — eso es Ola 4/5, no cabe
+en un renombrado.
+
+Forma con CERO cambio de comportamiento, igual que ya tenía `facturas` (el patrón que el
+censo había identificado como correcto):
+- `cargos_pendientes` — `1791800000068`: escritor único movido a escribir `servicio_id`
+  (solo `tipo IN ('servicio','reconexion')`, NULL en mora) + `contrato_id` (resuelto vía
+  `FacturaRepository.contratoDe()`, reutilizado). Sin lectores previos — el lote más simple.
+- `promesas_pago` — `1791800000069`: `contrato_id` → RENOMBRAR a `servicio_id` (mismo
+  valor, mismos ~24 lectores, ninguno cambia); `contrato_id_real` → RENOMBRAR a
+  `contrato_id`. `crear()` corregido para poblar el acuerdo (no lo hacía desde el Paso A —
+  toda promesa creada desde esa migración tenía `contrato_id_real` en NULL).
+- `pagos` — `1791800000070`: mismo patrón. El caso con más consumidores del lote (mapeado
+  aparte): la reactivación automática tras pago depende de la columna en tres sitios
+  independientes de la misma llamada.
+
+**`contrato_id_real` es ahora nombre PROHIBIDO** — `sql-nombra-servicios.spec.ts`, nuevo
+describe block: falla el build si reaparece en cualquier fichero fuera de `migrations/`.
+
+**Hallazgo de diseño registrado para la Ola 4/5, NO resuelto aquí:** hoy un pago reactiva
+UN servicio (el que motivó el pago). Bajo el modelo de acuerdo-con-varios-servicios, la
+pregunta correcta sería "¿reactiva todos los servicios del acuerdo?" — con clientes
+cortados de por medio, así que es una decisión de producto, no de plomería. Mismo
+razonamiento para `promesas_pago`: el índice único parcial (`idx_promesas_una_activa_por_
+servicio`, antes `_por_contrato`) se queda deliberadamente POR SERVICIO — cambiarlo a "una
+promesa activa por ACUERDO" es la misma clase de decisión y no se tomó.
+
+**Dos bugs preexistentes encontrados y corregidos aparte, NO causados por este Paso B**
+(commit `b793cfcf`, mismo día, ver "✅ Cerrado" más abajo): `pagos.service.ts` llevaba ocho días
+escribiendo `contrato_id = NULL` en todo pago de caja (`registrar()` escribía a una
+propiedad `servicioId` que `Pago` no tenía), y el fallback de `aplicarPagoAFacturaYContrato`
+leía `facturas.contrato_id` (el ACUERDO, no el servicio) — la reactivación automática
+llevaba rota desde la fase 4.1 por una razón ajena a este renombrado.
+
 ---
 
 ## 🔵 A vigilar (no es un fallo, es un cambio sin ejercitar)
@@ -1195,6 +1236,16 @@ con entrada propia (20-29, 34) llevan además su consecuencia y su forma de comp
 
 ## ✅ Cerrado (para no volver a levantarlo)
 
+- **`pagos.contrato_id` llevaba NULL en producción desde la fase 4.1 (2026-08-10 →
+  2026-08-18).** `registrar()` (el path de caja) escribía a una propiedad `servicioId` que
+  `Pago` nunca tuvo — TypeORM la descartaba en silencio (commit `3c94c55b`, accidente de un
+  barrido de renombrado más amplio). Medido contra producción por SSH antes de tocar nada:
+  2 filas totales en `pagos`, las 2 NULL pero ambas anteriores al commit del defecto — cero
+  pagos afectados todavía, pero la reactivación automática tras pago SÍ estaba rota (el
+  fallback leía `facturas.contrato_id`, el ACUERDO desde la fase 4.2a, no el servicio, y
+  alimentaba un lookup contra `servicios` que fallaba en silencio). Corregido en los tres
+  sitios (caja, webhook MercadoPago, fallback), con backfill (migración `1791800000067`,
+  no-op sobre los datos de hoy) y test nombrado por el defecto. Commit `b793cfcf`.
 - **La generación de facturas estaba MUERTA en producción (06/08).** `findContratosParaFacturar`
   filtraba por `co.estado IN ('activo', 'prorroga')` y el estado `prorroga` no existe en el
   enum: Postgres no devuelve menos filas, **rechaza la consulta entera**. El job falló sus
