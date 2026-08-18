@@ -138,6 +138,21 @@ jobs:
           TS_NODE_PROJECT=tsconfig.migration.json npx ts-node -T scripts/preparar-schema-log.ts
           npm run db:check
 
+      # ── [TEMPORAL — Ola 4, entregable 3, 2026-08-18] ───────────────────────────
+      # Mide si SUM(facturas.saldo) con índice parcial sostiene, a volumen realista, el mismo
+      # filtro que hoy resuelve el acumulador `servicios.deuda_total` en
+      # `cobranza.worker.detectarMorosos()`. Siembra 10k clientes × 12 meses (~120k facturas)
+      # SOLO en este Postgres efímero de CI — nunca en producción (la VPS real tiene 87 MB
+      # libres de RAM, no hay margen para este volumen). Va al final del job a propósito: si
+      # algo de este paso ensucia datos, no contamina el resto de los informes que corrieron
+      # antes. Es una medición, no un gate — no falla el build por su resultado. Se retira en
+      # cuanto el número quede leído y registrado (mismo patrón que
+      # `dinero:verificar-paso-a`, retirado el 2026-08-18 al cerrar su propio propósito).
+      - name: "[TEMPORAL] Ola 4 — medir SUM(saldo) vs. deuda_total a 10k×12"
+        run: |
+          PGPASSWORD=ci_password psql -h localhost -U datafast_db_user -d datafast_db \
+            -f scripts/medir-deuda-por-facturas.sql
+
   frontend:
     name: Frontend — typecheck
     runs-on: ubuntu-latest
