@@ -60,6 +60,7 @@ export class CobranzaScheduler implements OnModuleInit {
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly empresaConfig: EmpresaConfigService,
     private readonly politicaSvc: PoliticaFacturacionService,
+    private readonly deudaSvc: DeudaPorContratoService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -139,7 +140,14 @@ export class CobranzaScheduler implements OnModuleInit {
     // comprobante, el más antiguo lleva un mes y cualquier gracia razonable ya está
     // superada. La gracia solo influía con `aplicarCorte = 1`, que es justo el caso en que
     // MIN y MAX coinciden — por eso nadie lo notó.
-    const morosos = await this.ds.query(`
+    // `co.deuda_total` ya no se lee (Ola 4, el acumulador se retira): el candidato sale de
+    // `servicios` sin ese filtro, y la deuda de CADA servicio se recalcula abajo con
+    // `DeudaPorContratoService.calcular()` — el mismo reparto proporcional que ya usaba el
+    // acumulador cuando una factura consolidada se reparte entre los servicios vivos de un
+    // cliente. Sustituir el filtro por un `EXISTS` a nivel de CONTRATO habría cambiado a
+    // quién se corta: un servicio con reparto proporcional en 0 hoy no se corta aunque el
+    // contrato, en conjunto, deba — mismo comportamiento, distinta fuente, no un rediseño.
+    const candidatos: FilaCandidatoMoroso[] = await this.ds.query(`
       WITH impagas AS (
         SELECT cliente_id,
                MAX(fecha_vencimiento) AS vencimiento_del_ultimo,
@@ -156,8 +164,6 @@ export class CobranzaScheduler implements OnModuleInit {
         co.router_id,
         co.ip_asignada,
         co.usuario_pppoe,
-        co.deuda_total,
-        co.meses_deuda,
         cl.facturacion_config,
         em.dias_gracia     AS dias_gracia_empresa,
         im.vencimiento_del_ultimo,
@@ -171,7 +177,6 @@ export class CobranzaScheduler implements OnModuleInit {
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN impagas  im ON im.cliente_id = co.cliente_id
       WHERE co.estado = 'activo'
-        AND co.deuda_total > 0
         AND co.deleted_at IS NULL
         AND co.router_id IS NOT NULL
         AND co.ip_asignada IS NOT NULL
@@ -180,8 +185,28 @@ export class CobranzaScheduler implements OnModuleInit {
         -- corte no puede pasarle por encima, aunque la fecha de corte ya haya llegado.
         -- Su vencimiento lo evalúa el job VERIFICAR_PRORROGA.
         AND NOT (co.en_prorroga = true AND co.prorroga_hasta >= CURRENT_DATE)
-      ORDER BY co.deuda_total DESC
     `);
+
+    // Una llamada a `calcular()` por CLIENTE distinto, nunca por fila: un cliente con dos
+    // servicios candidatos no debe recalcular su reparto proporcional dos veces.
+    const deudaPorCliente = new Map<string, Map<string, { monto: number; comprobantes: number }>>();
+    for (const clienteId of new Set(candidatos.map((c) => c.cliente_id))) {
+      const fila = candidatos.find((c) => c.cliente_id === clienteId)!;
+      deudaPorCliente.set(clienteId, await this.deudaSvc.calcular(clienteId, fila.empresa_id));
+    }
+
+    // El filtro que antes hacía `WHERE co.deuda_total > 0` en SQL se aplica aquí, con el
+    // valor recién calculado — y el orden `DESC` que antes daba `ORDER BY co.deuda_total`
+    // se reconstruye después de tener el número real, no antes.
+    const morosos = candidatos
+      .map((c) => {
+        const deuda = deudaPorCliente.get(c.cliente_id)?.get(c.contrato_id);
+        return deuda && deuda.monto > 0
+          ? { ...c, deuda_total: deuda.monto, meses_deuda: deuda.comprobantes }
+          : null;
+      })
+      .filter((c): c is FilaCandidatoMoroso & { deuda_total: number; meses_deuda: number } => c !== null)
+      .sort((a, b) => b.deuda_total - a.deuda_total);
 
     let suspender = 0;
 
@@ -203,9 +228,9 @@ export class CobranzaScheduler implements OnModuleInit {
       // "Desactivado" significa que a este abonado no se le corta por mora.
       const mesesParaCorte = cfg.diaPago !== undefined ? entero(cfg.aplicarCorte) : 1;
       if (!mesesParaCorte) continue;
-      if (parseInt(c.comprobantes_vencidos, 10) < mesesParaCorte) continue;
+      if (c.comprobantes_vencidos < mesesParaCorte) continue;
 
-      if (parseInt(c.dias_vencido, 10) >= diasGracia) {
+      if (c.dias_vencido >= diasGracia) {
         await this.queue.add(
           JOBS.SUSPENDER_CONTRATO,
           {
@@ -215,8 +240,8 @@ export class CobranzaScheduler implements OnModuleInit {
             routerId:      c.router_id,
             ipAsignada:    c.ip_asignada,
             usuarioPppoe:  c.usuario_pppoe,
-            deudaTotal:    parseFloat(c.deuda_total),
-            mesesDeuda:    parseInt(c.meses_deuda, 10),
+            deudaTotal:    c.deuda_total,
+            mesesDeuda:    c.meses_deuda,
             nombreCliente: c.nombre_cliente,
           } as PayloadSuspenderContrato,
           {
@@ -478,6 +503,23 @@ export class CobranzaScheduler implements OnModuleInit {
     await this.queue.add(JOBS.REACTIVAR_CONTRATO, payload, JOB_OPTIONS.CRITICO);
     this.logger.log(`Reactivación encolada: contrato ${payload.contratoId}`);
   }
+}
+
+/** Fila candidata de `detectarMorosos()` — sin `deuda_total`/`meses_deuda`: se calculan en
+ *  vivo después (Ola 4), nunca se leen de `servicios`. */
+interface FilaCandidatoMoroso {
+  contrato_id:            string;
+  empresa_id:             string;
+  cliente_id:             string;
+  router_id:              string;
+  ip_asignada:             string;
+  usuario_pppoe:           string;
+  facturacion_config:      Record<string, unknown> | null;
+  dias_gracia_empresa:     string;
+  vencimiento_del_ultimo:  string;
+  comprobantes_vencidos:   number;
+  dias_vencido:            number;
+  nombre_cliente:          string;
 }
 
 // ─────────────────────────────────────────────────────────────

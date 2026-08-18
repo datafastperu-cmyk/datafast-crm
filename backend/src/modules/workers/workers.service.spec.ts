@@ -2,8 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken }  from '@nestjs/typeorm';
 import { EventEmitter2 }       from '@nestjs/event-emitter';
 import { getQueueToken }       from '@nestjs/bull';
+import { CACHE_MANAGER }       from '@nestjs/cache-manager';
 
-import { CobranzaWorker }      from './cobranza.worker';
+import { CobranzaWorker, CobranzaScheduler } from './cobranza.worker';
 import { FacturacionWorker }   from './facturacion.worker';
 import { FirewallService }     from '../mikrotik/services/firewall.service';
 import { PppoeService }        from '../mikrotik/services/pppoe.service';
@@ -16,7 +17,8 @@ import { RedisLockService } from '../../common/redis/redis-lock.service';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { EmpresaConfigService } from '../config/empresa-config.service';
 import { GatewayMensajeriaService } from '../notificaciones/services/gateway-mensajeria.service';
-import { QUEUES }              from './workers.constants';
+import { PoliticaFacturacionService } from '../facturacion/politica-facturacion.service';
+import { QUEUES, JOBS }        from './workers.constants';
 
 // ── Fixtures ──────────────────────────────────────────────────
 const mockRouter = {
@@ -389,6 +391,85 @@ describe('CobranzaWorker', () => {
   // siguiente de pagar (05/08). El test se retira con el código que probaba; lo que
   // impide que vuelva es `frontera-dinero.spec.ts`, que falla si reaparece la
   // declaración del job.
+});
+
+// ─────────────────────────────────────────────────────────────
+// CobranzaScheduler.detectarMorosos() — Ola 4: deuda_total se retiró, la fuente ahora es
+// DeudaPorContratoService.calcular(). El riesgo real de esa reescritura no era sintáctico
+// era que un EXISTS a nivel de CONTRATO cortaría a un servicio con reparto proporcional en
+// 0, cuando `deuda_total` no lo hacía. Este bloque prueba justo eso: dos servicios del
+// mismo cliente, solo uno con deuda imputada, y que `calcular()` se llama una vez por
+// CLIENTE, no una vez por fila.
+// ─────────────────────────────────────────────────────────────
+describe('CobranzaScheduler.detectarMorosos() — el reparto proporcional sobrevive al retiro de deuda_total', () => {
+  let scheduler: CobranzaScheduler;
+  let mockQueue: { add: jest.Mock };
+  let mockDs: { query: jest.Mock };
+  let mockCalcular: jest.Mock;
+
+  // impagas: un solo cliente, con un comprobante vencido hace 10 días — por encima de
+  // cualquier `diasGracia` razonable, para que la única variable en juego sea la deuda.
+  const filaServicioA = {
+    contrato_id: 'srv-a', empresa_id: 'emp-1', cliente_id: 'cli-x',
+    router_id: 'rtr-1', ip_asignada: '10.0.0.1', usuario_pppoe: 'cli_a',
+    facturacion_config: {}, dias_gracia_empresa: '5',
+    vencimiento_del_ultimo: '2026-08-08', comprobantes_vencidos: 1,
+    dias_vencido: 10, nombre_cliente: 'Cliente X',
+  };
+  const filaServicioB = { ...filaServicioA, contrato_id: 'srv-b', usuario_pppoe: 'cli_b' };
+
+  beforeEach(async () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 18, 0, 0, 0)); // 18/08, 00:00 local
+
+    mockQueue = { add: jest.fn().mockResolvedValue(undefined) };
+    mockDs = { query: jest.fn().mockResolvedValue([filaServicioA, filaServicioB]) };
+    // Solo `srv-a` tiene deuda imputada — `srv-b` es el caso que un EXISTS a nivel de
+    // contrato habría cortado igual, y que el reparto proporcional real no corta.
+    mockCalcular = jest.fn().mockResolvedValue(new Map([
+      ['srv-a', { monto: 50, comprobantes: 1 }],
+      ['srv-b', { monto: 0,  comprobantes: 0 }],
+    ]));
+
+    const cacheGet = jest.fn((key: string) =>
+      Promise.resolve(key.startsWith('cron:horario:') ? '00:00' : undefined),
+    );
+
+    const m: TestingModule = await Test.createTestingModule({
+      providers: [
+        CobranzaScheduler,
+        { provide: getQueueToken(QUEUES.COBRANZA), useValue: mockQueue },
+        { provide: getDataSourceToken(), useValue: mockDs },
+        { provide: CACHE_MANAGER, useValue: { get: cacheGet, set: jest.fn().mockResolvedValue(undefined) } },
+        { provide: SchedulerRegistry, useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { getTimezone: jest.fn().mockResolvedValue('America/Lima') } },
+        { provide: PoliticaFacturacionService, useValue: {} },
+        { provide: DeudaPorContratoService, useValue: { calcular: mockCalcular } },
+      ],
+    }).compile();
+    scheduler = m.get<CobranzaScheduler>(CobranzaScheduler);
+  });
+
+  afterEach(() => { jest.useRealTimers(); jest.clearAllMocks(); });
+
+  it('suspende el servicio con deuda imputada real y deja en paz al que reparte en 0', async () => {
+    await scheduler.detectarMorosos();
+
+    expect(mockQueue.add).toHaveBeenCalledTimes(1);
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      JOBS.SUSPENDER_CONTRATO,
+      expect.objectContaining({ contratoId: 'srv-a', deudaTotal: 50, mesesDeuda: 1 }),
+      expect.anything(),
+    );
+  });
+
+  it('calcula el reparto UNA vez por cliente, no una vez por servicio candidato', async () => {
+    await scheduler.detectarMorosos();
+
+    // Dos filas candidatas, mismo cliente — un cálculo por fila habría llamado
+    // DeudaPorContratoService.calcular() dos veces con exactamente los mismos argumentos.
+    expect(mockCalcular).toHaveBeenCalledTimes(1);
+    expect(mockCalcular).toHaveBeenCalledWith('cli-x', 'emp-1');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
