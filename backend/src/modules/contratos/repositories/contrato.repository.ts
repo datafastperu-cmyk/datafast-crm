@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Contrato, ContratoHistorial, EstadoContrato } from '../entities/contrato.entity';
 import { SegmentoIpv4, IpAsignada } from '../entities/red.entity';
 import { FilterContratoDto } from '../dto/contrato.dto';
 import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
+import { DeudaPorContratoService } from '../../facturacion/deuda-por-contrato.service';
 
 @Injectable()
 export class ContratoRepository {
@@ -13,7 +14,10 @@ export class ContratoRepository {
   private readonly segmentoRepo: Repository<SegmentoIpv4>;
   private readonly ipRepo: Repository<IpAsignada>;
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly deudaSvc: DeudaPorContratoService,
+  ) {
     this.repo         = ds.getRepository(Contrato);
     this.histRepo     = ds.getRepository(ContratoHistorial);
     this.segmentoRepo = ds.getRepository(SegmentoIpv4);
@@ -33,7 +37,7 @@ export class ContratoRepository {
   }
 
   async findByClienteCompleto(clienteId: string, empresaId: string): Promise<any[]> {
-    return this.ds.query(`
+    const filas = await this.ds.query(`
       SELECT
         co.id, co.numero_contrato AS "numeroContrato", co.estado, co.empresa_id AS "empresaId",
         co.cliente_id AS "clienteId", co.plan_id AS "planId", co.router_id AS "routerId",
@@ -51,7 +55,6 @@ export class ContratoRepository {
         CAST(co.precio_final AS FLOAT) AS "precioFinal",
         CAST(co.precio_mensual AS FLOAT) AS "precioMensual",
         CAST(co.descuento_pct AS FLOAT) AS "descuentoPct",
-        CAST(co.deuda_total AS FLOAT) AS "deudaTotal",
         CAST(co.latitud_instalacion AS FLOAT) AS "latitudInstalacion",
         CAST(co.longitud_instalacion AS FLOAT) AS "longitudInstalacion",
         co.fecha_inicio AS "fechaInicio", co.fecha_instalacion AS "fechaInstalacion",
@@ -79,6 +82,15 @@ export class ContratoRepository {
       WHERE co.cliente_id = $1 AND co.empresa_id = $2 AND co.deleted_at IS NULL
       ORDER BY co.created_at DESC
     `, [clienteId, empresaId]);
+
+    // `deudaTotal` ya no sale de `co.deuda_total` (Ola 4, el acumulador se retira): un solo
+    // cliente, así que una sola llamada a `DeudaPorContratoService.calcular()` cubre TODOS
+    // los servicios devueltos aquí — nunca una por fila.
+    if (filas.length) {
+      const deudas = await this.deudaSvc.calcular(clienteId, empresaId);
+      for (const fila of filas) fila.deudaTotal = deudas.get(fila.id)?.monto ?? 0;
+    }
+    return filas;
   }
 
   async softDelete(id: string, empresaId: string): Promise<void> {
@@ -190,24 +202,6 @@ export class ContratoRepository {
     return { data, total: parseInt(total, 10), page, limit };
   }
 
-  buildFilterQuery(empresaId: string, f: FilterContratoDto): SelectQueryBuilder<Contrato> {
-    const qb = this.repo.createQueryBuilder('c')
-      .where('c.empresa_id = :empresaId', { empresaId })
-      .andWhere('c.deleted_at IS NULL');
-    if (f.search)        qb.andWhere('(c.numero_contrato ILIKE :s OR c.usuario_pppoe ILIKE :s)', { s:`%${f.search}%` });
-    if (f.estado)        qb.andWhere('c.estado = :estado', { estado:f.estado });
-    if (f.estados?.length) qb.andWhere('c.estado IN (:...estados)', { estados:f.estados });
-    if (f.clienteId)     qb.andWhere('c.cliente_id = :clienteId', { clienteId:f.clienteId });
-    if (f.planId)        qb.andWhere('c.plan_id = :planId', { planId:f.planId });
-    if (f.routerId)      qb.andWhere('c.router_id = :routerId', { routerId:f.routerId });
-    if (f.conMora)       qb.andWhere('c.deuda_total > 0');
-    if (f.enProrroga)    qb.andWhere('c.en_prorroga = true');
-    if (f.aprovisionado !== undefined) qb.andWhere('c.aprovisionado = :ap', { ap:f.aprovisionado });
-    if (f.fechaDesde)    qb.andWhere('c.fecha_inicio >= :fd', { fd:f.fechaDesde });
-    if (f.fechaHasta)    qb.andWhere('c.fecha_inicio <= :fh', { fh:f.fechaHasta });
-    return qb;
-  }
-
   async findCompleto(id: string, empresaId: string) {
     const rows = await this.ds.query(`
       SELECT co.*,
@@ -222,7 +216,17 @@ export class ContratoRepository {
       LEFT JOIN onus   on2  ON on2.id = co.onu_id
       WHERE co.id = $1 AND co.empresa_id = $2 AND co.deleted_at IS NULL
     `, [id, empresaId]);
-    return rows[0] || null;
+    const row = rows[0];
+    if (!row) return null;
+
+    // `co.*` ya no trae `deuda_total`/`meses_deuda` como columna propia (Ola 4, el
+    // acumulador se retira) — se calculan en vivo y se escriben con el mismo nombre que
+    // `co.*` ya usaba, para no romper a quien lea esta fila.
+    const deudas = await this.deudaSvc.calcular(row.cliente_id, empresaId);
+    const deuda  = deudas.get(row.id);
+    row.deuda_total = deuda?.monto ?? 0;
+    row.meses_deuda = deuda?.comprobantes ?? 0;
+    return row;
   }
 
   async findSegmento(id: string, empresaId: string): Promise<SegmentoIpv4 | null> {
@@ -294,22 +298,6 @@ export class ContratoRepository {
 
   async getHistorial(contratoId: string): Promise<ContratoHistorial[]> {
     return this.histRepo.find({ where:{ servicioId: contratoId }, order:{ createdAt:'DESC' }, take:50 });
-  }
-
-  async findMorososParaCorte(graceDays: number): Promise<Contrato[]> {
-    const limitDate = new Date();
-    limitDate.setDate(limitDate.getDate() - graceDays);
-    return this.repo.createQueryBuilder('c')
-      .where('c.estado = :estado', { estado: EstadoContrato.ACTIVO })
-      .andWhere('c.deuda_total > 0').andWhere('c.deleted_at IS NULL')
-      .andWhere('(c.en_prorroga = false OR (c.en_prorroga = true AND c.prorroga_hasta < :hoy))', { hoy:new Date().toISOString().split('T')[0] })
-      .andWhere('c.fecha_estado <= :limite', { limite:limitDate }).getMany();
-  }
-
-  async findParaReactivar(): Promise<Contrato[]> {
-    return this.repo.createQueryBuilder('c')
-      .where('c.estado = :estado', { estado: EstadoContrato.SUSPENDIDO })
-      .andWhere('c.deuda_total <= 0').andWhere('c.deleted_at IS NULL').getMany();
   }
 
   async findProrrogasVencidas(): Promise<Contrato[]> {

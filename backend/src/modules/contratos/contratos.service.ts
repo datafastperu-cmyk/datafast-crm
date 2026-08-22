@@ -1465,10 +1465,6 @@ export class ContratosService {
   // repone este método ni una variante suya sin un ADR que explique por qué hace falta
   // poder escribir una deuda que las facturas no respaldan.
 
-  async registrarPago(id: string, fechaPago: string, empresaId: string): Promise<void> {
-    await this.contratoRepo.update(id, { fechaUltimoPago:fechaPago });
-  }
-
   async reactivarPorPago(contratoId: string, empresaId: string, operadorId: string): Promise<Contrato> {
     const c = await this.findOne(contratoId, empresaId);
     if (c.estado !== EstadoContrato.SUSPENDIDO)
@@ -1540,8 +1536,6 @@ export class ContratosService {
     await this.contratoRepo.softDelete(id, user.empresaId);
   }
 
-  async getMorososParaCorte(graceDays: number) { return this.contratoRepo.findMorososParaCorte(graceDays); }
-  async getParaReactivar() { return this.contratoRepo.findParaReactivar(); }
   async getProrrogasVencidas() { return this.contratoRepo.findProrrogasVencidas(); }
 
   // ── Métodos de red simulados ──────────────────────────────────
