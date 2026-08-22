@@ -99,6 +99,46 @@ funcionan hoy como un simple interruptor de encendido.
 
 ---
 
+### El alta de contrato genera el primer comprobante SIN `contratoId` en sus items — hallazgo del censo de deuda, Ola 4 (2026-08-22)
+
+**No es la pregunta que se hizo, es una más urgente.** Se pidió mirar un caso real de factura
+consolidada con dos servicios para ver si el `items` JSONB referenciaba solo a uno
+deliberadamente o por defecto. **No hay ningún caso así en producción — nunca hubo un cliente
+con dos servicios vivos a la vez** (verificado: `GROUP BY cliente_id HAVING COUNT(*) > 1` sobre
+servicios con `deleted_at IS NULL` da vacío hoy). Lo que sí hay, en las **únicas dos facturas
+consolidadas que existen en producción**, es algo peor: **ninguna de las dos tiene
+`contratoId` en su item**, y una de ellas es de **DESPUÉS** de que el commit `38db1880`
+(2026-07-30, *"imputar la deuda del comprobante consolidado a cada contrato"*) corrigiera
+exactamente este campo en el generador de ciclo regular.
+
+**Causa raíz encontrada, no supuesta:** `contratos.service.ts:386-395` — el generador del
+**primer comprobante al dar de alta un contrato** (prepago, la ruta que resuelve H-3) construye
+sus `items` con un tipo propio, más estrecho —
+`{ descripcion: string; cantidad: number; precioUnitario: number }[]` — que **ni siquiera
+declara el campo `contratoId`**. Es distinto del tipo `ItemFacturaExtendido` que sí lo tiene
+(`comprobante-config.entity.ts:22`, con un comentario explícito de por qué hace falta) y que
+`facturacion.service.ts` (líneas 384 y 637, generación de ciclo regular) sí puebla desde el
+30/07. El alta nunca recibió el mismo arreglo — quedó fuera cuando se corrigió el vecino, mismo
+patrón de "un segundo consumidor con el mismo defecto latente" que ya apareció en la Ola 1.
+
+**Consecuencia, dicha con precisión — hoy invisible, no inofensiva:** mientras cada cliente
+tenga como máximo un servicio vivo (el caso real de hoy), `DeudaPorContratoService.calcular()`
+no necesita leer `contratoId` — el atajo `contratosVivos.length === 1` imputa toda la factura a
+ese único servicio sin mirar el item. **El día que un cliente tenga DOS servicios vivos a la
+vez** y su primera factura consolidada salga de este generador, `lineasPorContrato()` no
+encontrará ningún `contratoId`, `contratosVivos.length` será 2, y la rama
+`if (!lineas.size) { ... continue; }` no imputa esa deuda a NINGÚN servicio: la factura existe,
+el cliente debe, pero ni `detectarMorosos()` ni `notificacionesPreventivas()` lo verán —
+el corte perdona a quien debe, en silencio, sin que nada avise.
+
+**No se corrige aquí.** Es un defecto de `contratos.service.ts` (generación de facturas), no de
+la Ola 4 (retiro de `deuda_total`) — se registra para que el generador de alta se corrija con el
+mismo criterio que ya tiene el de ciclo regular: `contratoId: <id del servicio dado de alta>`
+en cada item. Bloquea la Ola 4/5 (reactivación bajo acuerdo multi-servicio) igual que el resto
+de lo ya registrado sobre imputación proporcional.
+
+---
+
 ## 🟡 Abierto — funciones que faltan
 
 ### 2-bis. Cobranza Etapa II — pasarelas de pago (PENDIENTE A PROPÓSITO)
