@@ -383,7 +383,14 @@ export class ContratosService {
       const vencimiento = this.politicaSvc.proximoVencimiento(politica, new Date());
       const periodo     = this.politicaSvc.periodoServicio(politica, vencimiento);
 
-      const items: { descripcion: string; cantidad: number; precioUnitario: number }[] = [];
+      // `contratoId` en cada item, no solo en la factura (línea de abajo): sin él, un
+      // consolidado no se puede imputar a ningún servicio (`DeudaPorContratoService.
+      // lineasPorContrato`). Defecto encontrado el 2026-08-22 (censo de deuda, Ola 4):
+      // este generador quedó fuera cuando `facturacion.service.ts` ganó el mismo campo
+      // en el commit `38db1880` (2026-07-30) — es el mismo `contratoId` que el docstring
+      // de arriba ya documentaba como corregido, pero solo a nivel de la FACTURA
+      // (`contratoId: saved.id`, más abajo), nunca a nivel de cada ITEM.
+      const items: { descripcion: string; cantidad: number; precioUnitario: number; contratoId: string }[] = [];
 
       if (esPrepago) {
         // El precio sale del CONTRATO, no del plan: es donde vive el precio efectivo una vez
@@ -392,11 +399,15 @@ export class ContratosService {
           descripcion:    plan?.nombre ?? 'Servicio de internet',
           cantidad:       1,
           precioUnitario: saved.precioConDescuento,
+          contratoId:     saved.id,
         });
       }
 
       if (montoInstalacion > 0) {
-        items.push({ descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: montoInstalacion });
+        items.push({
+          descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: montoInstalacion,
+          contratoId:  saved.id,
+        });
       }
 
       const factura = await this.facturacionSvc.create(

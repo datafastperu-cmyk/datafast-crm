@@ -97,6 +97,22 @@ describe('H-3 · Primer comprobante del alta (2026-08-09)', () => {
     expect(crear.mock.calls[0][0].contratoId).toBe('c-99');
   });
 
+  // Defecto encontrado el 2026-08-22 (censo de deuda, Ola 4): el test de arriba solo
+  // comprobaba el `contratoId` de la FACTURA. `facturacion.service.ts` (ciclo regular)
+  // ganó el mismo campo dentro de cada ITEM el 2026-07-30 (commit `38db1880`) — este
+  // generador quedó fuera. Sin él, `DeudaPorContratoService.lineasPorContrato()` no puede
+  // atribuir el importe a ningún servicio el día que el contrato tenga más de uno vivo:
+  // la factura existe, el cliente debe, pero el corte no ve a quién cortar.
+  it('cada ITEM lleva su propio contratoId — no solo la factura (defecto 22/08, corregido el mismo día)', async () => {
+    const crear = jest.fn().mockResolvedValue(facturaFalsa);
+
+    await emitir(armar({ tipo: 'prepago' }, crear), { costoInstalacion: 150 });
+
+    const items = crear.mock.calls[0][0].items as Array<{ contratoId?: string }>;
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item.contratoId).toBe('c-99');
+  });
+
   it('no impone fecha de vencimiento: la fija el día de pago del abonado', async () => {
     const crear = jest.fn().mockResolvedValue(facturaFalsa);
 
@@ -112,7 +128,7 @@ describe('H-3 · Primer comprobante del alta (2026-08-09)', () => {
     await emitir(armar({ tipo: 'prepago' }, crear), {});
 
     expect(crear.mock.calls[0][0].items).toEqual([
-      { descripcion: 'Plan 100 Mbps', cantidad: 1, precioUnitario: 64 },
+      { descripcion: 'Plan 100 Mbps', cantidad: 1, precioUnitario: 64, contratoId: 'c-99' },
     ]);
   });
 
@@ -130,7 +146,7 @@ describe('H-3 · Primer comprobante del alta (2026-08-09)', () => {
     await emitir(armar({ tipo: 'postpago' }, crear), { costoInstalacion: 150 });
 
     expect(crear.mock.calls[0][0].items).toEqual([
-      { descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: 150 },
+      { descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: 150, contratoId: 'c-99' },
     ]);
   });
 
