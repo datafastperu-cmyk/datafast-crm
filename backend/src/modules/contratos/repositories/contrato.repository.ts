@@ -371,7 +371,7 @@ export class ContratoRepository {
       )
       SELECT s.estado AS estado, COUNT(*) AS total, COALESCE(MAX(dpe.deuda), 0) AS deuda
         FROM servicios s
-        LEFT JOIN deuda_por_estado dpe ON dpe.estado = s.estado::text
+        LEFT JOIN deuda_por_estado dpe ON dpe.estado = s.estado
        WHERE s.empresa_id = $1 AND s.deleted_at IS NULL
        GROUP BY s.estado
     `, [empresaId]);

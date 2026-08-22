@@ -138,14 +138,21 @@ jobs:
           TS_NODE_PROJECT=tsconfig.migration.json npx ts-node -T scripts/preparar-schema-log.ts
           npm run db:check
 
-      # ── [TEMPORAL — Ola 4 (b), 2026-08-18] ─────────────────────────────────────
-      # Segunda corrida de la herramienta de medición conservada (§11.5 del censo): ahora
-      # verifica getResumen() (VIO -- el total no puede duplicarse ni perderse con un
-      # contrato multi-servicio en estados distintos) y mide findAllPaginated() con
-      # conMora + ORDER BY deuda en su forma paginada real (LIMIT/OFFSET). Mismo volumen
-      # (10k×12), mismo Postgres efímero de CI, nunca producción. Se retira igual que la
-      # vez anterior en cuanto el número/resultado quede leído y registrado.
-      - name: "[TEMPORAL] Ola 4 (b) — getResumen() VIO + medir findAllPaginated()"
+      # ── [TEMPORAL — Ola 4 (b), 2026-08-22] ─────────────────────────────────────
+      # Tercera corrida de la herramienta de medición conservada (§11.5 del censo).
+      # Corrige el fallo de la segunda (JOIN comparando el ENUM estado_contrato contra
+      # ::text — un lado no puede castearse solo, ninguno de los dos se casteaba antes:
+      # se retira el cast erróneo, no se añade uno nuevo) y añade el número que faltaba
+      # desde hace dos turnos: el camino REAL de detectarMorosos() no es solo la consulta
+      # SQL, es esa consulta MÁS una llamada a `DeudaPorContratoService.calcular()` por
+      # cada cliente distinto con deuda (~3.333 al volumen de este banco). Tres pasos en
+      # el mismo Postgres efímero, nunca producción — el segundo necesita que el primero
+      # no haya limpiado todavía:
+      #   1. medir-deuda-por-facturas.sql   (siembra + SQL puro: detectarMorosos()
+      #      reescrito, getResumen() VIO, findAllPaginated() paginado)
+      #   2. medir-detectar-morosos.ts      (SQL + N calcular(), el costo real)
+      #   3. limpiar-bench-deuda.sql        (deja el Postgres compartido como estaba)
+      - name: "[TEMPORAL] Ola 4 (b) — SQL + camino real de detectarMorosos() + VIO"
         run: |
           set -euo pipefail
           PGPASSWORD=ci_password psql -h localhost -U datafast_db_user -d datafast_db \
@@ -161,7 +168,18 @@ jobs:
             echo "::error::La aserción VIO de getResumen() no dejó su evidencia -- revisar el log."
             exit 1
           fi
-          echo "Medición y aserción VIO confirmadas."
+          echo "Medición SQL y aserción VIO confirmadas."
+
+          TS_NODE_PROJECT=tsconfig.migration.json npx ts-node -T scripts/medir-detectar-morosos.ts \
+            2>&1 | tee /tmp/medicion-detectar-morosos.log
+          if ! grep -q "TIEMPO TOTAL (camino real, no solo SQL)" /tmp/medicion-detectar-morosos.log; then
+            echo "::error::El cronómetro del camino real no dejó evidencia -- revisar el log."
+            exit 1
+          fi
+          echo "Medición del camino real (SQL + calcular()) confirmada."
+
+          PGPASSWORD=ci_password psql -h localhost -U datafast_db_user -d datafast_db \
+            -v ON_ERROR_STOP=1 -f scripts/limpiar-bench-deuda.sql
 
   frontend:
     name: Frontend — typecheck

@@ -247,7 +247,7 @@ deuda_por_estado AS (
 SELECT s.estado AS estado, COUNT(*) AS total, COALESCE(MAX(dpe.deuda), 0) AS deuda
   FROM servicios s
   JOIN clientes c ON c.id = s.cliente_id
-  LEFT JOIN deuda_por_estado dpe ON dpe.estado = s.estado::text
+  LEFT JOIN deuda_por_estado dpe ON dpe.estado = s.estado
  WHERE c.numero_documento LIKE 'BENCH%' AND s.deleted_at IS NULL
  GROUP BY s.estado;
 
@@ -317,12 +317,10 @@ SELECT
               AND f.factura_original_id IS NULL) DESC
  LIMIT 20 OFFSET 0;
 
--- ── 10. Limpieza — deja el Postgres compartido del job como lo encontró ─────────────────
--- Orden FK-safe: facturas → servicios → contratos → clientes → plan. La empresa NO se toca:
--- nunca se creó, se reutilizó la que ya existía.
-\echo '--- Limpieza: retirando los datos del benchmark ---'
-DELETE FROM facturas  WHERE serie = 'BENCH';
-DELETE FROM servicios WHERE numero_contrato LIKE 'BENCH%';
-DELETE FROM contratos WHERE numero_contrato LIKE 'BENCH%';
-DELETE FROM clientes  WHERE numero_documento LIKE 'BENCH%';
-DELETE FROM planes    WHERE id = :'plan_id'::uuid;
+-- ── 10. Limpieza ──────────────────────────────────────────────────────────────────────
+-- Vive en `limpiar-bench-deuda.sql`, no aquí: entre este script y la limpieza corre el
+-- cronómetro de `medir-detectar-morosos.ts` (el camino REAL, SQL + N llamadas a
+-- `calcular()`), y necesita que los datos sembrados sigan en pie. Correr los tres en orden:
+--   1. Este script (siembra + mediciones SQL puras).
+--   2. `TS_NODE_PROJECT=tsconfig.migration.json npx ts-node -T scripts/medir-detectar-morosos.ts`
+--   3. `limpiar-bench-deuda.sql`
