@@ -185,6 +185,18 @@ export class CobranzaScheduler implements OnModuleInit {
         -- corte no puede pasarle por encima, aunque la fecha de corte ya haya llegado.
         -- Su vencimiento lo evalúa el job VERIFICAR_PRORROGA.
         AND NOT (co.en_prorroga = true AND co.prorroga_hasta >= CURRENT_DATE)
+        -- Pre-filtro, no la decisión final: si el CONTRATO no tiene ninguna factura
+        -- exigible con saldo, NINGÚN servicio suyo puede tener deuda imputada --
+        -- calcular() reparte lo que las facturas del contrato deben, nunca inventa. Es
+        -- un superconjunto exacto (recorta candidatos, nunca cambia quién es moroso), no
+        -- una aproximación: medido en CI, 10k candidatos, ~3.3k tras este filtro, mismo
+        -- resultado exacto que sin él (censo de deuda, S11.5/S12.4).
+        AND EXISTS (
+          SELECT 1 FROM facturas f
+           WHERE f.contrato_id = co.contrato_id
+             AND ${sqlDeudaExigible('f')}
+             AND f.saldo > 0
+        )
     `);
 
     // Una llamada a `calcular()` por CLIENTE distinto, nunca por fila: un cliente con dos
@@ -369,8 +381,10 @@ export class CobranzaScheduler implements OnModuleInit {
     // `detectarMorosos()`, la deuda de CADA servicio se recalcula abajo con
     // `DeudaPorContratoService.calcular()` — el mismo reparto proporcional que el
     // acumulador ya representaba cuando una factura consolidada se reparte entre los
-    // servicios vivos de un cliente. Un `EXISTS` a nivel de contrato habría notificado a un
-    // servicio con reparto en 0 que hoy no se notifica.
+    // servicios vivos de un cliente. El `EXISTS` de más abajo es solo PRE-FILTRO, no la
+    // decisión: si el contrato no tiene ninguna factura exigible con saldo, ningún
+    // servicio suyo puede tener reparto > 0 —`calcular()` reparte lo que las facturas
+    // deben, nunca inventa—, así que recorta candidatos sin cambiar a quién se notifica.
     const candidatos: FilaCandidatoNotifPreventiva[] = await this.ds.query(`
       SELECT co.id              AS contrato_id,
              co.empresa_id,
@@ -396,6 +410,12 @@ export class CobranzaScheduler implements OnModuleInit {
       WHERE co.estado = 'activo'
         AND co.deleted_at IS NULL
         AND (cl.whatsapp IS NOT NULL OR cl.telefono IS NOT NULL)
+        AND EXISTS (
+          SELECT 1 FROM facturas f
+           WHERE f.contrato_id = co.contrato_id
+             AND ${sqlDeudaExigible('f')}
+             AND f.saldo > 0
+        )
       LIMIT 1000
     `);
 

@@ -3,17 +3,22 @@
 // Origen (2026-08-22): la medición de `medir-deuda-por-facturas.sql` §9 mide una sola
 // consulta — el reemplazo de `co.deuda_total > 0` por un `EXISTS`. Pero la implementación
 // real que se envió (`cobranza.worker.ts`) es esa consulta MÁS una llamada a
-// `DeudaPorContratoService.calcular()` por cada CLIENTE distinto con deuda (~3.333 al
-// volumen de este banco de pruebas). Esa parte nunca tuvo número — este script se lo da,
-// con la misma clase real (no un mock), contra el mismo Postgres.
+// `DeudaPorContratoService.calcular()` por cada CLIENTE distinto con deuda. Esa parte no
+// tenía número — este script se lo da, con la misma clase real (no un mock), contra el
+// mismo Postgres.
 //
-// Precondición: correr DESPUÉS de `medir-deuda-por-facturas.sql` (siembra los 10k×12) y
-// ANTES de `limpiar-bench-deuda.sql` — este script NO siembra ni limpia, solo mide.
-//
-// Uso: TS_NODE_PROJECT=tsconfig.migration.json npx ts-node -T scripts/medir-detectar-morosos.ts
+// CORREGIDO 2026-08-22, primera corrida: 10.585 ms (41 ms SQL + 10.539 ms en calcular() × 10k
+// clientes candidatos). El propietario señaló la mejora gratuita: `calcular()` solo puede dar
+// > 0 si el CONTRATO tiene alguna factura exigible con saldo — es la misma pregunta que ya
+// resuelve `idx_facturas_contrato_exigible`. Pre-filtrar los candidatos con ese `EXISTS`
+// (superconjunto exacto, nunca una aproximación: si el contrato no debe nada, ningún
+// servicio suyo puede tener reparto > 0) recorta las llamadas a `calcular()` de ~10.000 a
+// ~3.333 sin cambiar un solo resultado. Aplicado aquí Y en `cobranza.worker.ts` — mismo
+// predicado en los dos sitios, no una copia que pueda divergir.
 
 import dataSource from '../src/config/datasource';
 import { DeudaPorContratoService } from '../src/modules/facturacion/deuda-por-contrato.service';
+import { sqlDeudaExigible } from '../src/modules/facturacion/domain/estados-con-saldo';
 
 interface FilaCandidato {
   contrato_id: string;
@@ -38,6 +43,12 @@ async function main(): Promise<void> {
        WHERE c.numero_documento LIKE 'BENCH%'
          AND s.estado = 'activo'
          AND s.deleted_at IS NULL
+         AND EXISTS (
+           SELECT 1 FROM facturas f
+            WHERE f.contrato_id = s.contrato_id
+              AND ${sqlDeudaExigible('f')}
+              AND f.saldo > 0
+         )
     `);
     const tCandidatos = Date.now();
 
