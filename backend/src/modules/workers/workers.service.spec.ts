@@ -473,6 +473,82 @@ describe('CobranzaScheduler.detectarMorosos() — el reparto proporcional sobrev
 });
 
 // ─────────────────────────────────────────────────────────────
+// CobranzaScheduler.notificacionesPreventivas() — mismo riesgo, mismo arreglo que
+// detectarMorosos(): el servicio con reparto proporcional en 0 no debe recibir el aviso de
+// cobro previo, aunque el cliente sí tenga deuda en conjunto.
+// ─────────────────────────────────────────────────────────────
+describe('CobranzaScheduler.notificacionesPreventivas() — el reparto proporcional sobrevive al retiro de deuda_total', () => {
+  let scheduler: CobranzaScheduler;
+  let mockQueue: { add: jest.Mock };
+  let mockDs: { query: jest.Mock };
+  let mockCalcular: jest.Mock;
+
+  // Sin `notificaciones_config` propia: cae en la rama "sin configuración propia"
+  // (dias_contrato vs. dias_restantes, ambos en 3 → toca el aviso).
+  const filaServicioA = {
+    contrato_id: 'srv-a', empresa_id: 'emp-2', cliente_id: 'cli-y',
+    dias_contrato: 3, nombre_completo: 'Cliente Y',
+    whatsapp: '999999999', telefono: null,
+    notificaciones_config: null, facturacion_config: null,
+    vencimiento: '2026-08-21', dias_restantes: 3,
+  };
+  const filaServicioB = { ...filaServicioA, contrato_id: 'srv-b' };
+
+  beforeEach(async () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 18, 0, 0, 0)); // 18/08, 00:00 local
+
+    mockQueue = { add: jest.fn().mockResolvedValue(undefined) };
+    mockDs = { query: jest.fn().mockResolvedValue([filaServicioA, filaServicioB]) };
+    // Solo `srv-a` tiene deuda imputada — `srv-b` es el caso que un EXISTS a nivel de
+    // contrato habría notificado igual, y que el reparto proporcional real no notifica.
+    mockCalcular = jest.fn().mockResolvedValue(new Map([
+      ['srv-a', { monto: 30, comprobantes: 1 }],
+      ['srv-b', { monto: 0,  comprobantes: 0 }],
+    ]));
+
+    const cacheGet = jest.fn((key: string) =>
+      Promise.resolve(key.startsWith('cron:horario:') ? '00:00' : undefined),
+    );
+
+    const m: TestingModule = await Test.createTestingModule({
+      providers: [
+        CobranzaScheduler,
+        { provide: getQueueToken(QUEUES.COBRANZA), useValue: mockQueue },
+        { provide: getDataSourceToken(), useValue: mockDs },
+        { provide: CACHE_MANAGER, useValue: { get: cacheGet, set: jest.fn().mockResolvedValue(undefined) } },
+        { provide: SchedulerRegistry, useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { getTimezone: jest.fn().mockResolvedValue('America/Lima') } },
+        { provide: PoliticaFacturacionService, useValue: {
+          notificacionesDesde: jest.fn().mockReturnValue({ recordatoriosPago: null, recordatorios: [] }),
+        } },
+        { provide: DeudaPorContratoService, useValue: { calcular: mockCalcular } },
+      ],
+    }).compile();
+    scheduler = m.get<CobranzaScheduler>(CobranzaScheduler);
+  });
+
+  afterEach(() => { jest.useRealTimers(); jest.clearAllMocks(); });
+
+  it('notifica al servicio con deuda imputada real y deja en paz al que reparte en 0', async () => {
+    await scheduler.notificacionesPreventivas();
+
+    expect(mockQueue.add).toHaveBeenCalledTimes(1);
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      JOBS.NOTIF_COBRO_PREVIO,
+      expect.objectContaining({ contratoId: 'srv-a', montoDeuda: 30 }),
+      expect.anything(),
+    );
+  });
+
+  it('calcula el reparto UNA vez por cliente, no una vez por servicio candidato', async () => {
+    await scheduler.notificacionesPreventivas();
+
+    expect(mockCalcular).toHaveBeenCalledTimes(1);
+    expect(mockCalcular).toHaveBeenCalledWith('cli-y', 'emp-2');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
 // FacturacionWorker Tests
 // ─────────────────────────────────────────────────────────────
 describe('FacturacionWorker', () => {

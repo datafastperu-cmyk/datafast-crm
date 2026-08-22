@@ -360,15 +360,21 @@ export class CobranzaScheduler implements OnModuleInit {
 
     const indiceRec = parseInt(lockKey.replace('rec', ''), 10) as 1 | 2 | 3;
 
-    // Candidatos con deuda: el offset lo decide cada abonado en su pestaña de
-    // Notificaciones, así que el filtro por fecha se hace en TS y no en SQL. La fecha de
-    // referencia es el vencimiento GRABADO en la factura impaga —igual que el corte—, no
+    // Candidatos: el offset lo decide cada abonado en su pestaña de Notificaciones, así que
+    // el filtro por fecha se hace en TS y no en SQL. La fecha de referencia es el
+    // vencimiento GRABADO en la factura impaga —igual que el corte—, no
     // `contratos.fecha_vencimiento`, que es una copia que puede quedar desfasada.
-    const candidatos = await this.ds.query(`
+    //
+    // `co.deuda_total` ya no se lee (Ola 4, el acumulador se retira): igual que en
+    // `detectarMorosos()`, la deuda de CADA servicio se recalcula abajo con
+    // `DeudaPorContratoService.calcular()` — el mismo reparto proporcional que el
+    // acumulador ya representaba cuando una factura consolidada se reparte entre los
+    // servicios vivos de un cliente. Un `EXISTS` a nivel de contrato habría notificado a un
+    // servicio con reparto en 0 que hoy no se notifica.
+    const candidatos: FilaCandidatoNotifPreventiva[] = await this.ds.query(`
       SELECT co.id              AS contrato_id,
              co.empresa_id,
              co.cliente_id,
-             co.deuda_total,
              co.${campoRec}     AS dias_contrato,
              cl.nombre_completo,
              cl.whatsapp,
@@ -388,15 +394,25 @@ export class CobranzaScheduler implements OnModuleInit {
          GROUP BY cliente_id
       ) im ON im.cliente_id = co.cliente_id
       WHERE co.estado = 'activo'
-        AND co.deuda_total > 0
         AND co.deleted_at IS NULL
         AND (cl.whatsapp IS NOT NULL OR cl.telefono IS NOT NULL)
       LIMIT 1000
     `);
 
+    // Una llamada a `calcular()` por CLIENTE distinto, nunca por fila — mismo patrón que
+    // `detectarMorosos()`.
+    const deudaPorCliente = new Map<string, Map<string, { monto: number; comprobantes: number }>>();
+    for (const clienteId of new Set(candidatos.map((c) => c.cliente_id))) {
+      const fila = candidatos.find((c) => c.cliente_id === clienteId)!;
+      deudaPorCliente.set(clienteId, await this.deudaSvc.calcular(clienteId, fila.empresa_id));
+    }
+
     let encolados = 0;
 
     for (const c of candidatos) {
+      const deuda = deudaPorCliente.get(c.cliente_id)?.get(c.contrato_id);
+      if (!deuda || deuda.monto <= 0) continue;
+
       const prefs = this.politicaSvc.notificacionesDesde(
         c.notificaciones_config ?? null, c.facturacion_config ?? null,
       );
@@ -406,15 +422,15 @@ export class CobranzaScheduler implements OnModuleInit {
         // Configuración del abonado: el offset es relativo al vencimiento, negativo para
         // "antes" y positivo para "después", tal como lo ofrece la pantalla.
         const rec = prefs.recordatorios.find((r) => r.indice === indiceRec);
-        toca = !!rec && parseInt(c.dias_restantes, 10) === -rec.dias;
+        toca = !!rec && c.dias_restantes === -rec.dias;
       } else if (c.notificaciones_config) {
         // Configuró sus notificaciones y dejó los recordatorios apagados: no se le escribe.
         continue;
       } else {
         // Sin configuración propia: se conserva el criterio anterior por contrato, donde
         // `dias_recordatorio_N` cuenta días ANTES del vencimiento (signo contrario).
-        const dias = c.dias_contrato === null ? null : parseInt(c.dias_contrato, 10);
-        toca = dias !== null && parseInt(c.dias_restantes, 10) === dias;
+        const dias = c.dias_contrato;
+        toca = dias !== null && c.dias_restantes === dias;
       }
 
       if (!toca) continue;
@@ -427,8 +443,8 @@ export class CobranzaScheduler implements OnModuleInit {
           contratoId: c.contrato_id,
           telefono:   c.whatsapp || c.telefono,
           nombre:     c.nombre_completo,
-          montoDeuda: parseFloat(c.deuda_total),
-          diasAntes:  parseInt(c.dias_restantes, 10),
+          montoDeuda: deuda.monto,
+          diasAntes:  c.dias_restantes,
           facturaIds: [],
         } as PayloadNotificacionCobro,
         JOB_OPTIONS.NOTIFICACION,
@@ -520,6 +536,22 @@ interface FilaCandidatoMoroso {
   comprobantes_vencidos:   number;
   dias_vencido:            number;
   nombre_cliente:          string;
+}
+
+/** Fila candidata de `notificacionesPreventivas()` — sin `deuda_total`: se calcula en vivo
+ *  después (Ola 4), nunca se lee de `servicios`. */
+interface FilaCandidatoNotifPreventiva {
+  contrato_id:            string;
+  empresa_id:             string;
+  cliente_id:             string;
+  dias_contrato:           number | null;
+  nombre_completo:         string;
+  whatsapp:                string | null;
+  telefono:                string | null;
+  notificaciones_config:   Record<string, unknown> | null;
+  facturacion_config:      Record<string, unknown> | null;
+  vencimiento:             string;
+  dias_restantes:          number;
 }
 
 // ─────────────────────────────────────────────────────────────
