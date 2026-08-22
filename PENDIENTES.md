@@ -130,13 +130,17 @@ contrato en la historia de producción tuvo dos servicios vivos a la vez (verifi
 rangos de vida de los servicios de `ceb41afc…` tampoco se solapan nunca). Es una ruta de
 código sin ejercitar, no un defecto medido.
 
-**Colateral, ya no la pregunta principal pero real:** el mismo generador tampoco declara
-`contratoId` en sus items (tipo propio, más estrecho que `ItemFacturaExtendido`) — a diferencia
-de `facturacion.service.ts` (ciclo regular, líneas 384 y 637), que sí lo puebla desde el commit
-`38db1880` (30/07). Sin caso real que lo haya necesitado todavía (ningún contrato tuvo dos
-servicios vivos a la vez), no ha tenido consecuencia — pero si el generador de alta se corrige
-para sumar los servicios preexistentes, tendría que corregirse también para etiquetar cada
-item con su `contratoId`, o el mismo hueco reaparece un nivel más abajo.
+**Colateral, ya CORREGIDO (2026-08-22, mismo día — no dejado en «sin víctima todavía»):** el
+mismo generador tampoco declaraba `contratoId` en sus items (tipo propio, más estrecho que
+`ItemFacturaExtendido`) — a diferencia de `facturacion.service.ts` (ciclo regular, líneas 384 y
+637), que sí lo puebla desde el commit `38db1880` (30/07). Mismo tratamiento que
+`pagos.contrato_id NULL` (Ola 2): «sin víctima todavía» describe hoy, no mañana — basta con
+que un cliente contrate un segundo servicio. Corregido en el commit `3e88d52b`: cada item
+(servicio e instalación) lleva ahora `contratoId: saved.id`. Auditoría completa de producción
+(no solo los dos casos ya vistos): exactamente 2 de 2 facturas con items no vacíos carecían del
+campo — las mismas dos, ya verificadas sin víctima (ninguna depende de él hoy: una está pagada,
+la otra se atribuye igual por el atajo de servicio único). No hizo falta backfill. Test nombrado
+por el defecto en `comprobante-de-alta.spec.ts`.
 
 **Criterio de fondo, que simplifica todo lo demás pendiente de la Ola 4 (dicho por el
 propietario, 2026-08-22):** el corte es **POR CONTRATO** (D-1 §5), no por servicio con reparto
@@ -146,11 +150,17 @@ misma ola retira**. Se preserva mientras se mueve la FUENTE del dato (esta ola, 
 comportamiento), y desaparece cuando la Ola 5 toque los estados y el corte pase a ser
 genuinamente por contrato, sin imputación por servicio que hacer.
 
-**No se corrige aquí.** Es un defecto de `contratos.service.ts` (generación de facturas), no de
-la Ola 4 (retiro de `deuda_total`) — se registra para que el generador de alta se corrija con el
-mismo criterio que ya tiene el de ciclo regular: `contratoId: <id del servicio dado de alta>`
-en cada item. Bloquea la Ola 4/5 (reactivación bajo acuerdo multi-servicio) igual que el resto
-de lo ya registrado sobre imputación proporcional.
+**Lo que SIGUE sin corregirse: sumar los servicios preexistentes al facturar uno nuevo.** Es un
+cambio de comportamiento del generador de alta (recorrer y sumar, no solo etiquetar), fuera de
+la Ola 4 (retiro de `deuda_total`) — se registra para cuando corresponda tocar
+`contratos.service.ts` de nuevo. Bloquea la Ola 4/5 (reactivación bajo acuerdo multi-servicio)
+igual que el resto de lo ya registrado sobre imputación proporcional.
+
+**Hallazgo de fondo, de la propia investigación:** ningún cliente tiene hoy dos servicios vivos
+a la vez, así que **todo** el reparto proporcional entre servicios —el mecanismo que ha costado
+tres decisiones en esta ola— no se ejercita nunca en producción. Es un artefacto que la Ola 5
+retira y que hoy no protege a nadie. Cuando llegue esa ola: no hay que preservar comportamiento,
+hay que borrarlo.
 
 ---
 
