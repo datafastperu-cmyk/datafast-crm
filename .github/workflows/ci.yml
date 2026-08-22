@@ -138,6 +138,31 @@ jobs:
           TS_NODE_PROJECT=tsconfig.migration.json npx ts-node -T scripts/preparar-schema-log.ts
           npm run db:check
 
+      # ── [TEMPORAL — Ola 4 (b), 2026-08-18] ─────────────────────────────────────
+      # Segunda corrida de la herramienta de medición conservada (§11.5 del censo): ahora
+      # verifica getResumen() (VIO -- el total no puede duplicarse ni perderse con un
+      # contrato multi-servicio en estados distintos) y mide findAllPaginated() con
+      # conMora + ORDER BY deuda en su forma paginada real (LIMIT/OFFSET). Mismo volumen
+      # (10k×12), mismo Postgres efímero de CI, nunca producción. Se retira igual que la
+      # vez anterior en cuanto el número/resultado quede leído y registrado.
+      - name: "[TEMPORAL] Ola 4 (b) — getResumen() VIO + medir findAllPaginated()"
+        run: |
+          set -euo pipefail
+          PGPASSWORD=ci_password psql -h localhost -U datafast_db_user -d datafast_db \
+            -v ON_ERROR_STOP=1 \
+            -f scripts/medir-deuda-por-facturas.sql 2>&1 | tee /tmp/medicion-deuda.log
+          # RAISE NOTICE (la aserción VIO) va a stderr por defecto en psql -- se fusiona con
+          # stdout arriba (2>&1) para que ambas aserciones puedan leerse del mismo log.
+          if ! grep -q "Execution Time" /tmp/medicion-deuda.log; then
+            echo "::error::La medición no dejó evidencia -- 'Execution Time' no aparece en el log."
+            exit 1
+          fi
+          if ! grep -q "OK -- getResumen() cuadra exacto" /tmp/medicion-deuda.log; then
+            echo "::error::La aserción VIO de getResumen() no dejó su evidencia -- revisar el log."
+            exit 1
+          fi
+          echo "Medición y aserción VIO confirmadas."
+
   frontend:
     name: Frontend — typecheck
     runs-on: ubuntu-latest

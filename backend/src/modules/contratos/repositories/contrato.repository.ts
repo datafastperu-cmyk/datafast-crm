@@ -6,6 +6,7 @@ import { SegmentoIpv4, IpAsignada } from '../entities/red.entity';
 import { FilterContratoDto } from '../dto/contrato.dto';
 import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
 import { DeudaPorContratoService } from '../../facturacion/deuda-por-contrato.service';
+import { sqlDeudaExigible } from '../../facturacion/domain/estados-con-saldo';
 
 @Injectable()
 export class ContratoRepository {
@@ -102,12 +103,24 @@ export class ContratoRepository {
     const limit  = filters.limit ?? 20;
     const offset = (page - 1) * limit;
 
+    // Ola 4: `deuda_total` se retira. Listado paginado interactivo → presenta, no decide
+    // (mismo criterio que `getResumen()`): se acepta el modelo destino (D-1, deuda a nivel
+    // de CONTRATO, sin el reparto proporcional por servicio que sí preserva
+    // `detectarMorosos()`). UN SOLO predicado para el filtro `conMora` y el `ORDER BY` — si
+    // difirieran, el listado mostraría filas en un orden que no explica su propio filtro.
+    // Subconsulta correlacionada, no un JOIN: usa `idx_facturas_contrato_exigible`
+    // (1791800000072) por fila, y con `LIMIT`/`OFFSET` de por medio el plan solo la evalúa
+    // sobre las filas que de verdad importan al filtro, nunca sobre toda la tabla de
+    // facturas de una vez.
+    const DEUDA_EXPR =
+      `(SELECT COALESCE(SUM(f.saldo), 0) FROM facturas f WHERE f.contrato_id = c.contrato_id AND ${sqlDeudaExigible('f')})`;
+
     const allowedSort: Record<string, string> = {
       createdAt:      'c.created_at',
       estado:         'c.estado',
       fechaInicio:    'c.fecha_inicio',
       precioFinal:    'c.precio_final',
-      deudaTotal:     'c.deuda_total',
+      deudaTotal:     DEUDA_EXPR,
       numeroContrato: 'c.numero_contrato',
     };
     const sortCol = allowedSort[filters.sortBy ?? ''] ?? 'c.created_at';
@@ -140,7 +153,7 @@ export class ContratoRepository {
       params.push(filters.routerId);
       conds.push(`c.router_id = $${params.length}`);
     }
-    if (filters.conMora)    conds.push('c.deuda_total > 0');
+    if (filters.conMora)    conds.push(`${DEUDA_EXPR} > 0`);
     if (filters.enProrroga) conds.push('c.en_prorroga = true');
     if (filters.aprovisionado !== undefined) {
       params.push(filters.aprovisionado);
@@ -183,7 +196,7 @@ export class ContratoRepository {
         CAST(c.precio_final   AS FLOAT) AS "precioFinal",
         CAST(c.precio_mensual AS FLOAT) AS "precioMensual",
         CAST(c.descuento_pct  AS FLOAT) AS "descuentoPct",
-        CAST(c.deuda_total    AS FLOAT) AS "deudaTotal",
+        CAST(${DEUDA_EXPR}    AS FLOAT) AS "deudaTotal",
         c.created_at               AS "createdAt",
         cl.nombre_completo         AS "clienteNombre",
         cl.telefono                AS "clienteTelefono",
@@ -312,10 +325,55 @@ export class ContratoRepository {
       .andWhere('c.deleted_at IS NULL').getMany();
   }
 
+  /**
+   * Resumen de contratos por estado — dashboard, `GET /contratos/resumen`. Solo presenta:
+   * `skipAudit: true` en el controller, no alimenta ninguna decisión de corte ni reactivación
+   * (esas son `detectarMorosos()`/reactivación por pago, que sí preservan el reparto exacto).
+   *
+   * Ola 4: `deuda_total` se retira. Aquí SÍ se acepta el modelo destino (D-1: la deuda es del
+   * CONTRATO) en vez de recalcular el reparto proporcional por servicio: el bucle por cliente
+   * que preserva ese reparto exacto (como en `detectarMorosos()`) escala con el número de
+   * clientes de la empresa, y este endpoint lo abren N operadores M veces al día — al revés
+   * del cron nocturno, que corre una vez. Diferencia de comportamiento, no oculta:
+   *
+   *   Un contrato con servicios en DOS estados (p. ej. uno activo y otro suspendido) y una
+   *   factura consolidada reparte su deuda ENTRE columnas del desglose por estado con el
+   *   modelo viejo (proporcional a las líneas de cada servicio); con este cambio, TODA la
+   *   deuda del contrato cae en una sola columna — se prioriza `activo` > `suspendido` >
+   *   `pendiente_activacion` > el resto, para no fragmentarla. El TOTAL no cambia: cada
+   *   contrato aporta su deuda una única vez (`DISTINCT ON` evita la doble suma cuando un
+   *   contrato tiene más de un servicio), nunca cero, nunca dos — verificado en
+   *   `getResumen() — Ola 4` (contrato.repository.spec.ts).
+   */
   async getResumen(empresaId: string) {
-    return this.repo.createQueryBuilder('c')
-      .select('c.estado','estado').addSelect('COUNT(*)','total').addSelect('SUM(c.deuda_total)','deuda')
-      .where('c.empresa_id = :empresaId', { empresaId }).andWhere('c.deleted_at IS NULL')
-      .groupBy('c.estado').getRawMany();
+    return this.ds.query(`
+      WITH deuda_contrato AS (
+        SELECT contrato_id, COALESCE(SUM(saldo), 0) AS deuda
+          FROM facturas
+         WHERE ${sqlDeudaExigible()}
+         GROUP BY contrato_id
+      ),
+      contrato_estado_atribuido AS (
+        SELECT DISTINCT ON (s.contrato_id) s.contrato_id, s.estado
+          FROM servicios s
+         WHERE s.empresa_id = $1 AND s.deleted_at IS NULL AND s.contrato_id IS NOT NULL
+         ORDER BY s.contrato_id,
+           CASE s.estado
+             WHEN 'activo' THEN 0 WHEN 'suspendido' THEN 1
+             WHEN 'pendiente_activacion' THEN 2 ELSE 3
+           END
+      ),
+      deuda_por_estado AS (
+        SELECT cea.estado, COALESCE(SUM(dc.deuda), 0) AS deuda
+          FROM contrato_estado_atribuido cea
+          LEFT JOIN deuda_contrato dc ON dc.contrato_id = cea.contrato_id
+         GROUP BY cea.estado
+      )
+      SELECT s.estado AS estado, COUNT(*) AS total, COALESCE(MAX(dpe.deuda), 0) AS deuda
+        FROM servicios s
+        LEFT JOIN deuda_por_estado dpe ON dpe.estado = s.estado::text
+       WHERE s.empresa_id = $1 AND s.deleted_at IS NULL
+       GROUP BY s.estado
+    `, [empresaId]);
   }
 }

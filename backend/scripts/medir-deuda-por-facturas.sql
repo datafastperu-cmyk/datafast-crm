@@ -202,6 +202,121 @@ SELECT COUNT(*) AS contratos_con_deuda
         AND f.saldo > 0
    );
 
+-- ── 9-bis. CORRECCIÓN — getResumen() no duplica ni pierde deuda con multi-servicio ──────
+-- Ola 4 (b), `contrato.repository.ts.getResumen()`: al retirar `deuda_total`, el SUM por
+-- estado pasa a nivel de CONTRATO (no de servicio, D-1). Riesgo real: un contrato con más
+-- de un servicio en estados DISTINTOS podía contar su deuda dos veces (una por cada
+-- servicio) o cero (si el JOIN no encuentra a cuál atribuirla). La condición del propietario
+-- fue explícita: "el total debe cuadrar exactamente antes y después... compruébalo con
+-- recuento antes/después". Se ejercita aquí: un cliente BENCH recibe un SEGUNDO servicio
+-- bajo el MISMO contrato, en un estado distinto ('suspendido').
+\echo '--- Preparando el caso multi-servicio para la comprobación de getResumen() ---'
+INSERT INTO servicios (empresa_id, cliente_id, plan_id, contrato_id, numero_contrato,
+                        fecha_inicio, precio_mensual, estado)
+SELECT s.empresa_id, s.cliente_id, s.plan_id, s.contrato_id,
+       'BENCH-SRV-MULTI', CURRENT_DATE - INTERVAL '365 days', 80.00, 'suspendido'
+  FROM servicios s
+  JOIN clientes c ON c.id = s.cliente_id
+ WHERE c.numero_documento = 'BENCH00000001'
+ LIMIT 1;
+
+\echo '--- EXPLAIN ANALYZE: getResumen() reescrito (nivel contrato, DISTINCT ON) ---'
+EXPLAIN (ANALYZE, BUFFERS, TIMING, FORMAT TEXT)
+WITH deuda_contrato AS (
+  SELECT contrato_id, COALESCE(SUM(saldo), 0) AS deuda
+    FROM facturas
+   WHERE estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+     AND factura_original_id IS NULL
+   GROUP BY contrato_id
+),
+contrato_estado_atribuido AS (
+  SELECT DISTINCT ON (s.contrato_id) s.contrato_id, s.estado
+    FROM servicios s
+    JOIN clientes c ON c.id = s.cliente_id
+   WHERE c.numero_documento LIKE 'BENCH%' AND s.deleted_at IS NULL AND s.contrato_id IS NOT NULL
+   ORDER BY s.contrato_id,
+     CASE s.estado WHEN 'activo' THEN 0 WHEN 'suspendido' THEN 1
+                    WHEN 'pendiente_activacion' THEN 2 ELSE 3 END
+),
+deuda_por_estado AS (
+  SELECT cea.estado, COALESCE(SUM(dc.deuda), 0) AS deuda
+    FROM contrato_estado_atribuido cea
+    LEFT JOIN deuda_contrato dc ON dc.contrato_id = cea.contrato_id
+   GROUP BY cea.estado
+)
+SELECT s.estado AS estado, COUNT(*) AS total, COALESCE(MAX(dpe.deuda), 0) AS deuda
+  FROM servicios s
+  JOIN clientes c ON c.id = s.cliente_id
+  LEFT JOIN deuda_por_estado dpe ON dpe.estado = s.estado::text
+ WHERE c.numero_documento LIKE 'BENCH%' AND s.deleted_at IS NULL
+ GROUP BY s.estado;
+
+\echo '--- Aserción: SUM(deuda) de getResumen() == SUM(facturas.saldo) exigible de los BENCH — ni de más, ni de menos ---'
+DO $$
+DECLARE
+  suma_resumen  NUMERIC;
+  suma_directa  NUMERIC;
+BEGIN
+  WITH deuda_contrato AS (
+    SELECT contrato_id, COALESCE(SUM(saldo), 0) AS deuda
+      FROM facturas
+     WHERE estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+       AND factura_original_id IS NULL
+     GROUP BY contrato_id
+  ),
+  contrato_estado_atribuido AS (
+    SELECT DISTINCT ON (s.contrato_id) s.contrato_id
+      FROM servicios s
+      JOIN clientes c ON c.id = s.cliente_id
+     WHERE c.numero_documento LIKE 'BENCH%' AND s.deleted_at IS NULL AND s.contrato_id IS NOT NULL
+     ORDER BY s.contrato_id,
+       CASE s.estado WHEN 'activo' THEN 0 WHEN 'suspendido' THEN 1
+                      WHEN 'pendiente_activacion' THEN 2 ELSE 3 END
+  )
+  SELECT COALESCE(SUM(dc.deuda), 0) INTO suma_resumen
+    FROM contrato_estado_atribuido cea
+    LEFT JOIN deuda_contrato dc ON dc.contrato_id = cea.contrato_id;
+
+  SELECT COALESCE(SUM(f.saldo), 0) INTO suma_directa
+    FROM facturas f
+    JOIN contratos co ON co.id = f.contrato_id
+   WHERE co.numero_contrato LIKE 'BENCH-CTR-%'
+     AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+     AND f.factura_original_id IS NULL;
+
+  IF suma_resumen <> suma_directa THEN
+    RAISE EXCEPTION 'getResumen() NO cuadra: % (por estado, DISTINCT ON) contra % (SUM directo sobre facturas de contratos BENCH). El multi-servicio duplicó o perdió deuda.',
+      suma_resumen, suma_directa;
+  END IF;
+  RAISE NOTICE 'OK -- getResumen() cuadra exacto: % (mismo total con y sin el contrato multi-servicio)', suma_resumen;
+END $$;
+
+-- ── 9-ter. MEDICIÓN — findAllPaginated(): conMora + ORDER BY deuda, forma paginada real ──
+-- Mismo predicado que el filtro y el ORDER BY comparten en el repositorio (un solo
+-- DEUDA_EXPR): sub-consulta correlacionada contra `facturas.contrato_id`, sobre el índice
+-- `idx_bench_facturas_exigible`. Se mide con LIMIT/OFFSET reales (página 1 de 20), que es la
+-- forma que de verdad ejecuta el endpoint — nunca sin paginar.
+\echo '--- EXPLAIN ANALYZE: findAllPaginated() con conMora + ORDER BY deuda (página 1, 20 filas) ---'
+EXPLAIN (ANALYZE, BUFFERS, TIMING, FORMAT TEXT)
+SELECT
+  c.id, c.numero_contrato AS "numeroContrato", c.estado,
+  (SELECT COALESCE(SUM(f.saldo), 0) FROM facturas f
+    WHERE f.contrato_id = c.contrato_id
+      AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+      AND f.factura_original_id IS NULL) AS "deudaTotal"
+  FROM servicios c
+  JOIN clientes cl ON cl.id = c.cliente_id AND cl.numero_documento LIKE 'BENCH%'
+ WHERE c.deleted_at IS NULL
+   AND (SELECT COALESCE(SUM(f.saldo), 0) FROM facturas f
+         WHERE f.contrato_id = c.contrato_id
+           AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+           AND f.factura_original_id IS NULL) > 0
+ ORDER BY (SELECT COALESCE(SUM(f.saldo), 0) FROM facturas f
+            WHERE f.contrato_id = c.contrato_id
+              AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+              AND f.factura_original_id IS NULL) DESC
+ LIMIT 20 OFFSET 0;
+
 -- ── 10. Limpieza — deja el Postgres compartido del job como lo encontró ─────────────────
 -- Orden FK-safe: facturas → servicios → contratos → clientes → plan. La empresa NO se toca:
 -- nunca se creó, se reutilizó la que ya existía.
