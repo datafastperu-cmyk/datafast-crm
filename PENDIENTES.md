@@ -99,37 +99,52 @@ funcionan hoy como un simple interruptor de encendido.
 
 ---
 
-### El alta de contrato genera el primer comprobante SIN `contratoId` en sus items — hallazgo del censo de deuda, Ola 4 (2026-08-22)
+### El generador de alta no suma los servicios preexistentes del contrato al facturar uno nuevo — hallazgo del censo de deuda, Ola 4 (2026-08-22, corregido el mismo día)
 
-**No es la pregunta que se hizo, es una más urgente.** Se pidió mirar un caso real de factura
-consolidada con dos servicios para ver si el `items` JSONB referenciaba solo a uno
-deliberadamente o por defecto. **No hay ningún caso así en producción — nunca hubo un cliente
-con dos servicios vivos a la vez** (verificado: `GROUP BY cliente_id HAVING COUNT(*) > 1` sobre
-servicios con `deleted_at IS NULL` da vacío hoy). Lo que sí hay, en las **únicas dos facturas
-consolidadas que existen en producción**, es algo peor: **ninguna de las dos tiene
-`contratoId` en su item**, y una de ellas es de **DESPUÉS** de que el commit `38db1880`
-(2026-07-30, *"imputar la deuda del comprobante consolidado a cada contrato"*) corrigiera
-exactamente este campo en el generador de ciclo regular.
+**Corrección de vocabulario que cambia la pregunta.** "Factura consolidada" en este proyecto
+**no** significa varios contratos en un comprobante — eso lo prohíbe E02-02 y no ocurre.
+Significa **una factura por CONTRATO que cubre TODOS sus servicios** — el modelo destino: la
+Cuenta es 1:1 con el Contrato (D-1) y es la Cuenta la que factura. La pregunta real, entonces,
+no es «¿cómo se reparte la deuda entre servicios?» — es más simple y más seria: **si una
+factura de un contrato con dos servicios lista solo uno en sus items, ¿está cobrando de
+menos?**
 
-**Causa raíz encontrada, no supuesta:** `contratos.service.ts:386-395` — el generador del
-**primer comprobante al dar de alta un contrato** (prepago, la ruta que resuelve H-3) construye
-sus `items` con un tipo propio, más estrecho —
-`{ descripcion: string; cantidad: number; precioUnitario: number }[]` — que **ni siquiera
-declara el campo `contratoId`**. Es distinto del tipo `ItemFacturaExtendido` que sí lo tiene
-(`comprobante-config.entity.ts:22`, con un comentario explícito de por qué hace falta) y que
-`facturacion.service.ts` (líneas 384 y 637, generación de ciclo regular) sí puebla desde el
-30/07. El alta nunca recibió el mismo arreglo — quedó fuera cuando se corrigió el vecino, mismo
-patrón de "un segundo consumidor con el mismo defecto latente" que ya apareció en la Ola 1.
+**Los dos únicos casos reales de producción se miraron uno por uno — los dos son correctos, no
+un defecto.** Cliente `ceb41afc…`, dos facturas sin `servicio_id` propio
+(`230dfa28`, periodo 29/07→29/08; `4b2a8eb3`, periodo 01/08→31/08). En **ambos** periodos el
+contrato tenía **exactamente un servicio vivo** (`CNT-2026-000007`, alta 29/07, sigue vivo hoy)
+— su único otro servicio (`CNT-2026-000005`) ya estaba `baja_definitiva` desde el 28/07, un día
+**antes** de que empezara el primero de los dos periodos. No falta nada: no había un segundo
+servicio activo que la factura debiera haber incluido y no incluyó.
 
-**Consecuencia, dicha con precisión — hoy invisible, no inofensiva:** mientras cada cliente
-tenga como máximo un servicio vivo (el caso real de hoy), `DeudaPorContratoService.calcular()`
-no necesita leer `contratoId` — el atajo `contratosVivos.length === 1` imputa toda la factura a
-ese único servicio sin mirar el item. **El día que un cliente tenga DOS servicios vivos a la
-vez** y su primera factura consolidada salga de este generador, `lineasPorContrato()` no
-encontrará ningún `contratoId`, `contratosVivos.length` será 2, y la rama
-`if (!lineas.size) { ... continue; }` no imputa esa deuda a NINGÚN servicio: la factura existe,
-el cliente debe, pero ni `detectarMorosos()` ni `notificacionesPreventivas()` lo verán —
-el corte perdona a quien debe, en silencio, sin que nada avise.
+**Lo que sigue siendo un hallazgo real, pero reformulado con precisión — y sin caso que lo
+haya ejercitado ni una vez:** `contratos.service.ts:386-395`, el generador del primer
+comprobante al dar de alta un contrato (prepago, la ruta que resuelve H-3), factura **solo el
+servicio recién creado** — no recorre los demás servicios que el contrato ya pudiera tener.
+El día que un contrato reciba un SEGUNDO servicio mientras el primero sigue con vida, este
+generador facturaría al nuevo sin sumar el cargo del que ya existía para ese mismo periodo —
+**ahí sí habría cobro de menos**, si ningún otro camino de facturación cubre esa combinación.
+No se puede confirmar ni descartar contra datos reales porque **nunca ocurrió**: ningún
+contrato en la historia de producción tuvo dos servicios vivos a la vez (verificado,
+`GROUP BY cliente_id HAVING COUNT(*) > 1` sobre `deleted_at IS NULL` da vacío hoy, y los
+rangos de vida de los servicios de `ceb41afc…` tampoco se solapan nunca). Es una ruta de
+código sin ejercitar, no un defecto medido.
+
+**Colateral, ya no la pregunta principal pero real:** el mismo generador tampoco declara
+`contratoId` en sus items (tipo propio, más estrecho que `ItemFacturaExtendido`) — a diferencia
+de `facturacion.service.ts` (ciclo regular, líneas 384 y 637), que sí lo puebla desde el commit
+`38db1880` (30/07). Sin caso real que lo haya necesitado todavía (ningún contrato tuvo dos
+servicios vivos a la vez), no ha tenido consecuencia — pero si el generador de alta se corrige
+para sumar los servicios preexistentes, tendría que corregirse también para etiquetar cada
+item con su `contratoId`, o el mismo hueco reaparece un nivel más abajo.
+
+**Criterio de fondo, que simplifica todo lo demás pendiente de la Ola 4 (dicho por el
+propietario, 2026-08-22):** el corte es **POR CONTRATO** (D-1 §5), no por servicio con reparto
+proporcional. El reparto proporcional que `DeudaPorContratoService.lineasPorContrato()`
+implementa **no es una regla que haya que preservar para siempre — es un artefacto que esta
+misma ola retira**. Se preserva mientras se mueve la FUENTE del dato (esta ola, sin tocar
+comportamiento), y desaparece cuando la Ola 5 toque los estados y el corte pase a ser
+genuinamente por contrato, sin imputación por servicio que hacer.
 
 **No se corrige aquí.** Es un defecto de `contratos.service.ts` (generación de facturas), no de
 la Ola 4 (retiro de `deuda_total`) — se registra para que el generador de alta se corrija con el
